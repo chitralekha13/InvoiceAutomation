@@ -1,0 +1,15 @@
+{
+  "navigationFallback": {
+    "rewrite": "/login.html"
+  },
+  "routes": [
+    {
+      "route": "/upload.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
+      "route": "/retrieve.html",
+      "allowedRoles": ["authenticated"]
+    }
+  ]
+}
