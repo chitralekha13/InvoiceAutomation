@@ -16,7 +16,14 @@ h2{margin-bottom:20px;color:#0078d4;}
 <div class="card">
     <h2>Invoice upload Portal</h2>
     <p>Please sign in with your Microsoft Account</p>
-    <a class="btn" href="/.auth/login/aad">Login with Microsoft</a>
+
+    <button onclick="login()">Sign in</button>
+
+    <script> function login() {
+    // Redirect to Azure AD login, then automatically go to user.html
+    window.location.href = "/.login/aad?post_login_redirect_url=/frontend/retreive.html";}
+    </script>
+
 </div>
 </body>
 </html>
