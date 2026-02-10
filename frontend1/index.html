@@ -1,23 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Invoice Upload Portal</title>
-<style>
-body {margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background: #f3f5f6;display:flex;justify-content:center;align-items:center;height:100vh;color:#333;}
-.card{background:#fff;padding:40px;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,0.2);text-align:center;width:320px;}
-h2{margin-bottom:20px;color:#0078d4;}
-.btn{display:inline-block;padding:12px 25px;font-size:16px;color:white;background-color:#0078d4;text-decoration:none;border-radius:8px;transition:background 0.3s;}
-.btn:hover{background-color:#005a9e;}
-</style>
+  <meta charset="UTF-8">
+  <title>Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f6f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .container {
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      text-align: center;
+      width: 400px;
+    }
+    h2 {
+      margin-bottom: 20px;
+      color: #1f2937;
+    }
+    button {
+      padding: 12px 20px;
+      background-color: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: #1d4ed8;
+    }
+  </style>
 </head>
 <body>
-<div class="card">
-    <h2>Invoice upload Portal</h2>
-    <p>Please sign in with your Microsoft Account</p>
-    <a class="btn" href="/.auth/login/aad">Login with Microsoft</a>
+  <div class="container">
+    <h2>Welcome</h2>
+    <p>Please sign in to continue</p>
+    <button onclick="login()">Sign In</button>
+  </div>
 
-</div>
+  <script>
+    function login() {
+      // Azure AD login, redirect to retrieve.html after login
+      window.location.href = "/.auth/login/aad?post_login_redirect_url=/retrieve.html";
+    }
+  </script>
 </body>
 </html>

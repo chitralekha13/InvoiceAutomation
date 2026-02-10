@@ -1,7 +1,4 @@
 {
-  "navigationFallback": {
-    "rewrite": "/index.html"
-  },
   "routes": [
     {
       "route": "/retrieve.html",
@@ -12,10 +9,7 @@
       "allowedRoles": ["authenticated"]
     }
   ],
-  "responseOverrides": {
-    "401": {
-      "redirect": "/index.html",
-      "statusCode": 302
-    }
+  "navigationFallback": {
+    "rewrite": "/index.html"
   }
 }

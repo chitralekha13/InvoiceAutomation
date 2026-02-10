@@ -1,49 +1,110 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Documents - SharePoint Portal</title>
-<style>
-body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f6f8;padding:30px;margin:0;}
-h2{color:#0078d4;}
-.container{max-width:700px;margin:auto;background:#fff;padding:30px;border-radius:10px;box-shadow:0 6px 15px rgba(0,0,0,0.1);}
-ul{list-style:none;padding:0;}
-li{background:#eaf3fc;margin:8px 0;padding:12px 15px;border-radius:6px;display:flex;justify-content:space-between;}
-button,.btn{padding:10px 18px;border:none;border-radius:6px;background-color:#0078d4;color:white;cursor:pointer;transition:0.3s;}
-button:hover,.btn:hover{background-color:#005a9e;}
-a{display:inline-block;margin-top:20px;color:#0078d4;text-decoration:none;font-weight:bold;}
-a:hover{text-decoration:underline;}
-</style>
+  <meta charset="UTF-8">
+  <title>My Documents</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+    h2 {
+      color: #1f2937;
+    }
+    .user-info {
+      margin-bottom: 20px;
+      font-size: 16px;
+      color: #374151;
+    }
+    .doc-list {
+      list-style-type: none;
+      padding: 0;
+    }
+    .doc-list li {
+      padding: 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .nav {
+      margin-top: 20px;
+    }
+    .nav a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .nav a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-<div class="container">
+  <div class="container">
     <h2>My Documents</h2>
-    <button onclick="loadDocs()">Load Documents</button>
-    <ul id="docs"></ul>
-    <a href="upload.html" class="btn">Upload New Document</a>
-</div>
-<script>
-async function loadDocs() {
-    try {
-        const res = await fetch('/api/getDocuments');
+    <div class="user-info">Welcome, <span id="user">Loading...</span></div>
+
+    <ul class="doc-list" id="docs">
+      <!-- Document list will populate here -->
+    </ul>
+
+    <div class="nav">
+      <a href="/upload.html">Upload New Document</a>
+    </div>
+  </div>
+
+  <script>
+    async function checkLoginAndLoadDocs() {
+      try {
+        const res = await fetch("/.auth/me");
         const data = await res.json();
-        const list = document.getElementById('docs');
-        list.innerHTML='';
-        data.forEach(d=>{
-            const li=document.createElement('li');
-            const link=document.createElement('a');
-            link.href=d.webUrl;
-            link.textContent=d.name;
-            link.target="_blank";
-            li.appendChild(link);
-            list.appendChild(li);
-        });
-    } catch(e){
-        alert('Error loading documents');
-        console.error(e);
+
+        if (!data || data.length === 0) {
+          // Not logged in → redirect to login page
+          window.location.href = "/index.html";
+          return;
+        }
+
+        const user = data[0];
+        document.getElementById("user").innerText = user.userDetails;
+
+        // Fetch user's documents from Azure Function
+        const docsRes = await fetch("/api/getDocuments");
+        if (!docsRes.ok) throw new Error("Failed to fetch documents");
+
+        const docs = await docsRes.json();
+        const ul = document.getElementById("docs");
+        if (!docs.length) {
+          ul.innerHTML = "<li>No documents uploaded yet.</li>";
+        } else {
+          ul.innerHTML = "";
+          docs.forEach(doc => {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = doc.downloadUrl;
+            a.textContent = doc.name;
+            a.target = "_blank";
+            li.appendChild(a);
+            ul.appendChild(li);
+          });
+        }
+
+      } catch (err) {
+        console.error(err);
+        document.getElementById("user").innerText = "Error loading user info";
+      }
     }
-}
-</script>
+
+    window.onload = checkLoginAndLoadDocs;
+  </script>
 </body>
 </html>
