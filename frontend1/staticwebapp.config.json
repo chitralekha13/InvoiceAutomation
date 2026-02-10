@@ -1,10 +1,10 @@
 {
   "navigationFallback": {
-    "rewrite": "/login.html"
+    "rewrite": "/index.html"
   },
   "routes": [
     {
-      "route": "/user.html",
+      "route": "/retrieve.html",
       "allowedRoles": ["authenticated"]
     },
     {
@@ -14,7 +14,7 @@
   ],
   "responseOverrides": {
     "401": {
-      "redirect": "/login.html",
+      "redirect": "/index.html",
       "statusCode": 302
     }
   }
