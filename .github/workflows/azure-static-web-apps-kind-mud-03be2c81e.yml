@@ -22,6 +22,20 @@ jobs:
         with:
           submodules: true
           lfs: false
+      - name: Generate Config File
+        run: |
+          cd azure_deploy
+          cat > config.js << EOF
+          window.APP_CONFIG = {
+              clientId: '${{ secrets.AZURE_CLIENT_ID }}',
+              tenantId: '${{ secrets.AZURE_TENANT_ID }}',
+              redirectUri: window.location.origin + '/index.html'
+          };
+          EOF
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }} 
+
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
       - name: Get Id Token
@@ -45,6 +59,8 @@ jobs:
           output_location: "" # Built app content directory - optional
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
+          env:
+          SHAREPOINT_SITE_ID: ${{ secrets.SHAREPOINT_SITE_ID }}
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
