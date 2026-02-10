@@ -1,0 +1,21 @@
+{
+  "navigationFallback": {
+    "rewrite": "/login.html"
+  },
+  "routes": [
+    {
+      "route": "/user.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
+      "route": "/upload.html",
+      "allowedRoles": ["authenticated"]
+    }
+  ],
+  "responseOverrides": {
+    "401": {
+      "redirect": "/login.html",
+      "statusCode": 302
+    }
+  }
+}
