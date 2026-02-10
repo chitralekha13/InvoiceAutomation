@@ -24,7 +24,7 @@ jobs:
           lfs: false
       - name: Generate Config File
         run: |
-          cd azure_deploy
+          
           cat > config.js << EOF
           window.APP_CONFIG = {
               clientId: '${{ secrets.AZURE_CLIENT_ID }}',
