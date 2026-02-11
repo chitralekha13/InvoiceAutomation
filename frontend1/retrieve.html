@@ -259,6 +259,11 @@
         // Check authentication
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
+        const token = sessionStorage.getItem('accessToken');
+        fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+        })
+
         
         if (!userEmail) {
             window.location.href = 'index.html';
