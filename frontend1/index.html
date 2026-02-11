@@ -14,7 +14,7 @@
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #eeeef0 ;
+            background: #eeeef0;
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -112,10 +112,11 @@
     </div>
 
     <script>
+        // MSAL Configuration
         const msalConfig = {
             auth: {
-                clientId: 'f39c8880-0692-4797-9c6e-3a9fd0cb2f64',  
-                authority: 'https://login.microsoftonline.com/common',  
+                clientId: 'f39c8880-0692-4797-9c6e-3a9fd0cb2f64',
+                authority: 'https://login.microsoftonline.com/59b817d0-e4a9-4a51-b17e-3e60fc07b19b',
                 redirectUri: window.location.origin + '/index.html'
             },
             cache: {
@@ -124,29 +125,32 @@
             }
         };
 
+        // Only request basic user profile - no access token needed
         const loginRequest = {
-            scopes: ["User.Read"]
+            scopes: ['openid', 'profile', 'email']
         };
-
-        const account = msalInstance.getAllAccounts()[0];
-
-        const tokenResponse = await msalInstance.acquireTokenSilent({
-            scopes: ["User.Read"],
-            account: account
-        });
-
-        //console.log(tokenResponse.accessToken);
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
 
         // Initialize MSAL
         msalInstance.initialize().then(() => {
-            // Check if user is already logged in
-            const accounts = msalInstance.getAllAccounts();
-            if (accounts.length > 0) {
-                msalInstance.setActiveAccount(accounts[0]);
-                redirectToRetrieve();
-            }
+            // Handle redirect response
+            msalInstance.handleRedirectPromise().then(response => {
+                if (response) {
+                    msalInstance.setActiveAccount(response.account);
+                    storeUserInfoAndRedirect(response.account);
+                } else {
+                    // Check if user is already logged in
+                    const accounts = msalInstance.getAllAccounts();
+                    if (accounts.length > 0) {
+                        msalInstance.setActiveAccount(accounts[0]);
+                        storeUserInfoAndRedirect(accounts[0]);
+                    }
+                }
+            }).catch(error => {
+                console.error('Redirect error:', error);
+                showError('Authentication failed. Please try again.');
+            });
         });
 
         // Login button handler
@@ -162,23 +166,29 @@
             try {
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
                 msalInstance.setActiveAccount(loginResponse.account);
-                
-                sessionStorage.setItem('userEmail', loginResponse.account.username);
-                sessionStorage.setItem('userName', loginResponse.account.name);
-
-                redirectToRetrieve();
+                storeUserInfoAndRedirect(loginResponse.account);
                 
             } catch (error) {
                 console.error('Login error:', error);
-                errorDiv.textContent = 'Login failed. Please try again.';
-                errorDiv.style.display = 'block';
+                showError('Login failed. Please try again.');
                 loginBtn.disabled = false;
                 loading.style.display = 'none';
             }
         });
 
-        function redirectToRetrieve() {
+        function storeUserInfoAndRedirect(account) {
+            // Store only user identity info - no access token needed
+            sessionStorage.setItem('userEmail', account.username);
+            sessionStorage.setItem('userName', account.name || account.username);
+            
+            // Redirect to retrieve page
             window.location.href = 'retrieve.html';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
         }
     </script>
 </body>
