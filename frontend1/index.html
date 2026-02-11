@@ -115,7 +115,7 @@
         // MSAL Configuration
         const msalConfig = {
             auth: {
-                clientId: 'f39c8880-0692-4797-9c6e-3a9fd0cb2f64',
+                clientId: 'YOUR_CLIENT_ID',
                 authority: 'https://login.microsoftonline.com/YOUR_TENANT_ID',
                 redirectUri: window.location.origin + '/index.html'
             },
@@ -125,15 +125,14 @@
             }
         };
 
-        // Only request basic user profile - no access token needed
+        // Request scopes for SharePoint access
         const loginRequest = {
-            scopes: ['openid', 'profile', 'email']
+            scopes: [
+                'User.Read',
+                'Files.ReadWrite',
+                'Sites.ReadWrite.All'
+            ]
         };
-        const graphScopes = [
-        'User.Read',      
-        'Files.ReadWrite', 
-        'Sites.Read.All'   
-        ];
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
 
@@ -143,13 +142,14 @@
             msalInstance.handleRedirectPromise().then(response => {
                 if (response) {
                     msalInstance.setActiveAccount(response.account);
-                    storeUserInfoAndRedirect(response.account);
+                    storeUserInfoAndRedirect(response.account, response.accessToken);
                 } else {
                     // Check if user is already logged in
                     const accounts = msalInstance.getAllAccounts();
                     if (accounts.length > 0) {
                         msalInstance.setActiveAccount(accounts[0]);
-                        storeUserInfoAndRedirect(accounts[0]);
+                        // Try to get token silently
+                        acquireTokenAndRedirect(accounts[0]);
                     }
                 }
             }).catch(error => {
@@ -171,7 +171,7 @@
             try {
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
                 msalInstance.setActiveAccount(loginResponse.account);
-                storeUserInfoAndRedirect(loginResponse.account);
+                storeUserInfoAndRedirect(loginResponse.account, loginResponse.accessToken);
                 
             } catch (error) {
                 console.error('Login error:', error);
@@ -181,11 +181,27 @@
             }
         });
 
-        function storeUserInfoAndRedirect(account) {
-            // Store only user identity info - no access token needed
+        async function acquireTokenAndRedirect(account) {
+            try {
+                const tokenResponse = await msalInstance.acquireTokenSilent({
+                    ...loginRequest,
+                    account: account
+                });
+                storeUserInfoAndRedirect(account, tokenResponse.accessToken);
+            } catch (error) {
+                console.error('Silent token acquisition failed:', error);
+                // If silent acquisition fails, user needs to login again
+                sessionStorage.clear();
+            }
+        }
+
+        function storeUserInfoAndRedirect(account, accessToken) {
+            // Store user info and access token
             sessionStorage.setItem('userEmail', account.username);
             sessionStorage.setItem('userName', account.name || account.username);
-            sessionStorage.setItem('accessToken', accessToken); 
+            sessionStorage.setItem('accessToken', accessToken);
+            sessionStorage.setItem('tokenExpiry', Date.now() + 3600000); // 1 hour
+            
             // Redirect to retrieve page
             window.location.href = 'retrieve.html';
         }

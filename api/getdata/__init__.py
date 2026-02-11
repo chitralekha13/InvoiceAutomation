@@ -3,44 +3,19 @@ import azure.functions as func
 import json
 import os
 import requests
-import msal
-import logging
-
-
-def get_app_access_token():
-    client_id = os.environ.get('AZURE_CLIENT_ID')
-    client_secret = os.environ.get('AZURE_CLIENT_SECRET')
-    tenant_id = os.environ.get('AZURE_TENANT_ID')
-    
-    if not all([client_id, client_secret, tenant_id]):
-        raise Exception("Missing Azure AD credentials in environment variables")
-    
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
-    scope = ["https://graph.microsoft.com/.default"]
-    
-    app = msal.ConfidentialClientApplication(
-        client_id,
-        authority=authority,
-        client_credential=client_secret
-    )
-    
-    result = app.acquire_token_for_client(scopes=scope)
-    
-    if "access_token" in result:
-        return result["access_token"]
-    else:
-        raise Exception(f"Failed to acquire token: {result.get('error_description')}")
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('GetData function processing a request.')
 
     try:
+        # Parse request body - using USER's delegated access token
         req_body = req.get_json()
         user_email = req_body.get('userEmail')
+        access_token = req_body.get('accessToken')
         action = req_body.get('action', 'list')
         document_id = req_body.get('documentId')
         
-        if not user_email:
+        if not user_email or not access_token:
             return func.HttpResponse(
                 json.dumps({"error": "Missing required parameters"}),
                 status_code=400,
@@ -57,18 +32,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # Get application access token
-        try:
-            access_token = get_app_access_token()
-        except Exception as e:
-            logging.error(f"Failed to get app token: {str(e)}")
-            return func.HttpResponse(
-                json.dumps({"error": "Authentication failed"}),
-                status_code=500,
-                mimetype="application/json"
-            )
-        
-        # Sanitize email for folder name
+        # Sanitize email for folder name - ensures user isolation
         folder_name = user_email.replace('@', '_').replace('.', '_')
         folder_path = f"Documents/{folder_name}"
         
@@ -79,7 +43,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         # Handle different actions
         if action == 'list':
-            # List all files in user folder
+            # List all files in user's folder only
             list_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{folder_path}:/children"
             
             response = requests.get(list_url, headers=headers)
@@ -247,4 +211,3 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500,
             mimetype="application/json"
         )
-    

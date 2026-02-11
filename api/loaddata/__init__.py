@@ -4,42 +4,17 @@ import json
 import os
 from datetime import datetime
 import requests
-import msal
-
-def get_app_access_token():
-    """Get application-only access token using client credentials"""
-    client_id = os.environ.get('AZURE_CLIENT_ID')
-    client_secret = os.environ.get('AZURE_CLIENT_SECRET')
-    tenant_id = os.environ.get('AZURE_TENANT_ID')
-    
-    if not all([client_id, client_secret, tenant_id]):
-        raise Exception("Missing Azure AD credentials in environment variables")
-    
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
-    scope = ["https://graph.microsoft.com/.default"]
-    
-    app = msal.ConfidentialClientApplication(
-        client_id,
-        authority=authority,
-        client_credential=client_secret
-    )
-    
-    result = app.acquire_token_for_client(scopes=scope)
-    
-    if "access_token" in result:
-        return result["access_token"]
-    else:
-        raise Exception(f"Failed to acquire token: {result.get('error_description')}")
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('LoadData function processing a request.')
 
     try:
-        # Parse request - NO LONGER ACCEPTING USER ACCESS TOKEN
+        # Parse request - using USER's delegated access token
         files = req.files.getlist('files')
         user_email = req.form.get('userEmail')
+        access_token = req.form.get('accessToken')
         
-        if not files or not user_email:
+        if not files or not user_email or not access_token:
             return func.HttpResponse(
                 json.dumps({"error": "Missing required parameters"}),
                 status_code=400,
@@ -56,18 +31,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json"
             )
         
-        # Get application access token (not user token)
-        try:
-            access_token = get_app_access_token()
-        except Exception as e:
-            logging.error(f"Failed to get app token: {str(e)}")
-            return func.HttpResponse(
-                json.dumps({"error": "Authentication failed"}),
-                status_code=500,
-                mimetype="application/json"
-            )
-        
-        # Sanitize email for folder name
+        # Sanitize email for folder name - ensures user isolation
         folder_name = user_email.replace('@', '_').replace('.', '_')
         
         # Check if user folder exists, create if not
@@ -120,7 +84,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 logging.warning(f"Rejected file {file_name} - exceeds 10MB limit")
                 continue
             
-            # Upload file to SharePoint using APP credentials
+            # Upload file to SharePoint using USER's delegated token
             upload_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{folder_path}/{file_name}:/content"
             
             upload_headers = {
