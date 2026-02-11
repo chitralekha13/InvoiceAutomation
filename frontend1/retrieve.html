@@ -259,9 +259,8 @@
         // Check authentication
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
-        const accessToken = sessionStorage.getItem('accessToken');
         
-        if (!userEmail || !accessToken) {
+        if (!userEmail) {
             window.location.href = 'index.html';
         }
         
@@ -290,8 +289,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        userEmail: userEmail,
-                        accessToken: accessToken
+                        userEmail: userEmail
                     })
                 });
                 
@@ -386,7 +384,6 @@
                     },
                     body: JSON.stringify({
                         userEmail: userEmail,
-                        accessToken: accessToken,
                         action: 'download',
                         documentId: docId
                     })
@@ -427,7 +424,6 @@
                     },
                     body: JSON.stringify({
                         userEmail: userEmail,
-                        accessToken: accessToken,
                         action: 'delete',
                         documentId: docId
                     })

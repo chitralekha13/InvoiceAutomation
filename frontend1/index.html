@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice Portal - Login</title>
     <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
-    <!-- Load config.local.js for local dev, config.js for production -->
-    <script src="config.local.js" onerror="this.onerror=null; this.remove(); var s=document.createElement('script'); s.src='config.js'; document.head.appendChild(s);"></script>
     <style>
         * {
             margin: 0;
@@ -16,7 +14,7 @@
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #eaebef;
+            background: #eeeef0 ;
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -114,12 +112,11 @@
     </div>
 
     <script>
-        // MSAL Configuration - Values loaded from config.js
         const msalConfig = {
             auth: {
-                clientId: window.APP_CONFIG.clientId,
-                authority: 'https://login.microsoftonline.com/common', // 'common' allows personal and org accounts
-                redirectUri: window.APP_CONFIG.redirectUri
+                clientId: '21fb5e7f-6785-4df9-9bf1-d3dcd89eea5d',  
+                authority: 'https://login.microsoftonline.com/common',  
+                redirectUri: window.location.origin + '/index.html'
             },
             cache: {
                 cacheLocation: 'sessionStorage',
@@ -128,7 +125,7 @@
         };
 
         const loginRequest = {
-            scopes: ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All']
+            scopes: ['User.Read']
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
@@ -139,7 +136,7 @@
             const accounts = msalInstance.getAllAccounts();
             if (accounts.length > 0) {
                 msalInstance.setActiveAccount(accounts[0]);
-                redirectToUpload();
+                redirectToRetrieve();
             }
         });
 
@@ -157,20 +154,11 @@
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
                 msalInstance.setActiveAccount(loginResponse.account);
                 
-                // Store user info
+                // Store user info 
                 sessionStorage.setItem('userEmail', loginResponse.account.username);
                 sessionStorage.setItem('userName', loginResponse.account.name);
                 
-                // Get access token
-                const tokenResponse = await msalInstance.acquireTokenSilent({
-                    ...loginRequest,
-                    account: loginResponse.account
-                });
-                
-                sessionStorage.setItem('accessToken', tokenResponse.accessToken);
-                
-                // Redirect to upload page
-                redirectToUpload();
+                redirectToRetrieve();
                 
             } catch (error) {
                 console.error('Login error:', error);
@@ -181,8 +169,8 @@
             }
         });
 
-        function redirectToUpload() {
-            window.location.href = 'upload.html';
+        function redirectToRetrieve() {
+            window.location.href = 'retrieve.html';
         }
     </script>
 </body>
