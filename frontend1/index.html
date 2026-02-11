@@ -125,8 +125,17 @@
         };
 
         const loginRequest = {
-            scopes: ['User.Read']
+            scopes: ["User.Read"]
         };
+
+        const account = msalInstance.getAllAccounts()[0];
+
+        const tokenResponse = await msalInstance.acquireTokenSilent({
+            scopes: ["User.Read"],
+            account: account
+        });
+
+        //console.log(tokenResponse.accessToken);
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
 
