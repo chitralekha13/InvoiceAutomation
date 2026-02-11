@@ -4,6 +4,8 @@ import json
 import os
 import requests
 import msal
+import logging
+
 
 def get_app_access_token():
     client_id = os.environ.get('AZURE_CLIENT_ID')
@@ -245,3 +247,4 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500,
             mimetype="application/json"
         )
+    
