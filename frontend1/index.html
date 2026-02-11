@@ -154,10 +154,9 @@
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
                 msalInstance.setActiveAccount(loginResponse.account);
                 
-                // Store user info 
                 sessionStorage.setItem('userEmail', loginResponse.account.username);
                 sessionStorage.setItem('userName', loginResponse.account.name);
-                
+
                 redirectToRetrieve();
                 
             } catch (error) {
