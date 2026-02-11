@@ -6,7 +6,12 @@
     <title>Invoice Portal - Login</title>
     <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #eeeef0;
@@ -15,6 +20,7 @@
             justify-content: center;
             align-items: center;
         }
+        
         .container {
             background: white;
             padding: 50px;
@@ -24,160 +30,171 @@
             width: 90%;
             text-align: center;
         }
-        .logo { font-size: 48px; margin-bottom: 10px; }
-        h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
-        p { color: #666; margin-bottom: 30px; font-size: 14px; }
-        .btn-login {
-            background: #0078d4; color: white; border: none;
-            padding: 15px 40px; font-size: 16px; border-radius: 5px;
-            cursor: pointer; transition: background 0.3s; width: 100%; font-weight: 600;
+        
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
         }
-        .btn-login:hover { background: #005a9e; }
-        .btn-login:disabled { background: #ccc; cursor: not-allowed; }
-        .error { color: #d13438; margin-top: 20px; font-size: 14px; display: none; }
-        .loading { display: none; margin-top: 20px; }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .btn-login {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+            font-weight: 600;
+        }
+        
+        .btn-login:hover {
+            background: #005a9e;
+        }
+        
+        .btn-login:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .error {
+            color: #d13438;
+            margin-top: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        
         .spinner {
             border: 3px solid #f3f3f3;
             border-top: 3px solid #0078d4;
-            border-radius: 50%; width: 40px; height: 40px;
-            animation: spin 1s linear infinite; margin: 0 auto;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="logo">📄</div>
-    <h1>Invoice Portal</h1>
-    <p>Secure document management system</p>
-    <button id="loginBtn" class="btn-login">Sign in with Microsoft</button>
-    <div class="loading" id="loading">
-        <div class="spinner"></div>
-        <p>Signing in...</p>
+    <div class="container">
+        <div class="logo">📄</div>
+        <h1>Invoice Portal</h1>
+        <p>Secure document management system</p>
+        <button id="loginBtn" class="btn-login">Sign in with Microsoft</button>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Signing in...</p>
+        </div>
+        <div class="error" id="error"></div>
     </div>
-    <div class="error" id="error"></div>
-</div>
 
-<script>
-    // ---------------------------
-    // MSAL Configuration
-    // ---------------------------
-    const msalConfig = {
-        auth: {
-            clientId: 'f39c8880-0692-4797-9c6e-3a9fd0cb2f64', // <-- put your client ID here
-            authority: 'https://login.microsoftonline.com/common',
-            redirectUri: window.location.origin + '/index.html'
-        },
-        cache: {
-            cacheLocation: 'sessionStorage',
-            storeAuthStateInCookie: false
-        }
-    };
-
-    const graphScopes = [
-        'User.Read',       // basic user info
-        'Files.ReadWrite', // SharePoint/OneDrive access
-        'Sites.Read.All'   // read SharePoint sites
-    ];
-
-    const msalInstance = new msal.PublicClientApplication(msalConfig);
-
-    // ---------------------------
-    // Login button handler
-    // ---------------------------
-    const loginBtn = document.getElementById('loginBtn');
-    const loading = document.getElementById('loading');
-    const errorDiv = document.getElementById('error');
-
-    loginBtn.addEventListener('click', async () => {
-        loginBtn.disabled = true;
-        loading.style.display = 'block';
-        errorDiv.style.display = 'none';
-
-        try {
-            // Login popup
-            const loginResponse = await msalInstance.loginPopup({
-                scopes: ['openid', 'profile', ...graphScopes]
-            });
-
-            msalInstance.setActiveAccount(loginResponse.account);
-
-            // Acquire access token
-            const tokenResponse = await acquireToken(loginResponse.account);
-            storeUserInfoAndRedirect(loginResponse.account, tokenResponse.accessToken);
-
-        } catch (error) {
-            console.error('Login error:', error);
-            showError('Login failed. Please try again.');
-            loginBtn.disabled = false;
-            loading.style.display = 'none';
-        }
-    });
-
-    // ---------------------------
-    // Acquire token function
-    // ---------------------------
-    async function acquireToken(account) {
-        try {
-            return await msalInstance.acquireTokenSilent({
-                account: account,
-                scopes: graphScopes
-            });
-        } catch (error) {
-            // fallback to popup if silent fails
-            if (error instanceof msal.InteractionRequiredAuthError) {
-                return await msalInstance.acquireTokenPopup({
-                    account: account,
-                    scopes: graphScopes
-                });
-            } else {
-                console.error('Token acquisition error:', error);
-                throw error;
+    <script>
+        // MSAL Configuration
+        const msalConfig = {
+            auth: {
+                clientId: 'f39c8880-0692-4797-9c6e-3a9fd0cb2f64',
+                authority: 'https://login.microsoftonline.com/YOUR_TENANT_ID',
+                redirectUri: window.location.origin + '/index.html'
+            },
+            cache: {
+                cacheLocation: 'sessionStorage',
+                storeAuthStateInCookie: false
             }
-        }
-    }
+        };
 
-    // ---------------------------
-    // Store user info + token
-    // ---------------------------
-    function storeUserInfoAndRedirect(account, accessToken) {
-        sessionStorage.setItem('userEmail', account.username);
-        sessionStorage.setItem('userName', account.name || account.username);
-        sessionStorage.setItem('accessToken', accessToken); // <--- store for Graph API
-        window.location.href = 'retrieve.html';
-    }
+        // Only request basic user profile - no access token needed
+        const loginRequest = {
+            scopes: ['openid', 'profile', 'email']
+        };
+        const graphScopes = [
+        'User.Read',      
+        'Files.ReadWrite', 
+        'Sites.Read.All'   
+        ];
 
-    // ---------------------------
-    // Show error
-    // ---------------------------
-    function showError(message) {
-        errorDiv.textContent = message;
-        errorDiv.style.display = 'block';
-    }
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-    // ---------------------------
-    // Handle redirect if returning from login
-    // ---------------------------
-    msalInstance.handleRedirectPromise()
-        .then(async (response) => {
-            if (response) {
-                msalInstance.setActiveAccount(response.account);
-                const tokenResponse = await acquireToken(response.account);
-                storeUserInfoAndRedirect(response.account, tokenResponse.accessToken);
-            } else {
-                // already logged in?
-                const accounts = msalInstance.getAllAccounts();
-                if (accounts.length > 0) {
-                    msalInstance.setActiveAccount(accounts[0]);
-                    const tokenResponse = await acquireToken(accounts[0]);
-                    storeUserInfoAndRedirect(accounts[0], tokenResponse.accessToken);
+        // Initialize MSAL
+        msalInstance.initialize().then(() => {
+            // Handle redirect response
+            msalInstance.handleRedirectPromise().then(response => {
+                if (response) {
+                    msalInstance.setActiveAccount(response.account);
+                    storeUserInfoAndRedirect(response.account);
+                } else {
+                    // Check if user is already logged in
+                    const accounts = msalInstance.getAllAccounts();
+                    if (accounts.length > 0) {
+                        msalInstance.setActiveAccount(accounts[0]);
+                        storeUserInfoAndRedirect(accounts[0]);
+                    }
                 }
-            }
-        })
-        .catch(error => {
-            console.error('Redirect handling error:', error);
-            showError('Authentication failed. Please try again.');
+            }).catch(error => {
+                console.error('Redirect error:', error);
+                showError('Authentication failed. Please try again.');
+            });
         });
-</script>
+
+        // Login button handler
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const loginBtn = document.getElementById('loginBtn');
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            
+            loginBtn.disabled = true;
+            loading.style.display = 'block';
+            errorDiv.style.display = 'none';
+
+            try {
+                const loginResponse = await msalInstance.loginPopup(loginRequest);
+                msalInstance.setActiveAccount(loginResponse.account);
+                storeUserInfoAndRedirect(loginResponse.account);
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Login failed. Please try again.');
+                loginBtn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+
+        function storeUserInfoAndRedirect(account) {
+            // Store only user identity info - no access token needed
+            sessionStorage.setItem('userEmail', account.username);
+            sessionStorage.setItem('userName', account.name || account.username);
+            sessionStorage.setItem('accessToken', accessToken); 
+            // Redirect to retrieve page
+            window.location.href = 'retrieve.html';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+    </script>
 </body>
 </html>
