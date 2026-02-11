@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Retrieve Documents - Invoice Portal</title>
-    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -257,35 +256,12 @@
     </div>
 
     <script>
-        // MSAL Configuration
-        const msalConfig = {
-            auth: {
-                clientId: 'YOUR_CLIENT_ID',
-                authority: 'https://login.microsoftonline.com/YOUR_TENANT_ID',
-                redirectUri: window.location.origin + '/index.html'
-            },
-            cache: {
-                cacheLocation: 'sessionStorage',
-                storeAuthStateInCookie: false
-            }
-        };
-
-        const tokenRequest = {
-            scopes: [
-                'User.Read',
-                'Files.ReadWrite',
-                'Sites.ReadWrite.All'
-            ]
-        };
-
-        const msalInstance = new msal.PublicClientApplication(msalConfig);
-        let currentAccessToken = null;
-
         // Check authentication
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
+        const currentAccessToken = sessionStorage.getItem('accessToken');
         
-        if (!userEmail) {
+        if (!userEmail || !currentAccessToken) {
             window.location.href = 'index.html';
         }
         
@@ -293,48 +269,8 @@
         
         let allDocuments = [];
         
-        // Initialize MSAL and get token
-        async function initializeAndGetToken() {
-            await msalInstance.initialize();
-            
-            const accounts = msalInstance.getAllAccounts();
-            if (accounts.length === 0) {
-                window.location.href = 'index.html';
-                return null;
-            }
-            
-            msalInstance.setActiveAccount(accounts[0]);
-            
-            try {
-                // Try to get token silently
-                const tokenResponse = await msalInstance.acquireTokenSilent({
-                    ...tokenRequest,
-                    account: accounts[0]
-                });
-                currentAccessToken = tokenResponse.accessToken;
-                sessionStorage.setItem('accessToken', currentAccessToken);
-                sessionStorage.setItem('tokenExpiry', Date.now() + 3600000);
-                return currentAccessToken;
-            } catch (error) {
-                console.error('Token acquisition failed:', error);
-                // If silent fails, try popup
-                try {
-                    const tokenResponse = await msalInstance.acquireTokenPopup(tokenRequest);
-                    currentAccessToken = tokenResponse.accessToken;
-                    sessionStorage.setItem('accessToken', currentAccessToken);
-                    sessionStorage.setItem('tokenExpiry', Date.now() + 3600000);
-                    return currentAccessToken;
-                } catch (popupError) {
-                    console.error('Popup token acquisition failed:', popupError);
-                    window.location.href = 'index.html';
-                    return null;
-                }
-            }
-        }
-        
         // Load documents on page load
-        window.addEventListener('load', async () => {
-            await initializeAndGetToken();
+        window.addEventListener('load', () => {
             loadDocuments();
         });
         
@@ -449,11 +385,6 @@
         
         async function downloadDocument(docId, fileName) {
             try {
-                // Ensure we have a valid token
-                if (!currentAccessToken) {
-                    currentAccessToken = await initializeAndGetToken();
-                }
-                
                 const response = await fetch('/api/getdata', {
                     method: 'POST',
                     headers: {
@@ -496,11 +427,6 @@
             }
             
             try {
-                // Ensure we have a valid token
-                if (!currentAccessToken) {
-                    currentAccessToken = await initializeAndGetToken();
-                }
-                
                 const response = await fetch('/api/getdata', {
                     method: 'POST',
                     headers: {
@@ -569,7 +495,7 @@
         
         function logout() {
             sessionStorage.clear();
-            msalInstance.logoutPopup();
+            window.location.href = 'index.html';
         }
         
         // Search on Enter key
