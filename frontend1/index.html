@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice Portal - Login</title>
     <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
+    <!-- Load config.local.js for local dev, config.js for production -->
+    <script src="config.local.js" onerror="this.onerror=null; this.remove(); var s=document.createElement('script'); s.src='config.js'; document.head.appendChild(s);"></script>
     <style>
         * {
             margin: 0;
@@ -14,7 +16,7 @@
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #eeeef0;
+            background: #eaebef;
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -112,12 +114,12 @@
     </div>
 
     <script>
-        // MSAL Configuration
+        // MSAL Configuration - Values loaded from config.js
         const msalConfig = {
             auth: {
-                clientId: 'f39c8880-0692-4797-9c6e-3a9fd0cb2f64',
-                authority: 'https://login.microsoftonline.com/common',
-                redirectUri: window.location.origin + '/index.html'
+                clientId: window.APP_CONFIG.clientId,
+                authority: 'https://login.microsoftonline.com/common', // 'common' allows personal and org accounts
+                redirectUri: window.APP_CONFIG.redirectUri
             },
             cache: {
                 cacheLocation: 'sessionStorage',
@@ -125,37 +127,20 @@
             }
         };
 
-        // Request scopes for SharePoint access
         const loginRequest = {
-            scopes: [
-                'User.Read',
-                'Files.ReadWrite',
-                'Sites.ReadWrite.All'
-            ]
+            scopes: ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All']
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
 
         // Initialize MSAL
         msalInstance.initialize().then(() => {
-            // Handle redirect response
-            msalInstance.handleRedirectPromise().then(response => {
-                if (response) {
-                    msalInstance.setActiveAccount(response.account);
-                    storeUserInfoAndRedirect(response.account, response.accessToken);
-                } else {
-                    // Check if user is already logged in
-                    const accounts = msalInstance.getAllAccounts();
-                    if (accounts.length > 0) {
-                        msalInstance.setActiveAccount(accounts[0]);
-                        // Try to get token silently
-                        acquireTokenAndRedirect(accounts[0]);
-                    }
-                }
-            }).catch(error => {
-                console.error('Redirect error:', error);
-                showError('Authentication failed. Please try again.');
-            });
+            // Check if user is already logged in
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                msalInstance.setActiveAccount(accounts[0]);
+                redirectToUpload();
+            }
         });
 
         // Login button handler
@@ -171,45 +156,33 @@
             try {
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
                 msalInstance.setActiveAccount(loginResponse.account);
-                storeUserInfoAndRedirect(loginResponse.account, loginResponse.accessToken);
+                
+                // Store user info
+                sessionStorage.setItem('userEmail', loginResponse.account.username);
+                sessionStorage.setItem('userName', loginResponse.account.name);
+                
+                // Get access token
+                const tokenResponse = await msalInstance.acquireTokenSilent({
+                    ...loginRequest,
+                    account: loginResponse.account
+                });
+                
+                sessionStorage.setItem('accessToken', tokenResponse.accessToken);
+                
+                // Redirect to upload page
+                redirectToUpload();
                 
             } catch (error) {
                 console.error('Login error:', error);
-                showError('Login failed. Please try again.');
+                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.style.display = 'block';
                 loginBtn.disabled = false;
                 loading.style.display = 'none';
             }
         });
 
-        async function acquireTokenAndRedirect(account) {
-            try {
-                const tokenResponse = await msalInstance.acquireTokenSilent({
-                    ...loginRequest,
-                    account: account
-                });
-                storeUserInfoAndRedirect(account, tokenResponse.accessToken);
-            } catch (error) {
-                console.error('Silent token acquisition failed:', error);
-                // If silent acquisition fails, user needs to login again
-                sessionStorage.clear();
-            }
-        }
-
-        function storeUserInfoAndRedirect(account, accessToken) {
-            // Store user info and access token
-            sessionStorage.setItem('userEmail', account.username);
-            sessionStorage.setItem('userName', account.name || account.username);
-            sessionStorage.setItem('accessToken', accessToken);
-            sessionStorage.setItem('tokenExpiry', Date.now() + 3600000); // 1 hour
-            
-            // Redirect to retrieve page
-            window.location.href = 'retrieve.html';
-        }
-
-        function showError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
+        function redirectToUpload() {
+            window.location.href = 'upload.html';
         }
     </script>
 </body>

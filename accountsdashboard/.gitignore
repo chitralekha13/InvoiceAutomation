@@ -1,0 +1,6 @@
+# Local config with secrets - never commit
+config.local.js
+
+# OS
+.DS_Store
+Thumbs.db

@@ -24,6 +24,7 @@ jobs:
           lfs: false
       - name: Generate Config File
         run: |
+          
           cat > config.js << EOF
           window.APP_CONFIG = {
               clientId: '${{ secrets.AZURE_CLIENT_ID }}',
@@ -54,7 +55,7 @@ jobs:
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "frontend1" # App source code path
-          api_location: "api" # Api source code path - optional
+          api_location: "" # Single backend: use external Function App (config.js apiBaseUrl)
           output_location: "" # Built app content directory - optional
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
@@ -70,7 +71,6 @@ jobs:
         id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_KIND_MUD_03BE2C81E }}
           action: "close"
 
 

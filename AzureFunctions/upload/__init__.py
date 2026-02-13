@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def _parse_multipart(body: bytes, content_type: str):
     """Parse multipart/form-data and return (file_content, filename) or (None, None)."""
-    if not body or b"multipart/form-data" not in content_type.lower():
+    if not body or "multipart/form-data" not in content_type.lower():
         return None, None
     match = re.search(r'boundary=([^;\s]+)', content_type, re.I)
     boundary = (match.group(1).strip().strip('"') if match else "").encode()
@@ -137,14 +137,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             __import__('sys').path.insert(0, sys_path)
         from shared.helpers import (
             upload_file_to_sharepoint,
-            get_sql_connection,
-            insert_invoice,
-            update_invoice,
-            get_invoice,
             analyze_invoice_bytes,
             process_with_igentic,
-            save_complete_log,
         )
+        use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
+        if use_db:
+            from shared.helpers import insert_invoice, update_invoice, get_invoice, save_complete_log
 
         invoice_id = str(uuid.uuid4())
         safe_name = (filename or "invoice.pdf").replace(" ", "_")
@@ -167,16 +165,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
         pdf_url = f"{site_url}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
 
-        # 2) Insert into SQL
-        try:
-            insert_invoice(invoice_id, vendor_id, safe_name, pdf_url)
-        except Exception as e:
-            logger.exception("SQL insert failed")
-            return func.HttpResponse(
-                json.dumps({"error": f"Database insert failed: {str(e)}"}),
-                status_code=500,
-                mimetype="application/json",
-            )
+        # 2) Insert into SQL (optional - skipped if SQL_CONNECTION_STRING not set)
+        if use_db:
+            try:
+                insert_invoice(invoice_id, vendor_id, safe_name, pdf_url)
+            except Exception as e:
+                logger.exception("SQL insert failed")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Database insert failed: {str(e)}"}),
+                    status_code=500,
+                    mimetype="application/json",
+                )
 
         # 3) Document Intelligence
         invoice_data = analyze_invoice_bytes(file_content, safe_name)
@@ -199,28 +198,29 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         }
         orchestration_response = process_with_igentic(payload_for_orchestrator, invoice_id, invoice_id)
 
-        # 5) Update SQL from orchestrator
-        fields = _extract_from_orchestrator(orchestration_response)
-        if fields:
+        # 5) Update SQL from orchestrator (optional)
+        if use_db:
+            fields = _extract_from_orchestrator(orchestration_response)
+            if fields:
+                try:
+                    update_invoice(invoice_id, **fields)
+                except Exception as e:
+                    logger.warning("SQL update after iGentic failed: %s", e)
+
+            # 6) JSON log to SharePoint
             try:
-                update_invoice(invoice_id, **fields)
+                save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
             except Exception as e:
-                logger.warning("SQL update after iGentic failed: %s", e)
+                logger.warning("Save JSON log failed: %s", e)
 
-        # 6) JSON log
-        try:
-            save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
-        except Exception as e:
-            logger.warning("Save JSON log failed: %s", e)
-
-        # 7) Optional: update Excel (if helper exists and is configured)
-        try:
-            from shared.helpers import update_excel_file
-            inv = get_invoice(invoice_id)
-            if inv:
-                update_excel_file(invoice_id, inv)
-        except Exception as e:
-            logger.warning("Excel update skipped: %s", e)
+            # 7) Optional: update Excel (if helper exists and is configured)
+            try:
+                from shared.helpers import update_excel_file
+                inv = get_invoice(invoice_id)
+                if inv:
+                    update_excel_file(invoice_id, inv)
+            except Exception as e:
+                logger.warning("Excel update skipped: %s", e)
 
         return func.HttpResponse(
             json.dumps({

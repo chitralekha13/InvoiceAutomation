@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Retrieve Documents - Invoice Portal</title>
+    <script src="config.js"></script>
     <style>
         * {
             margin: 0;
@@ -259,14 +260,15 @@
         // Check authentication
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
-        const currentAccessToken = sessionStorage.getItem('accessToken');
+        const accessToken = sessionStorage.getItem('accessToken');
         
-        if (!userEmail || !currentAccessToken) {
+        if (!userEmail || !accessToken) {
             window.location.href = 'index.html';
         }
         
         document.getElementById('userName').textContent = userName || userEmail;
         
+        const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
         let allDocuments = [];
         
         // Load documents on page load
@@ -284,20 +286,14 @@
             message.style.display = 'none';
             
             try {
-                // Ensure we have a valid token
-                if (!currentAccessToken) {
-                    currentAccessToken = await initializeAndGetToken();
-                }
-                
-                const response = await fetch('/api/getdata', {
+                const response = await fetch(API_BASE + '/api/getdata', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAccessToken}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         userEmail: userEmail,
-                        accessToken: currentAccessToken
+                        accessToken: accessToken
                     })
                 });
                 
@@ -385,15 +381,14 @@
         
         async function downloadDocument(docId, fileName) {
             try {
-                const response = await fetch('/api/getdata', {
+                const response = await fetch(API_BASE + '/api/getdata', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAccessToken}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         userEmail: userEmail,
-                        accessToken: currentAccessToken,
+                        accessToken: accessToken,
                         action: 'download',
                         documentId: docId
                     })
@@ -403,17 +398,20 @@
                     throw new Error('Download failed');
                 }
                 
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                showMessage('Document downloaded successfully', 'success');
+                const data = await response.json();
+                const url = data.url;
+                if (url) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = data.name || fileName;
+                    a.target = '_blank';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    showMessage('Document opened in new tab.', 'success');
+                } else {
+                    showMessage('Download failed. No URL returned.', 'error');
+                }
                 
             } catch (error) {
                 console.error('Download error:', error);
@@ -427,15 +425,14 @@
             }
             
             try {
-                const response = await fetch('/api/getdata', {
+                const response = await fetch(API_BASE + '/api/getdata', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAccessToken}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         userEmail: userEmail,
-                        accessToken: currentAccessToken,
+                        accessToken: accessToken,
                         action: 'delete',
                         documentId: docId
                     })

@@ -7,7 +7,7 @@
       "direction": "in",
       "name": "req",
       "methods": ["post"],
-      "route": "api/upload"
+      "route": "upload"
     },
     {
       "type": "http",
