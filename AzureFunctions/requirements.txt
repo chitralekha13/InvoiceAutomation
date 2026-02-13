@@ -4,4 +4,3 @@ pyodbc
 PyJWT
 office365-rest-python-client
 openpyxl
-msal

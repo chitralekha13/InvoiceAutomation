@@ -7,7 +7,7 @@
       "direction": "in",
       "name": "req",
       "methods": ["post"],
-      "route": "approve"
+      "route": "api/approve"
     },
     {
       "type": "http",

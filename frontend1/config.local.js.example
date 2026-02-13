@@ -1,4 +1,0 @@
-// Copy to config.local.js and set your Function App URL. config.local.js is not committed.
-window.APP_CONFIG = {
-    apiBaseUrl: "https://YOUR_FUNCTION_APP.azurewebsites.net"
-};

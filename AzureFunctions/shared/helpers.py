@@ -5,8 +5,6 @@ Provides utilities for SharePoint, SQL, authentication, and logging
 import os
 import json
 import logging
-import tempfile
-import base64
 import pyodbc
 import jwt
 from datetime import datetime
@@ -20,81 +18,17 @@ logger = logging.getLogger(__name__)
 # SharePoint Helpers
 # ============================================================================
 
-def _get_sharepoint_tenant(site_url: str) -> str:
-    """Extract tenant identifier from SharePoint site URL for certificate auth."""
-    tenant_name = os.environ.get('SHAREPOINT_TENANT_NAME')
-    if tenant_name:
-        return tenant_name
-    tenant_id = os.environ.get('AZURE_TENANT_ID')
-    if tenant_id:
-        return tenant_id
-    # Derive from hostname: invoiveautomation.sharepoint.com -> invoiveautomation.onmicrosoft.com
-    try:
-        from urllib.parse import urlparse
-        host = urlparse(site_url).netloc
-        if '.sharepoint.com' in host:
-            subdomain = host.split('.sharepoint.com')[0]
-            return f"{subdomain}.onmicrosoft.com"
-    except Exception:
-        pass
-    raise ValueError(
-        "Set SHAREPOINT_TENANT_NAME (e.g. invoiveautomation.onmicrosoft.com) or "
-        "AZURE_TENANT_ID for SharePoint certificate authentication"
-    )
-
 def get_sharepoint_context() -> ClientContext:
-    """
-    Get authenticated SharePoint context.
-    Uses certificate auth (SHAREPOINT_CERT_BASE64 + SHAREPOINT_CERT_THUMBPRINT) if set,
-    otherwise falls back to client secret (ClientCredential) - note: client secret
-    does NOT work with Azure AD app-only for SharePoint REST API; use certificate.
-    """
+    """Get authenticated SharePoint context"""
     site_url = os.environ.get('SHAREPOINT_SITE_URL')
     client_id = os.environ.get('AZURE_CLIENT_ID')
-
-    if not site_url or not client_id:
-        raise ValueError("SHAREPOINT_SITE_URL and AZURE_CLIENT_ID are required")
-
-    cert_base64 = os.environ.get('SHAREPOINT_CERT_BASE64')
-    cert_thumbprint = os.environ.get('SHAREPOINT_CERT_THUMBPRINT')
-
-    if cert_base64 and cert_thumbprint:
-        # Certificate-based auth (required for Azure AD app-only with SharePoint REST API)
-        tenant = _get_sharepoint_tenant(site_url)
-        try:
-            pem_bytes = base64.b64decode(cert_base64)
-            pem_content = pem_bytes.decode('utf-8') if isinstance(pem_bytes, bytes) else str(pem_bytes)
-        except Exception as e:
-            raise ValueError(f"Invalid SHAREPOINT_CERT_BASE64: {e}") from e
-
-        fd, cert_path = tempfile.mkstemp(suffix='.pem')
-        try:
-            os.write(fd, pem_content.encode('utf-8') if isinstance(pem_content, str) else pem_content)
-            os.close(fd)
-        except Exception:
-            try:
-                os.unlink(cert_path)
-            except OSError:
-                pass
-            raise
-
-        cert_settings = {
-            'client_id': client_id,
-            'thumbprint': cert_thumbprint.strip(),
-            'cert_path': cert_path,
-        }
-        return ClientContext(site_url).with_client_certificate(tenant, **cert_settings)
-    else:
-        # Client secret (only works with deprecated SharePoint Add-in, not Azure AD app)
-        client_secret = os.environ.get('AZURE_CLIENT_SECRET')
-        if not client_secret:
-            raise ValueError(
-                "SharePoint certificate auth requires SHAREPOINT_CERT_BASE64 and "
-                "SHAREPOINT_CERT_THUMBPRINT. Client secret (Azure AD app) does not work "
-                "for SharePoint REST API app-only access."
-            )
-        credentials = ClientCredential(client_id, client_secret)
-        return ClientContext(site_url).with_credentials(credentials)
+    client_secret = os.environ.get('AZURE_CLIENT_SECRET')
+    
+    if not all([site_url, client_id, client_secret]):
+        raise ValueError("Missing SharePoint configuration in environment variables")
+    
+    credentials = ClientCredential(client_id, client_secret)
+    return ClientContext(site_url).with_credentials(credentials)
 
 def upload_file_to_sharepoint(file_content: bytes, file_name: str, folder_path: str = "Invoices") -> str:
     """
@@ -374,13 +308,7 @@ def get_dashboard_payload(req) -> tuple:
     """
     Get dashboard data (rows + metrics) based on request token.
     Returns (list of dashboard rows, metrics dict).
-    When SQL_CONNECTION_STRING is not set, returns empty rows and zero metrics.
     """
-    if not os.environ.get('SQL_CONNECTION_STRING'):
-        return [], {
-            "total": 0, "pending": 0, "complete": 0, "need_approval": 0,
-            "payment_initiated": 0, "total_amount": 0.0,
-        }
     token = extract_token_from_request(req)
     is_manager = False
     vendor_id = None

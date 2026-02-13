@@ -7,7 +7,7 @@
       "direction": "in",
       "name": "req",
       "methods": ["get"],
-      "route": "invoices/all"
+      "route": "api/invoices/all"
     },
     {
       "type": "http",

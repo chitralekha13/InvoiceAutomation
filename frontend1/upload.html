@@ -257,9 +257,9 @@
         // Check authentication
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
-        const accessToken = sessionStorage.getItem('accessToken');
+        const currentAccessToken = sessionStorage.getItem('accessToken');
         
-        if (!userEmail || !accessToken) {
+        if (!userEmail || !currentAccessToken) {
             window.location.href = 'index.html';
         }
         
@@ -356,7 +356,7 @@
             return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
         }
         
-        // Direct Function App URL (required for Free plan - can't link external Function Apps)
+        // Get Function App URL from config
         const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
         
         if (!API_BASE) {
@@ -367,58 +367,65 @@
             if (selectedFiles.length === 0) return;
             
             if (!API_BASE) {
-                showMessage('Function App URL not configured. Please update config.js', 'error');
+                showMessage('Function App URL not configured. Please update config.js with your Function App URL.', 'error');
                 return;
             }
-
+            
             uploadBtn.disabled = true;
             progress.style.display = 'block';
             message.style.display = 'none';
-
+            
             const total = selectedFiles.length;
             let done = 0;
             const errors = [];
 
             try {
+                // Upload files one at a time (Function App expects one file per request)
                 for (const file of selectedFiles) {
                     const formData = new FormData();
-                    formData.append('file', file);
-
+                    formData.append('file', file);  // Field name MUST be "file" (singular)
+                    
                     const headers = {};
-                    if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
-
-                    // Direct call to Function App (bypasses Static Web App proxy)
+                    if (currentAccessToken) {
+                        headers['Authorization'] = 'Bearer ' + currentAccessToken;
+                    }
+                    
+                    // Direct call to Function App
                     const response = await fetch(API_BASE + '/api/upload', {
                         method: 'POST',
                         headers,
                         body: formData
                     });
-
+                    
                     const result = await response.json().catch(() => ({}));
-
+                    
                     if (!response.ok) {
                         errors.push(file.name + ': ' + (result.error || response.statusText));
                     }
+                    
                     done++;
                     progressFill.style.width = Math.round((done / total) * 100) + '%';
                     progressFill.textContent = Math.round((done / total) * 100) + '%';
                 }
-
+                
                 if (errors.length === 0) {
-                    showMessage('All files uploaded. They are saved in SharePoint and will appear on the accounts dashboard.', 'success');
+                    showMessage('All files uploaded successfully! They are saved in SharePoint and will appear on the accounts dashboard.', 'success');
                     selectedFiles = [];
                     renderFileList();
                     fileInput.value = '';
                 } else {
                     showMessage('Some uploads failed: ' + errors.join('; '), 'error');
                 }
+                
             } catch (error) {
                 console.error('Upload error:', error);
-                showMessage('Upload failed. Check that the Function App URL is set in config and CORS allows this site.', 'error');
+                showMessage('Upload failed. Please try again.', 'error');
             } finally {
-                progress.style.display = 'none';
-                progressFill.style.width = '0%';
-                progressFill.textContent = '0%';
+                setTimeout(() => {
+                    progress.style.display = 'none';
+                    progressFill.style.width = '0%';
+                    progressFill.textContent = '0%';
+                }, 2000);
                 uploadBtn.disabled = false;
             }
         });
