@@ -1,0 +1,5 @@
+// Copy this file to config.local.js and fill in your values.
+// config.local.js is in .gitignore and will not be committed.
+window.APP_CONFIG = {
+    apiBaseUrl: "https://YOUR_FUNCTION_APP.azurewebsites.net"
+};
