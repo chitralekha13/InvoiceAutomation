@@ -1,9 +1,0 @@
-{
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "WEBAPP_BASE_URL": "https://gray-forest-033ccce1e.1.azurestaticapps.net"
-  }
-}
-
