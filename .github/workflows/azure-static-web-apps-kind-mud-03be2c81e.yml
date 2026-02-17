@@ -24,16 +24,22 @@ jobs:
           lfs: false
       - name: Generate Config File
         run: |
-          cat > config.js << EOF
+          # Write to frontend1/config.js so it gets deployed with the app
+          cat > frontend1/config.js << 'CONFIGEOF'
           window.APP_CONFIG = {
-              clientId: '${{ secrets.AZURE_CLIENT_ID }}',
-              tenantId: '${{ secrets.AZURE_TENANT_ID }}',
-              redirectUri: window.location.origin + '/index.html'
+              apiBaseUrl: "API_BASE_URL_PLACEHOLDER",
+              clientId: "CLIENT_ID_PLACEHOLDER",
+              redirectUri: window.location.origin + "/index.html"
           };
-          EOF
+          CONFIGEOF
+          API_URL="${API_BASE_URL:-https://invoiceautomation-bdcudzfpe9cpf4d5.westus2-01.azurewebsites.net}"
+          [[ "$API_URL" == http://* ]] && API_URL="https://${API_URL#http://}"
+          API_URL="${API_URL%/}"
+          sed -i "s|API_BASE_URL_PLACEHOLDER|${API_URL}|g" frontend1/config.js
+          sed -i "s|CLIENT_ID_PLACEHOLDER|${AZURE_CLIENT_ID}|g" frontend1/config.js
         env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }} 
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }} 
 
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
@@ -54,7 +60,7 @@ jobs:
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "frontend1" # App source code path
-          api_location: "api" # Api source code path - optional
+          api_location: "" # Single backend: use external Function App (config.js apiBaseUrl)
           output_location: "" # Built app content directory - optional
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
@@ -70,7 +76,6 @@ jobs:
         id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_KIND_MUD_03BE2C81E }}
           action: "close"
 
 

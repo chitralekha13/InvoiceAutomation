@@ -357,8 +357,12 @@
             return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
         }
         
-        // Direct Function App URL (required for Free plan - can't link external Function Apps)
-        const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        // Direct Function App URL - must use HTTPS to avoid Mixed Content block
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').replace(/\/+$/, '');
+        if (API_BASE && API_BASE.startsWith('http://')) {
+            API_BASE = 'https://' + API_BASE.slice(7);
+        }
         
         if (!API_BASE) {
             console.error('API_BASE not configured. Please set apiBaseUrl in config.js');
@@ -388,8 +392,12 @@
                     const headers = {};
                     if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
 
-                    // Direct call to Function App (bypasses Static Web App proxy)
-                    const response = await fetch(API_BASE + '/api/upload', {
+                    // Force HTTPS at fetch time to avoid Mixed Content (browsers block http from https pages)
+                    let base = (API_BASE || '').trim().replace(/\/+$/, '');
+                    if (base.startsWith('http://')) base = 'https://' + base.slice(7);
+                    const uploadUrl = base ? (base + '/api/upload') : '';
+
+                    const response = await fetch(uploadUrl, {
                         method: 'POST',
                         headers,
                         body: formData
@@ -415,7 +423,14 @@
                 }
             } catch (error) {
                 console.error('Upload error:', error);
-                showMessage('Upload failed. Check that the Function App URL is set in config and CORS allows this site.', 'error');
+                const errMsg = error.message || String(error);
+                const isCors = errMsg.includes('CORS') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError');
+                showMessage(
+                    isCors
+                        ? 'CORS error: Add ' + window.location.origin + ' to Function App CORS settings in Azure Portal.'
+                        : 'Upload failed: ' + errMsg,
+                    'error'
+                );
             } finally {
                 progress.style.display = 'none';
                 progressFill.style.width = '0%';
