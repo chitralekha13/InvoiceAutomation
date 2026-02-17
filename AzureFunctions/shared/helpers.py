@@ -405,19 +405,22 @@ def get_dashboard_payload(req) -> tuple:
 
 def analyze_invoice_bytes(file_content: bytes, filename: str = "invoice.pdf") -> Optional[Dict]:
     """
-    Analyze invoice PDF/image bytes with Azure Document Intelligence.
-    Returns same structure as Backend invoice_proc_az: full_text, extracted_text, status, etc.
+    Analyze invoice PDF/image bytes with Azure Document Intelligence (prebuilt-invoice).
+    Returns full_text, extracted_text for iGentic, plus structured_fields (InvoiceId, VendorName, etc.).
     """
     import requests
     import time
     endpoint = os.environ.get('AZURE_DI_ENDPOINT', '').rstrip('/')
     key = os.environ.get('AZURE_DI_KEY')
     if not endpoint or not key:
+        logger.info("Document Intelligence skipped: AZURE_DI_ENDPOINT or AZURE_DI_KEY not set")
         return None
+
     content_type = "application/pdf"
     if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
         content_type = "image/jpeg" if 'jpg' in filename.lower() or 'jpeg' in filename.lower() else "image/png"
     headers = {"Ocp-Apim-Subscription-Key": key, "Content-Type": content_type}
+
     for path_prefix, api_version in [("formrecognizer", "2023-07-31"), ("documentintelligence", "2023-07-31")]:
         analyze_url = f"{endpoint}/{path_prefix}/documentModels/prebuilt-invoice:analyze?api-version={api_version}"
         try:
@@ -425,10 +428,12 @@ def analyze_invoice_bytes(file_content: bytes, filename: str = "invoice.pdf") ->
             if resp.status_code in (404, 400, 401):
                 continue
             if resp.status_code not in (200, 202):
+                logger.warning("Document Intelligence analyze failed: HTTP %s", resp.status_code)
                 continue
             operation_location = resp.headers.get("Operation-Location")
             if not operation_location:
                 continue
+
             for _ in range(60):
                 time.sleep(1)
                 poll_resp = requests.get(operation_location, headers={"Ocp-Apim-Subscription-Key": key}, timeout=30)
@@ -439,6 +444,7 @@ def analyze_invoice_bytes(file_content: bytes, filename: str = "invoice.pdf") ->
                     payload = result.get("analyzeResult") or result.get("result") or result
                     extracted_text = []
                     full_text_parts = []
+
                     for page in (payload.get("pages") or []):
                         for line in (page.get("lines") or []):
                             t = (line.get("content") or "").strip()
@@ -448,20 +454,61 @@ def analyze_invoice_bytes(file_content: bytes, filename: str = "invoice.pdf") ->
                     if not full_text and payload.get("content"):
                         full_text = payload["content"]
                         extracted_text = [s.strip() for s in full_text.split("\n") if s.strip()]
+
+                    structured_fields = _extract_invoice_fields(payload)
+
+                    logger.info("Document Intelligence succeeded for %s: %d lines, %d structured fields",
+                                filename, len(extracted_text), len(structured_fields))
+
                     return {
                         "timestamp": datetime.now().isoformat(),
                         "file_path": filename,
                         "extracted_text": extracted_text,
                         "full_text": full_text[:15000] if full_text else "",
+                        "structured_fields": structured_fields,
                         "status": "success",
                         "source": "document_intelligence_rest",
                     }
                 if result.get("status") == "failed":
+                    logger.warning("Document Intelligence analysis failed: %s", result.get("error", {}))
                     break
         except Exception as e:
-            logger.warning(f"DI {path_prefix} error: {e}")
+            logger.warning("Document Intelligence %s error: %s", path_prefix, e)
             continue
     return None
+
+
+def _extract_invoice_fields(payload: Dict) -> Dict:
+    """Extract structured invoice fields from Document Intelligence prebuilt-invoice result."""
+    out = {}
+    docs = payload.get("documents") or []
+    if not docs:
+        return out
+    fields = docs[0].get("fields") or {}
+    field_map = {
+        "InvoiceId": "invoice_number",
+        "VendorName": "vendor_name",
+        "VendorAddress": "vendor_address",
+        "InvoiceDate": "invoice_date",
+        "DueDate": "due_date",
+        "InvoiceTotal": "invoice_total",
+        "AmountDue": "amount_due",
+        "SubTotal": "sub_total",
+        "TotalTax": "total_tax",
+        "CustomerName": "customer_name",
+        "PurchaseOrder": "purchase_order",
+        "PaymentTerm": "payment_term",
+    }
+    for api_key, our_key in field_map.items():
+        obj = fields.get(api_key)
+        if not isinstance(obj, dict):
+            continue
+        val = obj.get("value")
+        if val is not None:
+            if hasattr(val, "isoformat"):
+                val = val.isoformat()
+            out[our_key] = val
+    return out
 
 
 def process_with_document_intelligence(pdf_url: str) -> Dict:
@@ -625,11 +672,15 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
 # ============================================================================
 
 def save_complete_log(invoice_id: str, extracted_data: Dict, orchestration_result: Dict, event_type: str = 'upload') -> None:
-    """Save complete audit trail to SharePoint JSON_Logs"""
+    """Save complete audit trail (Document Intelligence + iGentic JSON) to SharePoint JSON_Logs for backup."""
     try:
-        # Get current SQL record
-        sql_record = get_invoice(invoice_id)
-        
+        sql_record = None
+        if os.environ.get('SQL_CONNECTION_STRING'):
+            try:
+                sql_record = get_invoice(invoice_id)
+            except Exception:
+                pass
+
         log_data = {
             'invoice_id': invoice_id,
             'timestamp': datetime.utcnow().isoformat(),
@@ -638,11 +689,10 @@ def save_complete_log(invoice_id: str, extracted_data: Dict, orchestration_resul
             'orchestration_result': orchestration_result,
             'database_record': sql_record
         }
-        
-        # Save to SharePoint
+
         file_name = f'invoice_{invoice_id}_{event_type}.json'
         save_json_to_sharepoint(log_data, file_name)
-        
+
         logger.info(f"Saved JSON log for invoice {invoice_id}")
     except Exception as e:
         logger.error(f"Failed to save JSON log: {str(e)}")

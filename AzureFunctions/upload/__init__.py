@@ -139,6 +139,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             upload_file_to_sharepoint,
             analyze_invoice_bytes,
             process_with_igentic,
+            save_complete_log,
         )
         use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
         if use_db:
@@ -180,25 +181,36 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # 3) Document Intelligence
         invoice_data = analyze_invoice_bytes(file_content, safe_name)
         if not invoice_data:
-            # Still succeed upload; status stays Pending
+            # Document Intelligence not configured or failed; upload still succeeds
             invoice_data = {
                 "full_text": "",
                 "extracted_text": [],
+                "structured_fields": {},
                 "timestamp": __import__('datetime').datetime.now().isoformat(),
                 "status": "no_di",
             }
 
-        # 4) iGentic (same payload as Backend)
-        payload_for_orchestrator = {
-            "doc_name": safe_name,
-            "full_text": (invoice_data.get("full_text") or "")[:15000],
-            "extracted_text": (invoice_data.get("extracted_text") or [])[:500],
-            "timestamp": invoice_data.get("timestamp"),
-            "status": invoice_data.get("status"),
+        # 4) iGentic – userInput format: {"invoice_processing": {...}, "uploaded_file": "..."}
+        user_input_for_igentic = {
+            "invoice_processing": {
+                "timestamp": invoice_data.get("timestamp"),
+                "file_path": safe_name,
+                "extracted_text": (invoice_data.get("extracted_text") or [])[:500],
+                "full_text": (invoice_data.get("full_text") or "")[:15000],
+                "structured_fields": invoice_data.get("structured_fields") or {},
+                "status": invoice_data.get("status", "success"),
+            },
+            "uploaded_file": safe_name,
         }
-        orchestration_response = process_with_igentic(payload_for_orchestrator, invoice_id, invoice_id)
+        orchestration_response = process_with_igentic(user_input_for_igentic, invoice_id, invoice_id)
 
-        # 5) Update SQL from orchestrator (optional)
+        # 5) Save JSON backup to SharePoint (always – Document Intelligence + iGentic result)
+        try:
+            save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
+        except Exception as e:
+            logger.warning("Save JSON log failed: %s", e)
+
+        # 6) Update SQL from orchestrator (optional)
         if use_db:
             fields = _extract_from_orchestrator(orchestration_response)
             if fields:
@@ -207,13 +219,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception as e:
                     logger.warning("SQL update after iGentic failed: %s", e)
 
-            # 6) JSON log to SharePoint
-            try:
-                save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
-            except Exception as e:
-                logger.warning("Save JSON log failed: %s", e)
-
-            # 7) Optional: update Excel (if helper exists and is configured)
+            # 7) Optional: update Excel (if configured)
             try:
                 from shared.helpers import update_excel_file
                 inv = get_invoice(invoice_id)
