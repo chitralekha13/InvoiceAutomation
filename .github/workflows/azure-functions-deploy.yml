@@ -1,7 +1,6 @@
 # Deploy Azure Functions (InvoiceAutomation backend) to Azure
-# REQUIREMENTS:
-# 1. Add secret: AZURE_FUNCTIONAPP_PUBLISH_PROFILE (from Function App → Get publish profile)
-# 2. If your Azure Functions folder is different, update AZURE_FUNCTIONAPP_PACKAGE_PATH
+# REQUIREMENTS: Add GitHub secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE
+# Get it: Azure Portal → Function App (InvoiceAutomation) → Overview → Get publish profile → copy full XML
 
 name: Deploy to Azure Functions
 
@@ -30,18 +29,23 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: 'Install zip utility'
+        run: sudo apt-get update && sudo apt-get install -y zip
+
       - name: 'Install dependencies'
         run: |
           cd ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           python -m pip install --upgrade pip
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
 
+      - name: 'Create deployment package'
+        run: |
+          cd ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          zip -r ../deploy.zip . -x "*.git*" -x "__pycache__/*" -x "*.pyc" -x "*.pyo" -x ".python_packages/.python_packages/*"
+
       - name: 'Deploy to Azure Functions'
-        uses: Azure/functions-action@v1
-        id: deploy
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
+          package: deploy.zip
