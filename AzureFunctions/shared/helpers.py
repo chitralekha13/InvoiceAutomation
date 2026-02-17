@@ -131,8 +131,8 @@ def download_file_from_sharepoint(file_path: str) -> bytes:
     file_content = file.read()
     return file_content
 
-def save_json_to_sharepoint(json_data: Dict, file_name: str, folder_path: str = '/JSON_Logs') -> str:
-    """Save JSON data to SharePoint JSON_Logs library"""
+def save_json_to_sharepoint(json_data: Dict, file_name: str, folder_path: str = 'JSON files') -> str:
+    """Save JSON data to SharePoint JSON files library"""
     now = datetime.now()
     year = now.strftime('%Y')
     month = now.strftime('%m_%B')
