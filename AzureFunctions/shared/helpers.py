@@ -7,8 +7,10 @@ import json
 import logging
 import tempfile
 import base64
-import pyodbc
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import jwt
+import re
 from datetime import datetime
 from typing import Dict, Optional, Any
 from office365.sharepoint.client_context import ClientContext
@@ -142,18 +144,18 @@ def save_json_to_sharepoint(json_data: Dict, file_name: str, folder_path: str = 
     return upload_file_to_sharepoint(json_content, file_name, full_folder_path)
 
 # ============================================================================
-# SQL Database Helpers
+# PostgreSQL Database Helpers
 # ============================================================================
 
 def get_sql_connection():
-    """Get SQL Database connection"""
+    """Get PostgreSQL database connection"""
     conn_str = os.environ.get('SQL_CONNECTION_STRING')
     if not conn_str:
         raise ValueError("SQL_CONNECTION_STRING not found in environment")
-    return pyodbc.connect(conn_str)
+    return psycopg2.connect(conn_str)
 
 def insert_invoice(invoice_id: str, vendor_id: str, doc_name: str, pdf_url: str, **kwargs) -> None:
-    """Insert new invoice record into SQL Database"""
+    """Insert new invoice record into PostgreSQL database"""
     conn = get_sql_connection()
     cursor = conn.cursor()
     
@@ -161,17 +163,17 @@ def insert_invoice(invoice_id: str, vendor_id: str, doc_name: str, pdf_url: str,
         cursor.execute("""
             INSERT INTO invoices (
                 invoice_id, vendor_id, doc_name, pdf_url, status, created_at, invoice_received_date
-            ) VALUES (?, ?, ?, ?, 'Pending', GETUTCDATE(), GETUTCDATE())
-        """, invoice_id, vendor_id, doc_name, pdf_url)
+            ) VALUES (%s, %s, %s, %s, 'Pending', NOW(), NOW())
+        """, (invoice_id, vendor_id, doc_name, pdf_url))
         
         conn.commit()
-        logger.info(f"Inserted invoice {invoice_id} into SQL Database")
+        logger.info(f"Inserted invoice {invoice_id} into PostgreSQL database")
     finally:
         cursor.close()
         conn.close()
 
 def update_invoice(invoice_id: str, **kwargs) -> None:
-    """Update invoice record in SQL Database"""
+    """Update invoice record in PostgreSQL database"""
     conn = get_sql_connection()
     cursor = conn.cursor()
     
@@ -182,41 +184,42 @@ def update_invoice(invoice_id: str, **kwargs) -> None:
         
         set_clauses = []
         values = []
+        param_num = 1
         
         for key, value in kwargs.items():
-            set_clauses.append(f"{key} = ?")
+            set_clauses.append(f"{key} = %s")
             values.append(value)
+            param_num += 1
         
-        set_clauses.append("last_updated_at = GETUTCDATE()")
+        set_clauses.append("last_updated_at = NOW()")
         values.append(invoice_id)
         
         query = f"""
             UPDATE invoices
             SET {', '.join(set_clauses)}
-            WHERE invoice_id = ?
+            WHERE invoice_id = %s
         """
         
-        cursor.execute(query, *values)
+        cursor.execute(query, values)
         conn.commit()
-        logger.info(f"Updated invoice {invoice_id} in SQL Database")
+        logger.info(f"Updated invoice {invoice_id} in PostgreSQL database")
     finally:
         cursor.close()
         conn.close()
 
 def get_invoice(invoice_id: str) -> Optional[Dict]:
-    """Get invoice record from SQL Database"""
+    """Get invoice record from PostgreSQL database"""
     conn = get_sql_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     try:
-        cursor.execute("SELECT * FROM invoices WHERE invoice_id = ?", invoice_id)
+        cursor.execute("SELECT * FROM invoices WHERE invoice_id = %s", (invoice_id,))
         row = cursor.fetchone()
         
         if not row:
             return None
         
-        columns = [column[0] for column in cursor.description]
-        invoice = dict(zip(columns, row))
+        invoice = dict(row)
         
         # Convert datetime objects to ISO strings
         for key, value in invoice.items():
@@ -229,22 +232,21 @@ def get_invoice(invoice_id: str) -> Optional[Dict]:
         conn.close()
 
 def get_invoices_by_vendor(vendor_id: str) -> list:
-    """Get all invoices for a vendor"""
+    """Get all invoices for a vendor from PostgreSQL"""
     conn = get_sql_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     try:
         cursor.execute(
-            "SELECT * FROM invoices WHERE vendor_id = ? ORDER BY created_at DESC",
-            vendor_id
+            "SELECT * FROM invoices WHERE vendor_id = %s ORDER BY created_at DESC",
+            (vendor_id,)
         )
         
-        columns = [column[0] for column in cursor.description]
         rows = cursor.fetchall()
         
         invoices = []
         for row in rows:
-            invoice = dict(zip(columns, row))
+            invoice = dict(row)
             # Convert datetime objects
             for key, value in invoice.items():
                 if hasattr(value, 'isoformat'):
@@ -257,19 +259,18 @@ def get_invoices_by_vendor(vendor_id: str) -> list:
         conn.close()
 
 def get_all_invoices() -> list:
-    """Get all invoices (for accounts team)"""
+    """Get all invoices (for accounts team) from PostgreSQL"""
     conn = get_sql_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     try:
         cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
         
-        columns = [column[0] for column in cursor.description]
         rows = cursor.fetchall()
         
         invoices = []
         for row in rows:
-            invoice = dict(zip(columns, row))
+            invoice = dict(row)
             # Convert datetime objects
             for key, value in invoice.items():
                 if hasattr(value, 'isoformat'):
@@ -612,50 +613,177 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
         return {"status": "error", "error": str(e)}
 
 # ============================================================================
+# CSV Parsing Helpers (from iGentic)
+# ============================================================================
+
+def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[str]:
+    """
+    Extract CSV-style string from iGentic response.
+    Looks in result, agentResponses, or display_text for CSV data.
+    """
+    import re
+    
+    # Check result field
+    result = orchestration_response.get("result") or orchestration_response.get("display_text") or orchestration_response.get("displayText") or ""
+    if isinstance(result, dict):
+        result = json.dumps(result)
+    
+    # Look for CSV pattern (header row with Invoice_Number, Vendor_Name, etc.)
+    csv_pattern = r'Invoice_Number[,:]?\s*Vendor_Name.*?\n([^\n]+(?:\n[^\n]+)*)'
+    match = re.search(csv_pattern, result, re.DOTALL | re.IGNORECASE)
+    if match:
+        csv_data = match.group(0)
+        # Extract just the data rows (skip markdown code blocks if present)
+        csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
+        csv_data = re.sub(r'```', '', csv_data)
+        return csv_data.strip()
+    
+    # Check agentResponses
+    agent_responses = orchestration_response.get("agentResponses")
+    if isinstance(agent_responses, str):
+        try:
+            agent_responses = json.loads(agent_responses)
+        except Exception:
+            pass
+    
+    if isinstance(agent_responses, list):
+        for item in agent_responses:
+            content = item.get("Content") or item.get("content") or ""
+            if isinstance(content, str):
+                match = re.search(csv_pattern, content, re.DOTALL | re.IGNORECASE)
+                if match:
+                    csv_data = match.group(0)
+                    csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
+                    csv_data = re.sub(r'```', '', csv_data)
+                    return csv_data.strip()
+    
+    return None
+
+
+def parse_csv_to_dict(csv_string: str) -> Dict:
+    """
+    Parse CSV string from iGentic to structured dictionary.
+    Expected CSV format:
+    Invoice_Number,Vendor_Name,Resource_Name,Start_Date,End_Date,Invoice_Hours,Hourly_Rate,Total_Amount,Payment_Terms,Invoice_Date,Business_Unit,Project_Name
+    20876,Sigmago Solutions Inc,Muneer - UI/UX designer,, ,144,169,24336.00,Net 30,2025-12-20,,Consulting services Invoice for Rishan
+    """
+    import csv
+    import io
+    
+    if not csv_string:
+        return {}
+    
+    # Clean up CSV string (remove markdown, extra whitespace)
+    csv_string = csv_string.strip()
+    csv_string = re.sub(r'```[^\n]*\n', '', csv_string)
+    csv_string = re.sub(r'```', '', csv_string)
+    
+    lines = csv_string.split('\n')
+    if len(lines) < 2:
+        return {}
+    
+    # Parse header and first data row
+    reader = csv.DictReader(io.StringIO(csv_string))
+    try:
+        row = next(reader)
+    except StopIteration:
+        return {}
+    
+    # Map CSV columns to our database fields
+    field_map = {
+        'Invoice_Number': 'invoice_number',
+        'Vendor_Name': 'vendor_name',
+        'Resource_Name': 'resource_name',
+        'Start_Date': 'start_date',
+        'End_Date': 'end_date',
+        'Invoice_Hours': 'invoice_hours',
+        'Hourly_Rate': 'hourly_rate',
+        'Total_Amount': 'invoice_amount',
+        'Payment_Terms': 'payment_terms',
+        'Invoice_Date': 'invoice_date',
+        'Business_Unit': 'business_unit',
+        'Project_Name': 'project_name',
+    }
+    
+    out = {}
+    for csv_key, db_key in field_map.items():
+        val = row.get(csv_key, '').strip()
+        if val and val.lower() not in ('null', 'none', ''):
+            # Convert numeric fields
+            if db_key in ('invoice_hours', 'hourly_rate', 'invoice_amount'):
+                try:
+                    val = float(val.replace(',', ''))
+                except (ValueError, AttributeError):
+                    pass
+            out[db_key] = val
+    
+    return out
+
+
+# ============================================================================
 # Excel Helpers
 # ============================================================================
 
 def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
-    """Update SharePoint Excel file with invoice data"""
+    """
+    Update SharePoint Excel file with invoice data from CSV (iGentic output).
+    Maps CSV fields: Invoice_Number, Vendor_Name, Invoice_Hours, Hourly_Rate, Total_Amount, etc.
+    """
     from openpyxl import load_workbook
     import io
     
     # Download Excel from SharePoint
     excel_path = '/Invoices/Invoice_Register_Master.xlsx'
-    excel_content = download_file_from_sharepoint(excel_path)
+    try:
+        excel_content = download_file_from_sharepoint(excel_path)
+    except Exception as e:
+        logger.warning(f"Excel file not found at {excel_path}: {e}")
+        return
     
     # Load workbook
     wb = load_workbook(io.BytesIO(excel_content))
     ws = wb.active
     
+    # Map invoice_data fields to Excel columns (adjust column indices based on your Excel structure)
+    # Common columns: invoice_id, vendor_name, invoice_number, invoice_amount, invoice_hours, hourly_rate, status, invoice_date, etc.
+    
     # Find row with invoice_id or append new row
     row_found = False
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
         if row[0].value == invoice_id:
-            # Update existing row
-            ws.cell(row=row_idx, column=2, value=invoice_data.get('vendor_id'))
+            # Update existing row with CSV-extracted fields
+            ws.cell(row=row_idx, column=2, value=invoice_data.get('vendor_id') or invoice_data.get('vendor_name'))
             ws.cell(row=row_idx, column=3, value=invoice_data.get('invoice_number'))
             ws.cell(row=row_idx, column=4, value=invoice_data.get('invoice_amount'))
             ws.cell(row=row_idx, column=5, value=invoice_data.get('status'))
-            # ... update other columns
+            ws.cell(row=row_idx, column=6, value=invoice_data.get('invoice_hours') or invoice_data.get('approved_hours'))
+            ws.cell(row=row_idx, column=7, value=invoice_data.get('hourly_rate'))
+            ws.cell(row=row_idx, column=8, value=invoice_data.get('invoice_date'))
+            ws.cell(row=row_idx, column=9, value=invoice_data.get('resource_name'))
+            ws.cell(row=row_idx, column=10, value=invoice_data.get('project_name'))
+            ws.cell(row=row_idx, column=11, value=invoice_data.get('payment_terms'))
             row_found = True
             break
     
     if not row_found:
-        # Append new row
+        # Append new row with CSV data
         ws.append([
             invoice_id,
-            invoice_data.get('vendor_id'),
+            invoice_data.get('vendor_id') or invoice_data.get('vendor_name'),
             invoice_data.get('invoice_number'),
             invoice_data.get('invoice_amount'),
             invoice_data.get('status'),
-            invoice_data.get('approved_hours'),
+            invoice_data.get('invoice_hours') or invoice_data.get('approved_hours'),
+            invoice_data.get('hourly_rate'),
             invoice_data.get('invoice_date'),
+            invoice_data.get('resource_name'),
+            invoice_data.get('project_name'),
+            invoice_data.get('payment_terms'),
             invoice_data.get('pdf_url'),
             invoice_data.get('approved_by'),
             invoice_data.get('notes'),
-            invoice_data.get('created_at'),
-            invoice_data.get('last_updated_at'),
+            datetime.utcnow().isoformat() if not invoice_data.get('created_at') else invoice_data.get('created_at'),
+            datetime.utcnow().isoformat(),
         ])
     
     # Save and upload back to SharePoint
@@ -666,6 +794,8 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     ctx = get_sharepoint_context()
     file = ctx.web.get_file_by_server_relative_url(excel_path)
     file.save(output.read()).execute_query()
+    
+    logger.info(f"Updated Excel file with invoice {invoice_id} data")
 
 # ============================================================================
 # Logging Helpers

@@ -45,15 +45,27 @@ def _parse_multipart(body: bytes, content_type: str):
 
 
 def _extract_from_orchestrator(resp: dict) -> dict:
-    """Extract fields from iGentic response for SQL update."""
+    """Extract fields from iGentic response (CSV parsing + status) for SQL update."""
     out = {}
     if not isinstance(resp, dict):
         return out
-    # Display text / result
+    
+    # First, try to extract CSV and parse it (most reliable)
+    try:
+        from shared.helpers import extract_csv_from_igentic_response, parse_csv_to_dict
+        csv_string = extract_csv_from_igentic_response(resp)
+        if csv_string:
+            csv_fields = parse_csv_to_dict(csv_string)
+            out.update(csv_fields)
+    except Exception as e:
+        logger.warning("CSV extraction failed, falling back to text parsing: %s", e)
+    
+    # Status from text
     raw = (resp.get("result") or resp.get("display_text") or resp.get("displayText") or "")
     if isinstance(raw, dict):
         raw = json.dumps(raw)
     text = (raw or "").lower()
+    
     # Status
     if "complete" in text or "ready for payment" in text:
         out["approval_status"] = "Complete"
@@ -62,27 +74,29 @@ def _extract_from_orchestrator(resp: dict) -> dict:
         out["approval_status"] = "NEED APPROVAL"
         out["status"] = "NEED APPROVAL"
     else:
-        out["approval_status"] = "Pending"
-        out["status"] = "Pending"
-    # Try to get structured data from agentResponses or similar
-    for key in ("agentResponses", "agent_responses", "data"):
-        val = resp.get(key)
-        if isinstance(val, str):
-            try:
-                val = json.loads(val)
-            except Exception:
-                pass
-        if isinstance(val, list):
-            for item in val:
-                if isinstance(item, dict):
-                    c = item.get("Content") or item.get("content") or ""
-                    if isinstance(c, dict):
-                        for k, v in c.items():
-                            if v is not None and k in (
-                                "invoice_number", "invoice_amount", "approved_hours", "vendor_name", "vendor_hours"
-                            ):
-                                out[k] = v
-                        break
+        out["approval_status"] = out.get("approval_status", "Pending")
+        out["status"] = out.get("status", "Pending")
+    
+    # Fallback: Try to get structured data from agentResponses (if CSV didn't work)
+    if not out.get("invoice_number"):
+        for key in ("agentResponses", "agent_responses", "data"):
+            val = resp.get(key)
+            if isinstance(val, str):
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    pass
+            if isinstance(val, list):
+                for item in val:
+                    if isinstance(item, dict):
+                        c = item.get("Content") or item.get("content") or ""
+                        if isinstance(c, dict):
+                            for k, v in c.items():
+                                if v is not None and k in (
+                                    "invoice_number", "invoice_amount", "approved_hours", "vendor_name", "vendor_hours"
+                                ):
+                                    out[k] = v
+                            break
     return out
 
 
@@ -210,21 +224,35 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             logger.warning("Save JSON log failed: %s", e)
 
-        # 6) Update SQL from orchestrator (optional)
-        if use_db:
-            fields = _extract_from_orchestrator(orchestration_response)
-            if fields:
-                try:
-                    update_invoice(invoice_id, **fields)
-                except Exception as e:
-                    logger.warning("SQL update after iGentic failed: %s", e)
-
-            # 7) Optional: update Excel (if configured)
+        # 6) Extract CSV from iGentic response and update SQL + Excel
+        fields = _extract_from_orchestrator(orchestration_response)
+        
+        # Update SQL database (for dashboard) - only if SQL configured
+        if use_db and fields:
+            try:
+                update_invoice(invoice_id, **fields)
+            except Exception as e:
+                logger.warning("SQL update after iGentic failed: %s", e)
+        
+        # 7) Update Excel file in SharePoint (always - uses CSV data from iGentic)
+        if fields:  # Only update Excel if we extracted CSV fields
             try:
                 from shared.helpers import update_excel_file
-                inv = get_invoice(invoice_id)
-                if inv:
-                    update_excel_file(invoice_id, inv)
+                # Merge invoice data with CSV-extracted fields for Excel
+                excel_data = {}
+                if use_db:
+                    try:
+                        inv = get_invoice(invoice_id)
+                        excel_data.update(inv or {})
+                    except Exception:
+                        pass
+                excel_data.update(fields)  # CSV fields from iGentic
+                excel_data['invoice_id'] = invoice_id
+                excel_data['pdf_url'] = pdf_url
+                excel_data['vendor_id'] = vendor_id
+                
+                update_excel_file(invoice_id, excel_data)
+                logger.info(f"Updated Excel file with CSV data for invoice {invoice_id}")
             except Exception as e:
                 logger.warning("Excel update skipped: %s", e)
 

@@ -4,7 +4,7 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
 
-    "SQL_CONNECTION_STRING": "Driver={ODBC Driver 18 for SQL Server};Server=tcp:YOUR_SERVER.database.windows.net,1433;Initial Catalog=InvoiceDB;Persist Security Info=False;User ID=YOUR_USER;Password=YOUR_PASSWORD;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;",
+    "SQL_CONNECTION_STRING": "host=YOUR_POSTGRES_SERVER.postgres.database.azure.com port=5432 dbname=InvoiceDB user=YOUR_USER password=YOUR_PASSWORD sslmode=require",
     "SHAREPOINT_SITE_URL": "https://YOUR_TENANT.sharepoint.com/sites/Accounts",
     "AZURE_CLIENT_ID": "<app-registration-client-id>",
     "AZURE_CLIENT_SECRET": "<app-registration-client-secret>",
