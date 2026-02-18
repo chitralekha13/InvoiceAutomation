@@ -5,9 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice Portal - Login</title>
     <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
-    <!-- Load config.js first (blocking). config.local.js overrides for local dev if present -->
+    <!-- Load config.js first (blocking). config.local.js overrides only on localhost -->
     <script src="config.js"></script>
-    <script src="config.local.js" onerror="this.onerror=null; this.remove();"></script>
+    <script>
+      if (/^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname)) {
+        var s = document.createElement('script');
+        s.src = 'config.local.js';
+        s.onerror = function() { this.remove(); };
+        document.head.appendChild(s);
+      }
+    </script>
     <style>
         * {
             margin: 0;
