@@ -110,6 +110,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             analyze_invoice_bytes,
             process_with_igentic,
             save_complete_log,
+            _parse_hours_from_text,
         )
         use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
         if use_db:
@@ -182,6 +183,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # 6) Extract CSV from iGentic response and update SQL + Excel
         fields = _extract_from_orchestrator(orchestration_response)
+        # Fallback: use vendor hours from Document Intelligence if iGentic didn't extract it
+        if not fields.get("invoice_hours") and invoice_data.get("structured_fields", {}).get("invoice_hours") is not None:
+            fields["invoice_hours"] = invoice_data["structured_fields"]["invoice_hours"]
+        # Fallback: try to parse hours from full_text
+        if not fields.get("invoice_hours") and invoice_data.get("full_text"):
+            _hrs = _parse_hours_from_text(invoice_data["full_text"])
+            if _hrs is not None:
+                fields["invoice_hours"] = _hrs
         logger.info(f"Extracted fields from iGentic: {fields}")
         
         # Update SQL database (for dashboard) - only if SQL configured

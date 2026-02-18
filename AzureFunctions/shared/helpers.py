@@ -581,7 +581,49 @@ def _extract_invoice_fields(payload: Dict) -> Dict:
             if hasattr(val, "isoformat"):
                 val = val.isoformat()
             out[our_key] = val
+    # Extract hours from line items (Quantity) - sum for consulting/time-based invoices
+    items = docs[0].get("items") or []
+    if not items and isinstance(fields.get("Items"), dict):
+        items = fields["Items"].get("value") or fields["Items"].get("valueArray") or []
+    if isinstance(items, list):
+        total_qty = 0
+        for item in items:
+            if isinstance(item, dict):
+                qty_obj = item.get("Quantity") or item.get("quantity")
+                if isinstance(qty_obj, dict):
+                    qty_val = qty_obj.get("value") or qty_obj.get("content")
+                    try:
+                        total_qty += float(qty_val or 0)
+                    except (TypeError, ValueError):
+                        pass
+                elif isinstance(qty_obj, (int, float)):
+                    total_qty += float(qty_obj)
+        if total_qty > 0:
+            out["invoice_hours"] = total_qty
     return out
+
+
+def _parse_hours_from_text(text: str) -> Optional[float]:
+    """Try to extract hours from invoice full_text. Returns first plausible match."""
+    if not text or not isinstance(text, str):
+        return None
+    text_lower = text.lower()
+    patterns = [
+        r'(?:total\s+)?(?:billable\s+)?(?:invoice\s+)?hours\s*[:\-]?\s*(\d+(?:\.\d+)?)',
+        r'(\d+(?:\.\d+)?)\s*(?:hours?)',
+        r'(?:quantity|qty)\s*[:\-]?\s*(\d+(?:\.\d+)?)',
+        r'hours\s*[:\-]\s*(\d+(?:\.\d+)?)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text_lower, re.IGNORECASE)
+        if m:
+            try:
+                val = float(m.group(1))
+                if 0 < val <= 744:
+                    return val
+            except (ValueError, IndexError):
+                pass
+    return None
 
 
 def process_with_document_intelligence(pdf_url: str) -> Dict:
@@ -747,12 +789,16 @@ def _compare_hours_locally(vendor_hours: float, timesheet: float) -> Dict:
 
 def _get_igentic_searchable(resp: Dict) -> Dict:
     """
-    Normalize iGentic response - unwrap responseData if present.
+    Normalize iGentic response - unwrap responseData or orchestration_result wrappers.
     Returns the inner dict containing result, agentResponses, etc.
     """
     if not isinstance(resp, dict):
         return {}
     inner = resp.get("responseData") or resp.get("response_data")
+    if not isinstance(inner, dict):
+        orch = resp.get("orchestration_result") or resp.get("orchestrationResult")
+        if isinstance(orch, dict):
+            inner = orch.get("responseData") or orch.get("response_data") or orch
     if isinstance(inner, dict):
         return inner
     return resp
@@ -847,6 +893,10 @@ def parse_csv_to_dict(csv_string: str) -> Dict:
         'Invoice_Hours': 'invoice_hours',
         'Vendor_Hours': 'invoice_hours',
         'Vendor Hours': 'invoice_hours',
+        'Hours': 'invoice_hours',
+        'Total_Hours': 'invoice_hours',
+        'Billable_Hours': 'invoice_hours',
+        'Quantity': 'invoice_hours',
         'Hourly_Rate': 'hourly_rate',
         'Total_Amount': 'invoice_amount',
         'Payment_Terms': 'payment_terms',
@@ -870,6 +920,25 @@ def parse_csv_to_dict(csv_string: str) -> Dict:
     return out
 
 
+def _parse_markdown_extracted_info(text: str) -> Dict:
+    """Parse markdown-style - **Key:** value lines into a dict."""
+    out = {}
+    for m in re.finditer(r'[-*]\s*\*\*([^:*]+)\*\*\s*:\s*(.+?)(?=\n|$)', text):
+        key = m.group(1).strip().replace(" ", "_")
+        val = m.group(2).strip().split("(")[0].strip()
+        if val.lower() in ("null", "none", ""):
+            continue
+        try:
+            if "." in val and re.match(r"^\d+\.\d+$", val):
+                val = float(val)
+            elif val.isdigit():
+                val = int(val) if int(val) == float(val) else float(val)
+        except (ValueError, TypeError):
+            pass
+        out[key] = val
+    return out
+
+
 def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Dict:
     """
     Extract structured fields from iGentic JSON block in result.
@@ -886,15 +955,16 @@ def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Di
     # Extract ```json ... ``` block
     match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', result, re.IGNORECASE | re.DOTALL)
     if not match:
-        # Also try ```\n{...}\n``` (sometimes without "json" label)
         match = re.search(r'```\s*(\{[\s\S]*?"Invoice_Number"[\s\S]*?\})\s*```', result, re.IGNORECASE | re.DOTALL)
-    if not match:
-        return {}
-
-    try:
-        parsed = json.loads(match.group(1))
-    except (json.JSONDecodeError, ValueError):
-        return {}
+    parsed = {}
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # Fallback: parse markdown bullets "- **Invoice_Hours:** 152"
+    if not parsed and "Invoice_Hours" in result:
+        parsed = _parse_markdown_extracted_info(result)
 
     field_map = {
         'Invoice_Number': 'invoice_number',
@@ -905,6 +975,11 @@ def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Di
         'Invoice_Hours': 'invoice_hours',
         'Vendor_Hours': 'invoice_hours',
         'VendorHours': 'invoice_hours',
+        'Hours': 'invoice_hours',
+        'Total_Hours': 'invoice_hours',
+        'Billable_Hours': 'invoice_hours',
+        'Total Hours': 'invoice_hours',
+        'Quantity': 'invoice_hours',
         'Hourly_Rate': 'hourly_rate',
         'Total_Amount': 'invoice_amount',
         'Payment_Terms': 'payment_terms',
