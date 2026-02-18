@@ -5,8 +5,16 @@ import azure.functions as func
 import logging
 import json
 import os
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
+
+
+def _json_default(obj):
+    """Handle Decimal and other non-JSON types from PostgreSQL."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -27,7 +35,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if excel_url:
             payload["excelUrl"] = excel_url
         return func.HttpResponse(
-            json.dumps(payload),
+            json.dumps(payload, default=_json_default),
             status_code=200,
             mimetype="application/json",
         )

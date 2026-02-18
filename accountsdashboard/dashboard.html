@@ -275,16 +275,19 @@
                 const res = await fetch(API_BASE + '/api/dashboard/data', {
                     method: 'GET'
                 });
-                if (!res.ok) throw new Error('Failed to load dashboard data');
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = data.error || res.statusText || 'Failed to load dashboard data';
+                    throw new Error(msg);
+                }
                 allRows = data.rows || [];
                 excelUrl = data.excelUrl || '';
                 applyFilters();
                 renderMetrics(data.metrics || {});
                 renderTable();
             } catch (err) {
-                console.error(err);
-                alert('Failed to load dashboard. Check API URL and CORS.');
+                console.error('Dashboard load error:', err);
+                alert('Dashboard failed: ' + (err.message || 'Check API URL and network.'));
             } finally {
                 showLoading(false);
             }
