@@ -268,6 +268,68 @@ def update_invoice(invoice_id: str, **kwargs) -> None:
         cursor.close()
         conn.close()
 
+def find_duplicate_invoice(fields: Dict) -> Optional[str]:
+    """
+    Check if an existing row matches all key fields. Returns existing invoice_id if duplicate, else None.
+    Date is the main differentiator: same vendor/amount but different month = NOT duplicate.
+    Key fields: invoice_number, vendor_name, invoice_amount, invoice_date (or start_date).
+    """
+    inv_num = (fields.get("invoice_number") or "").strip()
+    vendor = (str(fields.get("vendor_name") or "").strip()).lower()
+    amount = fields.get("invoice_amount")
+    inv_date = fields.get("invoice_date") or fields.get("start_date") or fields.get("end_date")
+    hours = fields.get("invoice_hours") or fields.get("vendor_hours")
+    if not inv_num and not (vendor and amount and inv_date):
+        return None
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        if inv_num:
+            cursor.execute(
+                "SELECT invoice_id, invoice_number, vendor_name, invoice_amount, invoice_date, start_date, end_date, invoice_hours FROM invoices WHERE LOWER(TRIM(invoice_number)) = LOWER(%s)",
+                (inv_num.strip(),)
+            )
+        else:
+            cursor.execute(
+                "SELECT invoice_id, invoice_number, vendor_name, invoice_amount, invoice_date, start_date, end_date, invoice_hours FROM invoices"
+            )
+        rows = cursor.fetchall()
+        new_date = str(inv_date or "").strip()[:10] if inv_date else None
+        for row in rows:
+            r_num = (row.get("invoice_number") or "").strip()
+            r_vendor = (str(row.get("vendor_name") or "").strip()).lower()
+            r_amount = row.get("invoice_amount")
+            r_date = row.get("invoice_date") or row.get("start_date") or row.get("end_date")
+            r_date_str = str(r_date or "").strip()[:10] if r_date else None
+            r_hours = row.get("invoice_hours")
+            if inv_num and r_num.lower() != inv_num.lower():
+                continue
+            if vendor and r_vendor != vendor:
+                continue
+            if amount is not None:
+                try:
+                    if abs(float(r_amount or 0) - float(amount)) > 0.01:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            if new_date and r_date_str:
+                if new_date != r_date_str:
+                    continue
+            elif new_date or r_date_str:
+                continue
+            if hours is not None:
+                try:
+                    if abs(float(r_hours or 0) - float(hours)) > 0.01:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            return str(row.get("invoice_id"))
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_invoice(invoice_id: str) -> Optional[Dict]:
     """Get invoice record from PostgreSQL database"""
     conn = get_sql_connection()

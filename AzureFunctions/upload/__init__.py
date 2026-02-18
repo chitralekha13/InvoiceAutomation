@@ -114,7 +114,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
         use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
         if use_db:
-            from shared.helpers import insert_invoice, update_invoice, get_invoice, save_complete_log
+            from shared.helpers import insert_invoice, update_invoice, get_invoice, save_complete_log, find_duplicate_invoice
 
         invoice_id = str(uuid.uuid4())
         safe_name = (filename or "invoice.pdf").replace(" ", "_")
@@ -137,19 +137,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
         pdf_url = f"{site_url}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
 
-        # 2) Insert into SQL (optional - skipped if SQL_CONNECTION_STRING not set)
-        if use_db:
-            try:
-                insert_invoice(invoice_id, vendor_id, safe_name, pdf_url)
-            except Exception as e:
-                logger.exception("SQL insert failed")
-                return func.HttpResponse(
-                    json.dumps({"error": f"Database insert failed: {str(e)}"}),
-                    status_code=500,
-                    mimetype="application/json",
-                )
-
-        # 3) Document Intelligence
+        # 2) Document Intelligence (SQL insert deferred until after duplicate check)
         invoice_data = analyze_invoice_bytes(file_content, safe_name)
         if not invoice_data:
             # Document Intelligence not configured or failed; upload still succeeds
@@ -181,7 +169,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             logger.warning("Save JSON log failed: %s", e)
 
-        # 6) Extract CSV from iGentic response and update SQL + Excel
+        # 6) Extract fields and check for duplicate before adding to dashboard
         fields = _extract_from_orchestrator(orchestration_response)
         # Fallback: use vendor hours from Document Intelligence if iGentic didn't extract it
         if not fields.get("invoice_hours") and invoice_data.get("structured_fields", {}).get("invoice_hours") is not None:
@@ -192,9 +180,35 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             if _hrs is not None:
                 fields["invoice_hours"] = _hrs
         logger.info(f"Extracted fields from iGentic: {fields}")
-        
-        # Update SQL database (for dashboard) - only if SQL configured
+
+        # Duplicate check: if key fields match an existing row, skip DB/Excel - no new dashboard row
+        if use_db and fields:
+            existing_id = find_duplicate_invoice(fields)
+            if existing_id:
+                logger.info(f"Duplicate invoice detected (matches {existing_id}), skipping DB and Excel")
+                return func.HttpResponse(
+                    json.dumps({
+                        "message": "Duplicate invoice - file uploaded to SharePoint but not added to dashboard",
+                        "filename": safe_name,
+                        "invoice_uuid": invoice_id,
+                        "duplicate_of": existing_id,
+                        "data": {"invoice_processing": invoice_data, "agent_orchestration": orchestration_response},
+                    }),
+                    status_code=200,
+                    mimetype="application/json",
+                )
+
+        # 7) Insert into SQL and update with extracted fields (only if not duplicate)
         if use_db:
+            try:
+                insert_invoice(invoice_id, vendor_id, safe_name, pdf_url)
+            except Exception as e:
+                logger.exception("SQL insert failed")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Database insert failed: {str(e)}"}),
+                    status_code=500,
+                    mimetype="application/json",
+                )
             if fields:
                 try:
                     update_invoice(invoice_id, **fields)
