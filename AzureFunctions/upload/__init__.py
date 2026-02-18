@@ -49,8 +49,14 @@ def _extract_from_orchestrator(resp: dict) -> dict:
     if not isinstance(resp, dict):
         return {}
     try:
-        from shared.helpers import extract_fields_from_igentic
-        return extract_fields_from_igentic(resp)
+        from shared.helpers import extract_fields_from_igentic, _extract_payment_details_from_igentic_response
+        fields = extract_fields_from_igentic(resp)
+        # Payment agent outputs "payment summary and payment details in JSON format" — extract and store
+        payment_details = _extract_payment_details_from_igentic_response(resp)
+        if payment_details:
+            fields["payment_details"] = payment_details
+            logger.info("Extracted payment details from iGentic orchestration response")
+        return fields
     except Exception as e:
         logger.warning("iGentic field extraction failed: %s", e)
         return {}

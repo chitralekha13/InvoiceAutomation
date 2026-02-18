@@ -806,35 +806,77 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
 
 
 def _extract_payment_details_from_igentic_response(resp: Dict) -> Optional[str]:
-    """Extract payment details JSON from iGentic response (payment agent output)."""
-    data = resp.get("responseData") or resp.get("response_data") or resp
+    """
+    Extract payment details JSON from iGentic response (payment agent output).
+    Agent instruction: "Display payment summary and give payment details in JSON format"
+    Looks in result, display_text, agentResponses; handles responseData/orchestration_result wrappers.
+    """
+    def _search_in_text(raw: str) -> Optional[str]:
+        if not raw or not isinstance(raw, str):
+            return None
+        raw_lower = raw.lower()
+        if "payment" not in raw_lower and "ready for payment" not in raw_lower and "payment_summary" not in raw_lower:
+            return None
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+                if isinstance(parsed, dict):
+                    return json.dumps(parsed, indent=2)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        match = re.search(r'```\s*(\{[\s\S]*?"(?:payment|bank|account|amount|payee|payable|vendor|invoice)[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+                if isinstance(parsed, dict):
+                    return json.dumps(parsed, indent=2)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        for m in re.finditer(r'```\s*(\{[\s\S]*?\})\s*```', raw, re.DOTALL):
+            try:
+                parsed = json.loads(m.group(1))
+                if isinstance(parsed, dict) and any(
+                    str(k).lower() in ("payment", "bank", "account", "amount", "payee", "payable", "vendor", "invoice", "summary")
+                    for k in parsed.keys()
+                ):
+                    return json.dumps(parsed, indent=2)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        if "payment" in raw_lower:
+            return raw[:3000] if len(raw) > 3000 else raw
+        return None
+
+    data = _get_igentic_searchable(resp)
     raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
     if isinstance(raw, dict):
+        if any(
+            str(k).lower() in ("payment", "payment_summary", "payment_details", "bank", "account", "payee")
+            for k in raw.keys()
+        ):
+            return json.dumps(raw, indent=2)
         raw = json.dumps(raw)
-    if not raw or not isinstance(raw, str):
-        return None
-    raw_lower = raw.lower()
-    if "ready for payment" not in raw_lower and "payment" not in raw_lower and "payment_summary" not in raw_lower:
-        return None
-    match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
-    if match:
+    out = _search_in_text(raw)
+    if out:
+        return out
+    agent_responses = data.get("agentResponses") or data.get("agent_responses")
+    if isinstance(agent_responses, str):
         try:
-            parsed = json.loads(match.group(1))
-            if isinstance(parsed, dict):
-                return json.dumps(parsed, indent=2)
+            agent_responses = json.loads(agent_responses)
         except (json.JSONDecodeError, ValueError):
             pass
-    match = re.search(r'```\s*(\{[\s\S]*?"(?:payment|bank|account|amount|payee)[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(1))
-            if isinstance(parsed, dict):
-                return json.dumps(parsed, indent=2)
-        except (json.JSONDecodeError, ValueError):
-            pass
-    if "payment" in raw_lower:
-        return raw[:2000] if len(raw) > 2000 else raw
-    return None
+    if isinstance(agent_responses, list):
+        for item in agent_responses:
+            content = item.get("Content") or item.get("content") or item.get("result") or ""
+            if isinstance(content, dict):
+                content = json.dumps(content)
+            out = _search_in_text(content)
+            if out:
+                return out
+    raw = resp.get("result") or resp.get("display_text") or resp.get("displayText") or ""
+    if isinstance(raw, dict):
+        raw = json.dumps(raw)
+    return _search_in_text(raw)
 
 
 def validate_timesheet_hours_with_igentic(vendor_hours: float, timesheet: float, invoice_id: str) -> Optional[Dict]:
