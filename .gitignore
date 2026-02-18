@@ -28,3 +28,6 @@ Thumbs.db
 # Build / deploy
 .python_packages/
 .azure/
+
+# Archives (do not commit)
+*.zip
