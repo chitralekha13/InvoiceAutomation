@@ -53,7 +53,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         sys_path = os.path.join(os.path.dirname(__file__), '..')
         if sys_path not in __import__('sys').path:
             __import__('sys').path.insert(0, sys_path)
-        from shared.helpers import get_invoice, update_invoice, extract_token_from_request, extract_user_id_from_token
+        from shared.helpers import (
+            get_invoice,
+            update_invoice,
+            validate_timesheet_hours_with_igentic,
+            _compare_hours_locally,
+        )
 
         existing = get_invoice(invoice_id)
         if not existing:
@@ -72,12 +77,28 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     val = None
                 kwargs[sql_col] = val
 
+        # When approved_hours is updated: send to iGentic for timesheet vs vendor_hours comparison
+        if "approved_hours" in body:
+            vendor_hrs = existing.get("invoice_hours") or existing.get("vendor_hours")
+            try:
+                timesheet = float(body["approved_hours"]) if body["approved_hours"] not in ("", None) else None
+            except (TypeError, ValueError):
+                timesheet = None
+            if vendor_hrs is not None and timesheet is not None:
+                cmp_result = validate_timesheet_hours_with_igentic(
+                    float(vendor_hrs), timesheet, invoice_id
+                )
+                if not cmp_result:
+                    cmp_result = _compare_hours_locally(float(vendor_hrs), timesheet)
+                kwargs["approval_status"] = cmp_result.get("approval_status")
+                kwargs["status"] = cmp_result.get("approval_status")
+
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)
             allowed = {"invoice_number", "vendor_name", "resource_name", "start_date", "end_date",
                        "payment_terms", "invoice_hours", "approved_hours", "hourly_rate",
                        "invoice_amount", "invoice_date", "due_date", "project_name", "business_unit",
-                       "notes", "template", "addl_comments"}
+                       "notes", "template", "addl_comments", "approval_status", "status"}
             kwargs_clean = {k: v for k, v in kwargs.items() if k in allowed}
             if kwargs_clean:
                 update_invoice(invoice_id, **kwargs_clean)

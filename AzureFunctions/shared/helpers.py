@@ -684,6 +684,63 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
         logger.exception("iGentic call failed")
         return {"status": "error", "error": str(e)}
 
+
+def validate_timesheet_hours_with_igentic(vendor_hours: float, timesheet: float, invoice_id: str) -> Optional[Dict]:
+    """
+    Send approved_hours (timesheet) and vendor_hours (invoice) to iGentic for comparison.
+    iGentic agent: timesheet == invoice -> Complete; timesheet > invoice -> Need manual review;
+    invoice > timesheet -> NEED APPROVAL.
+    Returns {"approval_status": "...", "hours_match": bool} or None on failure.
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_ENDPOINT')
+    if not endpoint:
+        return None
+    user_input = {
+        "vendor_hours": vendor_hours,
+        "timesheet": timesheet,
+        "invoice_id": invoice_id,
+        "action": "compare_hours",
+    }
+    payload = {
+        "request": "Validate timesheet hours",
+        "userInput": json.dumps(user_input),
+        "sessionId": invoice_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        data = result.get("responseData") or result.get("response_data") or result
+        approval_status = data.get("approval_status") or (data.get("result") or {}).get("approval_status")
+        hours_match = data.get("hours_match")
+        if hours_match is None and isinstance(data.get("result"), dict):
+            hours_match = data["result"].get("hours_match")
+        if approval_status:
+            return {"approval_status": approval_status, "hours_match": hours_match}
+    except Exception as e:
+        logger.warning("iGentic timesheet validation failed: %s", e)
+    return None
+
+
+def _compare_hours_locally(vendor_hours: float, timesheet: float) -> Dict:
+    """
+    Local fallback: compare timesheet vs vendor_hours per agent instructions.
+    CASE 1: Match -> Complete; CASE 2: timesheet > invoice -> Need manual review;
+    CASE 3: invoice > timesheet -> NEED APPROVAL.
+    """
+    try:
+        v = float(vendor_hours) if vendor_hours is not None else 0
+        t = float(timesheet) if timesheet is not None else 0
+    except (TypeError, ValueError):
+        return {"approval_status": "NEED APPROVAL", "hours_match": False}
+    if abs(t - v) < 0.01:
+        return {"approval_status": "Complete", "hours_match": True}
+    if t > v:
+        return {"approval_status": "Need manual review", "hours_match": False}
+    return {"approval_status": "NEED APPROVAL", "hours_match": False}
+
+
 # ============================================================================
 # iGentic Response Parsing (CSV + JSON block)
 # ============================================================================
@@ -780,7 +837,7 @@ def parse_csv_to_dict(csv_string: str) -> Dict:
     except StopIteration:
         return {}
     
-    # Map CSV columns to our database fields
+    # Map CSV columns to our database fields (Vendor_Hours/Invoice_Hours -> invoice_hours)
     field_map = {
         'Invoice_Number': 'invoice_number',
         'Vendor_Name': 'vendor_name',
@@ -788,6 +845,8 @@ def parse_csv_to_dict(csv_string: str) -> Dict:
         'Start_Date': 'start_date',
         'End_Date': 'end_date',
         'Invoice_Hours': 'invoice_hours',
+        'Vendor_Hours': 'invoice_hours',
+        'Vendor Hours': 'invoice_hours',
         'Hourly_Rate': 'hourly_rate',
         'Total_Amount': 'invoice_amount',
         'Payment_Terms': 'payment_terms',
@@ -844,6 +903,8 @@ def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Di
         'Start_Date': 'start_date',
         'End_Date': 'end_date',
         'Invoice_Hours': 'invoice_hours',
+        'Vendor_Hours': 'invoice_hours',
+        'VendorHours': 'invoice_hours',
         'Hourly_Rate': 'hourly_rate',
         'Total_Amount': 'invoice_amount',
         'Payment_Terms': 'payment_terms',
