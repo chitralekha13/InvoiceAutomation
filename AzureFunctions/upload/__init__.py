@@ -45,59 +45,15 @@ def _parse_multipart(body: bytes, content_type: str):
 
 
 def _extract_from_orchestrator(resp: dict) -> dict:
-    """Extract fields from iGentic response (CSV parsing + status) for SQL update."""
-    out = {}
+    """Extract fields from iGentic response (CSV + JSON block + status) for SQL/Excel update."""
     if not isinstance(resp, dict):
-        return out
-    
-    # First, try to extract CSV and parse it (most reliable)
+        return {}
     try:
-        from shared.helpers import extract_csv_from_igentic_response, parse_csv_to_dict
-        csv_string = extract_csv_from_igentic_response(resp)
-        if csv_string:
-            csv_fields = parse_csv_to_dict(csv_string)
-            out.update(csv_fields)
+        from shared.helpers import extract_fields_from_igentic
+        return extract_fields_from_igentic(resp)
     except Exception as e:
-        logger.warning("CSV extraction failed, falling back to text parsing: %s", e)
-    
-    # Status from text
-    raw = (resp.get("result") or resp.get("display_text") or resp.get("displayText") or "")
-    if isinstance(raw, dict):
-        raw = json.dumps(raw)
-    text = (raw or "").lower()
-    
-    # Status
-    if "complete" in text or "ready for payment" in text:
-        out["approval_status"] = "Complete"
-        out["status"] = "Complete"
-    elif "need approval" in text or "manual review" in text:
-        out["approval_status"] = "NEED APPROVAL"
-        out["status"] = "NEED APPROVAL"
-    else:
-        out["approval_status"] = out.get("approval_status", "Pending")
-        out["status"] = out.get("status", "Pending")
-    
-    # Fallback: Try to get structured data from agentResponses (if CSV didn't work)
-    if not out.get("invoice_number"):
-        for key in ("agentResponses", "agent_responses", "data"):
-            val = resp.get(key)
-            if isinstance(val, str):
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    pass
-            if isinstance(val, list):
-                for item in val:
-                    if isinstance(item, dict):
-                        c = item.get("Content") or item.get("content") or ""
-                        if isinstance(c, dict):
-                            for k, v in c.items():
-                                if v is not None and k in (
-                                    "invoice_number", "invoice_amount", "approved_hours", "vendor_name", "vendor_hours"
-                                ):
-                                    out[k] = v
-                            break
-    return out
+        logger.warning("iGentic field extraction failed: %s", e)
+        return {}
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -226,13 +182,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # 6) Extract CSV from iGentic response and update SQL + Excel
         fields = _extract_from_orchestrator(orchestration_response)
+        logger.info(f"Extracted fields from iGentic: {fields}")
         
         # Update SQL database (for dashboard) - only if SQL configured
-        if use_db and fields:
-            try:
-                update_invoice(invoice_id, **fields)
-            except Exception as e:
-                logger.warning("SQL update after iGentic failed: %s", e)
+        if use_db:
+            if fields:
+                try:
+                    update_invoice(invoice_id, **fields)
+                    logger.info(f"Updated PostgreSQL with CSV fields for invoice {invoice_id}")
+                except Exception as e:
+                    logger.warning("SQL update after iGentic failed: %s", e)
+            else:
+                logger.warning(f"No CSV fields extracted from iGentic response for invoice {invoice_id}. iGentic response: {json.dumps(orchestration_response)[:500]}")
         
         # 7) Update Excel file in SharePoint (always - uses CSV data from iGentic)
         if fields:  # Only update Excel if we extracted CSV fields
@@ -252,9 +213,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 excel_data['vendor_id'] = vendor_id
                 
                 update_excel_file(invoice_id, excel_data)
-                logger.info(f"Updated Excel file with CSV data for invoice {invoice_id}")
+                logger.info(
+                    "Updated Excel file with CSV data for invoice %s (path=%s)",
+                    invoice_id,
+                    os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx",
+                )
             except Exception as e:
                 logger.warning("Excel update skipped: %s", e)
+        else:
+            logger.warning(f"Skipping Excel update - no CSV fields extracted from iGentic for invoice {invoice_id}")
 
         return func.HttpResponse(
             json.dumps({

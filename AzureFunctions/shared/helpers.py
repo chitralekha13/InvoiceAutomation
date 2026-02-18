@@ -22,6 +22,66 @@ logger = logging.getLogger(__name__)
 # SharePoint Helpers
 # ============================================================================
 
+def _sharepoint_site_server_relative_prefix() -> str:
+    """
+    Return the server-relative prefix for the configured SharePoint site URL.
+    Example:
+      SHAREPOINT_SITE_URL = https://tenant.sharepoint.com/sites/Accounts
+      -> '/sites/Accounts'
+    """
+    site_url = os.environ.get("SHAREPOINT_SITE_URL") or ""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(site_url)
+        path = (parsed.path or "").rstrip("/")
+        return path or ""
+    except Exception:
+        return ""
+
+def _normalize_server_relative_url(path: str) -> str:
+    """
+    Normalize a SharePoint path to a server-relative URL suitable for
+    ctx.web.get_file_by_server_relative_url().
+
+    Accepts:
+    - Full server-relative: '/sites/Accounts/Invoices/File.xlsx'
+    - Site-relative with leading slash: '/Invoices/File.xlsx'
+    - Library-relative: 'Invoices/File.xlsx'
+    """
+    p = (path or "").strip().replace("\\", "/")
+    if not p:
+        raise ValueError("Empty SharePoint path")
+
+    # Already server-relative to a site/web
+    if p.startswith("/sites/") or p.startswith("/teams/"):
+        return p
+
+    prefix = _sharepoint_site_server_relative_prefix()
+    if not prefix:
+        # Best-effort fallback; still allow absolute-ish paths.
+        return p if p.startswith("/") else f"/{p}"
+
+    # If caller passed '/Invoices/..' treat as site-relative
+    if p.startswith("/"):
+        return f"{prefix}{p}"
+    return f"{prefix}/{p}"
+
+def get_sharepoint_excel_url() -> Optional[str]:
+    """Return the full SharePoint URL for the Excel file (for Download Excel button)."""
+    site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
+    excel_path = os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx"
+    if not site_url:
+        return None
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(site_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        server_path = _normalize_server_relative_url(excel_path)
+        return base + server_path
+    except Exception:
+        return None
+
+
 def _get_sharepoint_tenant(site_url: str) -> str:
     """Extract tenant identifier from SharePoint site URL for certificate auth."""
     tenant_name = os.environ.get('SHAREPOINT_TENANT_NAME')
@@ -171,6 +231,7 @@ def insert_invoice(invoice_id: str, vendor_id: str, doc_name: str, pdf_url: str,
     finally:
         cursor.close()
         conn.close()
+
 
 def update_invoice(invoice_id: str, **kwargs) -> None:
     """Update invoice record in PostgreSQL database"""
@@ -329,10 +390,21 @@ def check_manager_permission(token: str) -> bool:
 
 
 def _row_to_dashboard(row: Dict) -> Dict:
-    """Map SQL row to dashboard row format (invoice_uuid, approval_status, etc.)."""
+    """Map SQL row to dashboard row format (invoice_uuid, pay_period_start, net_terms, etc.)."""
     out = dict(row)
     if "invoice_id" in out and "invoice_uuid" not in out:
         out["invoice_uuid"] = str(out["invoice_id"])
+    # Dashboard uses pay_period_start/end, net_terms, pay_rate, vendor_hours
+    if out.get("start_date") and "pay_period_start" not in out:
+        out["pay_period_start"] = out["start_date"]
+    if out.get("end_date") and "pay_period_end" not in out:
+        out["pay_period_end"] = out["end_date"]
+    if out.get("payment_terms") and "net_terms" not in out:
+        out["net_terms"] = out["payment_terms"]
+    if out.get("hourly_rate") is not None and "pay_rate" not in out:
+        out["pay_rate"] = out["hourly_rate"]
+    if out.get("invoice_hours") is not None and "vendor_hours" not in out:
+        out["vendor_hours"] = out["invoice_hours"]
     status = out.get("approval_status") or out.get("status") or "Pending"
     if status in ("To Start", "In Progress"):
         status = "Pending"
@@ -613,33 +685,50 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
         return {"status": "error", "error": str(e)}
 
 # ============================================================================
-# CSV Parsing Helpers (from iGentic)
+# iGentic Response Parsing (CSV + JSON block)
 # ============================================================================
+
+def _get_igentic_searchable(resp: Dict) -> Dict:
+    """
+    Normalize iGentic response - unwrap responseData if present.
+    Returns the inner dict containing result, agentResponses, etc.
+    """
+    if not isinstance(resp, dict):
+        return {}
+    inner = resp.get("responseData") or resp.get("response_data")
+    if isinstance(inner, dict):
+        return inner
+    return resp
+
 
 def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[str]:
     """
     Extract CSV-style string from iGentic response.
     Looks in result, agentResponses, or display_text for CSV data.
+    Handles responseData wrapper (iGentic API format).
     """
     import re
+    data = _get_igentic_searchable(orchestration_response)
     
     # Check result field
-    result = orchestration_response.get("result") or orchestration_response.get("display_text") or orchestration_response.get("displayText") or ""
+    result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
     if isinstance(result, dict):
         result = json.dumps(result)
     
     # Look for CSV pattern (header row with Invoice_Number, Vendor_Name, etc.)
-    csv_pattern = r'Invoice_Number[,:]?\s*Vendor_Name.*?\n([^\n]+(?:\n[^\n]+)*)'
+    # Pattern: Invoice_Number followed by Vendor_Name (with optional comma/colon and whitespace)
+    csv_pattern = r'Invoice_Number[,:]?\s*Vendor_Name[^\n]*\n[^\n]+(?:\n[^\n]+)*'
     match = re.search(csv_pattern, result, re.DOTALL | re.IGNORECASE)
     if match:
         csv_data = match.group(0)
         # Extract just the data rows (skip markdown code blocks if present)
         csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
         csv_data = re.sub(r'```', '', csv_data)
+        logger.info(f"Found CSV in result field: {csv_data[:200]}")
         return csv_data.strip()
     
     # Check agentResponses
-    agent_responses = orchestration_response.get("agentResponses")
+    agent_responses = data.get("agentResponses") or data.get("agent_responses")
     if isinstance(agent_responses, str):
         try:
             agent_responses = json.loads(agent_responses)
@@ -655,8 +744,10 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
                     csv_data = match.group(0)
                     csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
                     csv_data = re.sub(r'```', '', csv_data)
+                    logger.info(f"Found CSV in agentResponses: {csv_data[:200]}")
                     return csv_data.strip()
     
+    logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(result)[:500]}")
     return None
 
 
@@ -720,6 +811,156 @@ def parse_csv_to_dict(csv_string: str) -> Dict:
     return out
 
 
+def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Dict:
+    """
+    Extract structured fields from iGentic JSON block in result.
+    iGentic often returns: **Structured JSON Output:** ```json { "Invoice_Number": "...", ... } ```
+    Maps to our DB fields: invoice_number, vendor_name, invoice_amount, etc.
+    """
+    data = _get_igentic_searchable(orchestration_response)
+    result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+    if isinstance(result, dict):
+        result = json.dumps(result)
+    if not result:
+        return {}
+
+    # Extract ```json ... ``` block
+    match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', result, re.IGNORECASE | re.DOTALL)
+    if not match:
+        # Also try ```\n{...}\n``` (sometimes without "json" label)
+        match = re.search(r'```\s*(\{[\s\S]*?"Invoice_Number"[\s\S]*?\})\s*```', result, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return {}
+
+    try:
+        parsed = json.loads(match.group(1))
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+    field_map = {
+        'Invoice_Number': 'invoice_number',
+        'Vendor_Name': 'vendor_name',
+        'Resource_Name': 'resource_name',
+        'Start_Date': 'start_date',
+        'End_Date': 'end_date',
+        'Invoice_Hours': 'invoice_hours',
+        'Hourly_Rate': 'hourly_rate',
+        'Total_Amount': 'invoice_amount',
+        'Payment_Terms': 'payment_terms',
+        'Invoice_Date': 'invoice_date',
+        'Business_Unit': 'business_unit',
+        'Project_Name': 'project_name',
+    }
+    out = {}
+    for src_key, db_key in field_map.items():
+        val = parsed.get(src_key)
+        if val is None:
+            continue
+        if isinstance(val, str) and val.strip().lower() in ('null', 'none', ''):
+            continue
+        if db_key in ('invoice_hours', 'hourly_rate', 'invoice_amount') and val is not None:
+            try:
+                val = float(val) if not isinstance(val, (int, float)) else float(val)
+            except (ValueError, TypeError):
+                pass
+        out[db_key] = val
+    if out:
+        logger.info("Extracted %d fields from iGentic JSON block: %s", len(out), list(out.keys()))
+    return out
+
+
+# Agent snake_case to DB column mapping (iGentic direct/flat output)
+_IGENTIC_TO_DB = {
+    "invoice_number": "invoice_number",
+    "consultancy_name": "vendor_name",
+    "resource_name": "resource_name",
+    "pay_period_start": "start_date",
+    "pay_period_end": "end_date",
+    "vendor_hours": "invoice_hours",
+    "approved_hours": "approved_hours",
+    "pay_rate": "hourly_rate",
+    "invoice_amount": "invoice_amount",
+    "net_terms": "payment_terms",
+    "invoice_date": "invoice_date",
+    "due_date": "due_date",
+    "business_unit": "business_unit",
+    "project_name": "project_name",
+    "template": "template",
+    "approval_status": "approval_status",
+    "status": "status",
+}
+
+
+def _extract_direct_igentic_fields(obj: Dict) -> Dict:
+    """Extract from direct/flat iGentic object (snake_case agent output)."""
+    out = {}
+    for src_key, db_key in _IGENTIC_TO_DB.items():
+        val = obj.get(src_key)
+        if val is None:
+            continue
+        if isinstance(val, str) and val.strip().lower() in ("null", "none", ""):
+            continue
+        if db_key in ("invoice_hours", "hourly_rate", "invoice_amount", "approved_hours") and val is not None:
+            try:
+                val = float(val) if not isinstance(val, (int, float)) else float(val)
+            except (ValueError, TypeError):
+                pass
+        out[db_key] = val
+    return out
+
+
+def extract_fields_from_igentic(orchestration_response: Dict) -> Dict:
+    """
+    Extract all structured fields from iGentic response for SQL/Excel update.
+    Tries: 1) Direct flat object, 2) CSV, 3) JSON block in result. Merges status.
+    """
+    out = {}
+    # 0) Direct flat object (iGentic agent snake_case output)
+    for candidate in [orchestration_response, _get_igentic_searchable(orchestration_response)]:
+        if isinstance(candidate, dict) and candidate.get("invoice_number"):
+            direct = _extract_direct_igentic_fields(candidate)
+            if direct:
+                out.update(direct)
+                logger.info("Extracted %d fields from iGentic direct object", len(direct))
+                break
+        # Also check responseData.result if it's a dict
+        result = candidate.get("result") if isinstance(candidate, dict) else None
+        if isinstance(result, dict) and result.get("invoice_number"):
+            direct = _extract_direct_igentic_fields(result)
+            if direct:
+                out.update(direct)
+                logger.info("Extracted %d fields from iGentic result dict", len(direct))
+                break
+    # 1) Try CSV
+    if not out.get("invoice_number"):
+        try:
+            csv_string = extract_csv_from_igentic_response(orchestration_response)
+            if csv_string:
+                out.update(parse_csv_to_dict(csv_string))
+        except Exception as e:
+            logger.warning("CSV extraction failed: %s", e)
+    # 2) If still no invoice_number, try JSON block (markdown+JSON format)
+    if not out.get("invoice_number"):
+        json_fields = extract_json_block_from_igentic_response(orchestration_response)
+        out.update(json_fields)
+    # 3) Status from result text
+    data = _get_igentic_searchable(orchestration_response)
+    raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+    if isinstance(raw, dict):
+        raw = json.dumps(raw)
+    text = (raw or "").lower()
+    if "complete" in text or "ready for payment" in text:
+        out["approval_status"] = "Complete"
+        out["status"] = "Complete"
+    elif "need approval" in text or "manual review" in text:
+        out["approval_status"] = "NEED APPROVAL"
+        out["status"] = "NEED APPROVAL"
+    else:
+        out.setdefault("approval_status", "Pending")
+        out.setdefault("status", "Pending")
+    return out
+
+
 # ============================================================================
 # Excel Helpers
 # ============================================================================
@@ -733,12 +974,13 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     import io
     
     # Download Excel from SharePoint
-    excel_path = '/Invoices/Invoice_Register_Master.xlsx'
+    excel_path = os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx"
+    server_relative_excel_url = _normalize_server_relative_url(excel_path)
     try:
-        excel_content = download_file_from_sharepoint(excel_path)
+        excel_content = download_file_from_sharepoint(server_relative_excel_url)
     except Exception as e:
-        logger.warning(f"Excel file not found at {excel_path}: {e}")
-        return
+        # Bubble up to caller so we don't log false success.
+        raise FileNotFoundError(f"Excel file not found at {server_relative_excel_url}") from e
     
     # Load workbook
     wb = load_workbook(io.BytesIO(excel_content))
@@ -747,41 +989,56 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     # Map invoice_data fields to Excel columns (adjust column indices based on your Excel structure)
     # Common columns: invoice_id, vendor_name, invoice_number, invoice_amount, invoice_hours, hourly_rate, status, invoice_date, etc.
     
-    # Find row with invoice_id or append new row
+    def _v(k, *alt):
+        for a in [k] + list(alt):
+            v = invoice_data.get(a)
+            if v is not None and v != "":
+                return v
+        return None
+
+    # Find row with invoice_id or append new row (add/update only, same file)
     row_found = False
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
         if row[0].value == invoice_id:
-            # Update existing row with CSV-extracted fields
-            ws.cell(row=row_idx, column=2, value=invoice_data.get('vendor_id') or invoice_data.get('vendor_name'))
-            ws.cell(row=row_idx, column=3, value=invoice_data.get('invoice_number'))
-            ws.cell(row=row_idx, column=4, value=invoice_data.get('invoice_amount'))
-            ws.cell(row=row_idx, column=5, value=invoice_data.get('status'))
-            ws.cell(row=row_idx, column=6, value=invoice_data.get('invoice_hours') or invoice_data.get('approved_hours'))
-            ws.cell(row=row_idx, column=7, value=invoice_data.get('hourly_rate'))
-            ws.cell(row=row_idx, column=8, value=invoice_data.get('invoice_date'))
-            ws.cell(row=row_idx, column=9, value=invoice_data.get('resource_name'))
-            ws.cell(row=row_idx, column=10, value=invoice_data.get('project_name'))
-            ws.cell(row=row_idx, column=11, value=invoice_data.get('payment_terms'))
+            ws.cell(row=row_idx, column=2, value=_v('vendor_name', 'consultancy_name', 'vendor_id'))
+            ws.cell(row=row_idx, column=3, value=_v('invoice_number'))
+            ws.cell(row=row_idx, column=4, value=_v('invoice_amount'))
+            ws.cell(row=row_idx, column=5, value=_v('status', 'approval_status'))
+            ws.cell(row=row_idx, column=6, value=_v('invoice_hours', 'vendor_hours', 'approved_hours'))
+            ws.cell(row=row_idx, column=7, value=_v('hourly_rate', 'pay_rate'))
+            ws.cell(row=row_idx, column=8, value=_v('invoice_date'))
+            ws.cell(row=row_idx, column=9, value=_v('resource_name'))
+            ws.cell(row=row_idx, column=10, value=_v('project_name'))
+            ws.cell(row=row_idx, column=11, value=_v('payment_terms', 'net_terms'))
+            ws.cell(row=row_idx, column=12, value=_v('start_date', 'pay_period_start'))
+            ws.cell(row=row_idx, column=13, value=_v('end_date', 'pay_period_end'))
+            ws.cell(row=row_idx, column=14, value=_v('doc_name'))
+            ws.cell(row=row_idx, column=15, value=_v('due_date'))
+            ws.cell(row=row_idx, column=16, value=_v('notes', 'current_comments'))
+            ws.cell(row=row_idx, column=17, value=_v('addl_comments'))
             row_found = True
             break
-    
+
     if not row_found:
-        # Append new row with CSV data
         ws.append([
             invoice_id,
-            invoice_data.get('vendor_id') or invoice_data.get('vendor_name'),
-            invoice_data.get('invoice_number'),
-            invoice_data.get('invoice_amount'),
-            invoice_data.get('status'),
-            invoice_data.get('invoice_hours') or invoice_data.get('approved_hours'),
-            invoice_data.get('hourly_rate'),
-            invoice_data.get('invoice_date'),
-            invoice_data.get('resource_name'),
-            invoice_data.get('project_name'),
-            invoice_data.get('payment_terms'),
-            invoice_data.get('pdf_url'),
-            invoice_data.get('approved_by'),
-            invoice_data.get('notes'),
+            _v('vendor_name', 'consultancy_name', 'vendor_id'),
+            _v('invoice_number'),
+            _v('invoice_amount'),
+            _v('status', 'approval_status'),
+            _v('invoice_hours', 'vendor_hours', 'approved_hours'),
+            _v('hourly_rate', 'pay_rate'),
+            _v('invoice_date'),
+            _v('resource_name'),
+            _v('project_name'),
+            _v('payment_terms', 'net_terms'),
+            _v('start_date', 'pay_period_start'),
+            _v('end_date', 'pay_period_end'),
+            _v('doc_name'),
+            _v('due_date'),
+            _v('pdf_url'),
+            _v('notes', 'current_comments'),
+            _v('addl_comments'),
             datetime.utcnow().isoformat() if not invoice_data.get('created_at') else invoice_data.get('created_at'),
             datetime.utcnow().isoformat(),
         ])
@@ -792,7 +1049,7 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     output.seek(0)
     
     ctx = get_sharepoint_context()
-    file = ctx.web.get_file_by_server_relative_url(excel_path)
+    file = ctx.web.get_file_by_server_relative_url(server_relative_excel_url)
     file.save(output.read()).execute_query()
     
     logger.info(f"Updated Excel file with invoice {invoice_id} data")

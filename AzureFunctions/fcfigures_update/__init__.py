@@ -1,6 +1,6 @@
 """
 Update invoice details (Save from dashboard): POST api/fcfigures/{id}/update.
-Maps dashboard fields to SQL columns and updates the invoice.
+Maps dashboard fields to SQL columns and updates the invoice. Syncs to Excel after update.
 """
 import azure.functions as func
 import logging
@@ -9,15 +9,24 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Dashboard sends these; map to SQL column names (only columns that exist in invoices table)
+# Dashboard editable fields -> SQL column names
 FIELD_MAP = {
+    "invoice_number": "invoice_number",
     "consultancy_name": "vendor_name",
-    "current_comments": "notes",
-    "project_name": "project_name",
-    "template": "template",
-    "joining_date": "joining_date",
-    "ending_date": "ending_date",
+    "resource_name": "resource_name",
+    "pay_period_start": "start_date",
+    "pay_period_end": "end_date",
+    "net_terms": "payment_terms",
+    "vendor_hours": "invoice_hours",
     "approved_hours": "approved_hours",
+    "pay_rate": "hourly_rate",
+    "invoice_amount": "invoice_amount",
+    "invoice_date": "invoice_date",
+    "due_date": "due_date",
+    "project_name": "project_name",
+    "business_unit": "business_unit",
+    "template": "template",
+    "current_comments": "notes",
     "addl_comments": "addl_comments",
 }
 
@@ -64,10 +73,24 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 kwargs[sql_col] = val
 
         if kwargs:
-            token = extract_token_from_request(req)
-            user_id = extract_user_id_from_token(token) if token else "dashboard"
-            kwargs["last_modified_by"] = user_id
-            update_invoice(invoice_id, **kwargs)
+            # Skip columns that may not exist (template, addl_comments)
+            allowed = {"invoice_number", "vendor_name", "resource_name", "start_date", "end_date",
+                       "payment_terms", "invoice_hours", "approved_hours", "hourly_rate",
+                       "invoice_amount", "invoice_date", "due_date", "project_name", "business_unit",
+                       "notes", "template", "addl_comments"}
+            kwargs_clean = {k: v for k, v in kwargs.items() if k in allowed}
+            if kwargs_clean:
+                update_invoice(invoice_id, **kwargs_clean)
+                # Sync to Excel
+                try:
+                    from shared.helpers import update_excel_file, get_invoice
+                    inv = get_invoice(invoice_id)
+                    if inv:
+                        inv["invoice_id"] = invoice_id
+                        update_excel_file(invoice_id, inv)
+                        logger.info("Synced Excel after dashboard edit for %s", invoice_id)
+                except Exception as e:
+                    logger.warning("Excel sync after dashboard edit failed: %s", e)
 
         return func.HttpResponse(
             json.dumps({"status": "ok"}),

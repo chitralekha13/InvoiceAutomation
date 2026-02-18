@@ -165,7 +165,6 @@
             <span class="user-name" id="userName"></span>
             <button type="button" class="btn-logout" onclick="logout()">Logout</button>
             <div class="header-btns">
-                <button type="button" onclick="deleteSelected()">Delete Selected</button>
                 <button type="button" onclick="generateDailySummary()">Generate Daily Summary</button>
                 <button type="button" onclick="downloadExcel()">Download Excel</button>
             </div>
@@ -237,7 +236,11 @@
     </div>
 
     <script>
-        const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').trim().replace(/\/+$/, '');
+        // Force https to avoid Mixed Content and bad configs
+        if (API_BASE && !/^https?:\/\//i.test(API_BASE)) API_BASE = 'https://' + API_BASE;
+        if (API_BASE && API_BASE.startsWith('http://')) API_BASE = 'https://' + API_BASE.slice(7);
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
         const loggedIn = sessionStorage.getItem('loggedIn');
@@ -250,6 +253,7 @@
 
         let allRows = [];
         let filteredRows = [];
+        let excelUrl = '';
 
         window.addEventListener('load', () => { loadDashboard(); });
 
@@ -260,12 +264,16 @@
         async function loadDashboard() {
             showLoading(true);
             try {
+                if (!API_BASE) {
+                    throw new Error('API base URL not configured (config.js missing or apiBaseUrl empty)');
+                }
                 const res = await fetch(API_BASE + '/api/dashboard/data', {
                     method: 'GET'
                 });
                 if (!res.ok) throw new Error('Failed to load dashboard data');
                 const data = await res.json();
                 allRows = data.rows || [];
+                excelUrl = data.excelUrl || '';
                 applyFilters();
                 renderMetrics(data.metrics || {});
                 renderTable();
@@ -315,20 +323,20 @@
                     <td>${idx + 1}</td>
                     <td title="${id}">${id ? id.slice(0, 8) + '...' : ''}</td>
                     <td>${escapeHtml(row.doc_name || '')}</td>
-                    <td>${escapeHtml(row.invoice_number || '')}</td>
-                    <td>${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
-                    <td>${escapeHtml(row.resource_name || '')}</td>
-                    <td>${formatDate(row.pay_period_start)}</td>
-                    <td>${formatDate(row.pay_period_end)}</td>
-                    <td>${escapeHtml(row.net_terms || '')}</td>
+                    <td class="editable" data-field="invoice_number" data-id="${id}">${escapeHtml(row.invoice_number || '')}</td>
+                    <td class="editable" data-field="consultancy_name" data-id="${id}">${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
+                    <td class="editable" data-field="resource_name" data-id="${id}">${escapeHtml(row.resource_name || '')}</td>
+                    <td class="editable" data-field="pay_period_start" data-id="${id}">${formatDate(row.pay_period_start)}</td>
+                    <td class="editable" data-field="pay_period_end" data-id="${id}">${formatDate(row.pay_period_end)}</td>
+                    <td class="editable" data-field="net_terms" data-id="${id}">${escapeHtml(row.net_terms || '')}</td>
                     <td class="editable" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? ''}</td>
                     <td class="editable" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
                     <td class="editable" data-field="pay_rate" data-id="${id}">${row.pay_rate ?? ''}</td>
-                    <td>${row.invoice_amount != null ? formatNumber(row.invoice_amount) : ''}</td>
+                    <td class="editable" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? formatNumber(row.invoice_amount) : ''}</td>
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
-                    <td>${formatDate(row.due_date || row.dueDate)}</td>
-                    <td>${escapeHtml(row.project_name || '')}</td>
-                    <td>${escapeHtml(row.template || '')}</td>
+                    <td class="editable" data-field="due_date" data-id="${id}">${formatDate(row.due_date || row.dueDate)}</td>
+                    <td class="editable" data-field="project_name" data-id="${id}">${escapeHtml(row.project_name || '')}</td>
+                    <td class="editable" data-field="template" data-id="${id}">${escapeHtml(row.template || '')}</td>
                     <td class="editable" data-field="current_comments" data-id="${id}">${escapeHtml(row.notes || row.current_comments || '')}</td>
                     <td class="editable" data-field="addl_comments" data-id="${id}">${escapeHtml(row.addl_comments || '')}</td>
                 `;
@@ -359,7 +367,6 @@
         }
 
         async function saveEdit(invoiceId, field, value, cell) {
-            const fieldMap = { current_comments: 'notes', consultancy_name: 'vendor_name' };
             const body = {};
             body[field] = value;
             try {
@@ -374,6 +381,10 @@
                         row[field] = value;
                         if (field === 'current_comments') row.notes = value;
                         if (field === 'consultancy_name') row.vendor_name = value;
+                        if (field === 'pay_period_start') row.start_date = value;
+                        if (field === 'pay_period_end') row.end_date = value;
+                        if (field === 'net_terms') row.payment_terms = value;
+                        if (field === 'pay_rate') row.hourly_rate = value;
                     }
                     cell.textContent = value || '';
                     cell.removeChild(cell.querySelector('input'));
@@ -427,47 +438,34 @@
             return [...document.querySelectorAll('.row-select:checked')].map(cb => cb.dataset.id).filter(Boolean);
         }
 
-        function deleteSelected() {
-            const ids = getSelectedIds();
-            if (ids.length === 0) { alert('No rows selected.'); return; }
-            if (!confirm('Delete ' + ids.length + ' selected invoice(s)? This may require a backend delete API.')) return;
-            alert('Delete Selected is a placeholder. Implement a delete API in the Function App and call it here.');
-        }
-
         function generateDailySummary() {
             alert('Generate Daily Summary is a placeholder. Implement based on your requirements.');
         }
 
         function downloadExcel() {
-            const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Template','Current Comments','Addl Comments'];
-            const rows = filteredRows.map((r, i) => [
-                i + 1,
-                r.invoice_uuid || r.invoice_id,
-                r.doc_name,
-                r.invoice_number,
-                r.vendor_name || r.consultancy_name,
-                r.resource_name,
-                r.pay_period_start || '',
-                r.pay_period_end || '',
-                r.net_terms || '',
-                r.vendor_hours ?? '',
-                r.approved_hours ?? '',
-                r.pay_rate ?? '',
-                r.invoice_amount ?? '',
-                r.invoice_received_date || r.date_inv_recd || r.created_at || '',
-                r.due_date || r.dueDate || '',
-                r.project_name || '',
-                r.template || '',
-                r.notes || r.current_comments || '',
-                r.addl_comments || ''
-            ]);
-            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'invoices_' + new Date().toISOString().slice(0, 10) + '.csv';
-            a.click();
-            URL.revokeObjectURL(a.href);
+            if (excelUrl) {
+                window.open(excelUrl, '_blank');
+            } else {
+                // Fallback: export filtered rows as CSV
+                const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Template','Current Comments','Addl Comments'];
+                const rows = filteredRows.map((r, i) => [
+                    i + 1, r.invoice_uuid || r.invoice_id, r.doc_name, r.invoice_number,
+                    r.vendor_name || r.consultancy_name, r.resource_name,
+                    r.pay_period_start || '', r.pay_period_end || '', r.net_terms || '',
+                    r.vendor_hours ?? '', r.approved_hours ?? '', r.pay_rate ?? '',
+                    r.invoice_amount ?? '',
+                    r.invoice_received_date || r.date_inv_recd || r.created_at || '',
+                    r.due_date || r.dueDate || '', r.project_name || '', r.template || '',
+                    r.notes || r.current_comments || '', r.addl_comments || ''
+                ]);
+                const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'invoices_' + new Date().toISOString().slice(0, 10) + '.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }
         }
 
         document.getElementById('filterAll').addEventListener('change', () => { applyFilters(); renderTable(); });

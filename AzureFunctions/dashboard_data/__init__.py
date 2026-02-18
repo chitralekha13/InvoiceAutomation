@@ -15,15 +15,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         sys_path = os.path.join(os.path.dirname(__file__), '..')
         if sys_path not in __import__('sys').path:
             __import__('sys').path.insert(0, sys_path)
-        from shared.helpers import get_dashboard_payload
+        from shared.helpers import get_dashboard_payload, get_sharepoint_excel_url
 
         dashboard_rows, metrics = get_dashboard_payload(req)
+        excel_url = get_sharepoint_excel_url()
+        payload = {
+            "status": "ok",
+            "metrics": metrics,
+            "rows": dashboard_rows,
+        }
+        if excel_url:
+            payload["excelUrl"] = excel_url
         return func.HttpResponse(
-            json.dumps({
-                "status": "ok",
-                "metrics": metrics,
-                "rows": dashboard_rows,
-            }),
+            json.dumps(payload),
             status_code=200,
             mimetype="application/json",
         )
