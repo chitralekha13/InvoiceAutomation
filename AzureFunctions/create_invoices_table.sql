@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     orchestrator_summary TEXT,
     last_agent_text TEXT,
     bill_pay_initiated_on TIMESTAMP,
+    payment_details TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     invoice_received_date TIMESTAMP DEFAULT NOW(),
     last_updated_at TIMESTAMP DEFAULT NOW()

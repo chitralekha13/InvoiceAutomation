@@ -98,7 +98,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             allowed = {"invoice_number", "vendor_name", "resource_name", "start_date", "end_date",
                        "payment_terms", "invoice_hours", "approved_hours", "hourly_rate",
                        "invoice_amount", "invoice_date", "due_date", "project_name", "business_unit",
-                       "notes", "template", "addl_comments", "approval_status", "status"}
+                       "notes", "template", "addl_comments", "approval_status", "status", "payment_details"}
             kwargs_clean = {k: v for k, v in kwargs.items() if k in allowed}
             if kwargs_clean:
                 update_invoice(invoice_id, **kwargs_clean)

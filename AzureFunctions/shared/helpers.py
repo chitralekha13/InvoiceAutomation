@@ -805,12 +805,43 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
         return {"status": "error", "error": str(e)}
 
 
+def _extract_payment_details_from_igentic_response(resp: Dict) -> Optional[str]:
+    """Extract payment details JSON from iGentic response (payment agent output)."""
+    data = resp.get("responseData") or resp.get("response_data") or resp
+    raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+    if isinstance(raw, dict):
+        raw = json.dumps(raw)
+    if not raw or not isinstance(raw, str):
+        return None
+    raw_lower = raw.lower()
+    if "ready for payment" not in raw_lower and "payment" not in raw_lower and "payment_summary" not in raw_lower:
+        return None
+    match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict):
+                return json.dumps(parsed, indent=2)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    match = re.search(r'```\s*(\{[\s\S]*?"(?:payment|bank|account|amount|payee)[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict):
+                return json.dumps(parsed, indent=2)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    if "payment" in raw_lower:
+        return raw[:2000] if len(raw) > 2000 else raw
+    return None
+
+
 def validate_timesheet_hours_with_igentic(vendor_hours: float, timesheet: float, invoice_id: str) -> Optional[Dict]:
     """
     Send approved_hours (timesheet) and vendor_hours (invoice) to iGentic for comparison.
-    iGentic agent: timesheet == invoice -> Complete; timesheet > invoice -> Need manual review;
-    invoice > timesheet -> NEED APPROVAL.
-    Returns {"approval_status": "...", "hours_match": bool} or None on failure.
+    Returns {"approval_status": "...", "hours_match": bool, "payment_details": str} or None on failure.
+    When Complete/Ready for Payment, extracts payment details from response.
     """
     import requests
     endpoint = os.environ.get('IGENTIC_ENDPOINT')
@@ -836,8 +867,14 @@ def validate_timesheet_hours_with_igentic(vendor_hours: float, timesheet: float,
         hours_match = data.get("hours_match")
         if hours_match is None and isinstance(data.get("result"), dict):
             hours_match = data["result"].get("hours_match")
-        if approval_status:
-            return {"approval_status": approval_status, "hours_match": hours_match}
+        if not approval_status:
+            return None
+        out = {"approval_status": approval_status, "hours_match": hours_match}
+        if approval_status in ("Complete", "Ready for Payment", "ready for payment"):
+            payment_details = _extract_payment_details_from_igentic_response(result)
+            if payment_details:
+                out["payment_details"] = payment_details
+        return out
     except Exception as e:
         logger.warning("iGentic timesheet validation failed: %s", e)
     return None
