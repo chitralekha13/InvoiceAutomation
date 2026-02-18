@@ -31,3 +31,7 @@ Thumbs.db
 
 # Archives (do not commit)
 *.zip
+
+Accounts_Managements/
+InvoiceAutomation-repo/
+InvoiceAutomation-main/
