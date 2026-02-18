@@ -97,6 +97,20 @@
             color: #666;
             margin-top: 6px;
         }
+        .metric-card.clickable {
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .metric-card.clickable:hover {
+            background: #f0f4f8;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .metric-card.clickable.active {
+            background: #1e3a5f;
+            color: white;
+        }
+        .metric-card.clickable.active .value,
+        .metric-card.clickable.active .label { color: white; }
         .table-section {
             background: white;
             border-radius: 6px;
@@ -194,12 +208,12 @@
 
     <div class="main">
         <div class="metrics-row">
-            <div class="metric-card"><div class="value" id="mTotal">0</div><div class="label">Total</div></div>
-            <div class="metric-card"><div class="value" id="mPending">0</div><div class="label">Pending</div></div>
-            <div class="metric-card"><div class="value" id="mPaymentInitiated">0</div><div class="label">Payment Initiated</div></div>
-            <div class="metric-card"><div class="value" id="mComplete">0</div><div class="label">Complete</div></div>
+            <div class="metric-card clickable" id="tileTotal" data-filter="all" onclick="filterByTile('all')"><div class="value" id="mTotal">0</div><div class="label">Total</div></div>
+            <div class="metric-card clickable" id="tilePending" data-filter="pending" onclick="filterByTile('pending')"><div class="value" id="mPending">0</div><div class="label">Pending</div></div>
+            <div class="metric-card clickable" id="tilePaymentInitiated" data-filter="payment_initiated" onclick="filterByTile('payment_initiated')"><div class="value" id="mPaymentInitiated">0</div><div class="label">Payment Initiated</div></div>
+            <div class="metric-card clickable" id="tileComplete" data-filter="complete" onclick="filterByTile('complete')"><div class="value" id="mComplete">0</div><div class="label">Complete</div></div>
             <div class="metric-card amount"><div class="value" id="mTotalAmount">$0.00</div><div class="label">Total Amount</div></div>
-            <div class="metric-card"><div class="value" id="mNeedApproval">0</div><div class="label">NEED APPROVAL</div></div>
+            <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')"><div class="value" id="mNeedApproval">0</div><div class="label">NEED APPROVAL</div></div>
         </div>
 
         <div class="table-section">
@@ -220,6 +234,7 @@
                             <th>Net Terms</th>
                             <th>Vendor Hours</th>
                             <th>Approved Hours</th>
+                            <th>Status</th>
                             <th>Pay Rate</th>
                             <th>Invoice Amount</th>
                             <th>Date Inv Recd</th>
@@ -302,10 +317,26 @@
             document.getElementById('mNeedApproval').textContent = m.need_approval ?? 0;
         }
 
+        function filterByTile(filterValue) {
+            document.getElementById('filterAll').value = filterValue;
+            updateTileActiveState();
+            applyFilters();
+            renderTable();
+        }
+
+        function updateTileActiveState() {
+            const statusFilter = document.getElementById('filterAll').value;
+            document.querySelectorAll('.metric-card.clickable').forEach(el => {
+                el.classList.toggle('active', el.dataset.filter === statusFilter);
+            });
+        }
+
         function applyFilters() {
             filteredRows = [...allRows];
             const statusFilter = document.getElementById('filterAll').value;
-            if (statusFilter !== 'all') {
+            if (statusFilter === 'payment_initiated') {
+                filteredRows = filteredRows.filter(r => r.bill_pay_initiated_on);
+            } else if (statusFilter !== 'all') {
                 filteredRows = filteredRows.filter(r => {
                     const s = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
                     return s === statusFilter;
@@ -337,8 +368,9 @@
                     <td class="editable" data-field="pay_period_start" data-id="${id}">${formatDate(row.pay_period_start)}</td>
                     <td class="editable" data-field="pay_period_end" data-id="${id}">${formatDate(row.pay_period_end)}</td>
                     <td class="editable" data-field="net_terms" data-id="${id}">${escapeHtml(row.net_terms || '')}</td>
-                    <td class="editable" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? ''}</td>
+                    <td class="editable" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
                     <td class="editable" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
+                    <td>${escapeHtml(row.approval_status || row.status || 'Pending')}</td>
                     <td class="editable" data-field="pay_rate" data-id="${id}">${row.pay_rate ?? ''}</td>
                     <td class="editable" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? formatNumber(row.invoice_amount) : ''}</td>
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
@@ -455,12 +487,13 @@
                 window.open(excelUrl, '_blank');
             } else {
                 // Fallback: export filtered rows as CSV
-                const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Template','Current Comments','Addl Comments'];
+                const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Status','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Template','Current Comments','Addl Comments'];
                 const rows = filteredRows.map((r, i) => [
                     i + 1, r.invoice_uuid || r.invoice_id, r.doc_name, r.invoice_number,
                     r.vendor_name || r.consultancy_name, r.resource_name,
                     r.pay_period_start || '', r.pay_period_end || '', r.net_terms || '',
-                    r.vendor_hours ?? '', r.approved_hours ?? '', r.pay_rate ?? '',
+                    r.vendor_hours ?? r.invoice_hours ?? '', r.approved_hours ?? '', r.approval_status || r.status || 'Pending',
+                    r.pay_rate ?? '',
                     r.invoice_amount ?? '',
                     r.invoice_received_date || r.date_inv_recd || r.created_at || '',
                     r.due_date || r.dueDate || '', r.project_name || '', r.template || '',
@@ -476,7 +509,7 @@
             }
         }
 
-        document.getElementById('filterAll').addEventListener('change', () => { applyFilters(); renderTable(); });
+        document.getElementById('filterAll').addEventListener('change', () => { updateTileActiveState(); applyFilters(); renderTable(); });
         document.getElementById('dueBy').addEventListener('change', () => { applyFilters(); renderTable(); });
     </script>
 </body>
