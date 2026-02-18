@@ -175,6 +175,17 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .checkbox-col { width: 36px; text-align: center; }
+        .actions-col { width: 60px; text-align: center; }
+        .btn-delete-row {
+            background: #d13438;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-delete-row:hover { background: #a52a2e; }
     </style>
 </head>
 <body>
@@ -185,6 +196,7 @@
             <button type="button" class="btn-logout" onclick="logout()">Logout</button>
             <div class="header-btns">
                 <button type="button" onclick="generateDailySummary()">Generate Daily Summary</button>
+                <button type="button" onclick="deleteSelectedRows()">Delete Selected</button>
                 <button type="button" onclick="downloadExcel()">Download Excel</button>
             </div>
         </div>
@@ -379,6 +391,7 @@
                     <td class="editable" data-field="template" data-id="${id}">${escapeHtml(row.template || '')}</td>
                     <td class="editable" data-field="current_comments" data-id="${id}">${escapeHtml(row.notes || row.current_comments || '')}</td>
                     <td class="editable" data-field="addl_comments" data-id="${id}">${escapeHtml(row.addl_comments || '')}</td>
+                    <td class="actions-col"><button type="button" class="btn-delete-row" onclick="deleteRow('${id}', event)">Delete</button></td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -476,6 +489,35 @@
 
         function getSelectedIds() {
             return [...document.querySelectorAll('.row-select:checked')].map(cb => cb.dataset.id).filter(Boolean);
+        }
+
+        async function deleteRow(invoiceId, ev) {
+            if (ev) ev.stopPropagation();
+            const label = (allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId)?.doc_name || invoiceId).toString();
+            if (!confirm('Delete invoice "' + label + '"? This will remove it from the database.')) return;
+            try {
+                const res = await fetch(API_BASE + '/api/invoices/' + encodeURIComponent(invoiceId), { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                loadDashboard();
+            } catch (err) {
+                console.error('Delete failed:', err);
+                alert('Delete failed: ' + (err.message || 'Please try again.'));
+            }
+        }
+
+        async function deleteSelectedRows() {
+            const ids = getSelectedIds();
+            if (!ids.length) { alert('Select at least one row to delete.'); return; }
+            if (!confirm('Delete ' + ids.length + ' selected invoice(s)? They will be removed from the database.')) return;
+            let deleted = 0;
+            for (const id of ids) {
+                try {
+                    const res = await fetch(API_BASE + '/api/invoices/' + encodeURIComponent(id), { method: 'DELETE' });
+                    if (res.ok) deleted++;
+                } catch (e) { console.error('Delete failed for', id, e); }
+            }
+            if (deleted > 0) loadDashboard();
         }
 
         function generateDailySummary() {

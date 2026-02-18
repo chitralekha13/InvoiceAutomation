@@ -330,6 +330,22 @@ def find_duplicate_invoice(fields: Dict) -> Optional[str]:
         conn.close()
 
 
+def delete_invoice(invoice_id: str) -> bool:
+    """Delete invoice from PostgreSQL. Returns True if deleted, False if not found."""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM invoices WHERE invoice_id = %s", (invoice_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info("Deleted invoice %s from database", invoice_id)
+        return deleted
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_invoice(invoice_id: str) -> Optional[Dict]:
     """Get invoice record from PostgreSQL database"""
     conn = get_sql_connection()
