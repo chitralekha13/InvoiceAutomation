@@ -1,6 +1,7 @@
 azure-functions
 requests
 pyodbc
+psycopg2-binary
 PyJWT
 office365-rest-python-client
 openpyxl
