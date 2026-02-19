@@ -1096,56 +1096,28 @@ def _parse_markdown_extracted_info(text: str) -> Dict:
     return out
 
 
-def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Dict:
-    """
-    Extract structured fields from iGentic JSON block in result.
-    iGentic often returns: **Structured JSON Output:** ```json { "Invoice_Number": "...", ... } ```
-    Maps to our DB fields: invoice_number, vendor_name, invoice_amount, etc.
-    """
-    data = _get_igentic_searchable(orchestration_response)
-    result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
-    if isinstance(result, dict):
-        result = json.dumps(result)
-    if not result:
-        return {}
+_IGENTIC_JSON_FIELD_MAP = {
+    'Invoice_Number': 'invoice_number',
+    'Vendor_Name': 'vendor_name',
+    'Resource_Name': 'resource_name',
+    'Start_Date': 'start_date',
+    'End_Date': 'end_date',
+    'Invoice_Hours': 'invoice_hours',
+    'Vendor_Hours': 'invoice_hours',
+    'VendorHours': 'invoice_hours',
+    'Hourly_Rate': 'hourly_rate',
+    'Total_Amount': 'invoice_amount',
+    'Payment_Terms': 'payment_terms',
+    'Invoice_Date': 'invoice_date',
+    'Business_Unit': 'business_unit',
+    'Project_Name': 'project_name',
+}
 
-    # Extract ```json ... ``` block
-    match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', result, re.IGNORECASE | re.DOTALL)
-    if not match:
-        match = re.search(r'```\s*(\{[\s\S]*?"Invoice_Number"[\s\S]*?\})\s*```', result, re.IGNORECASE | re.DOTALL)
-    parsed = {}
-    if match:
-        try:
-            parsed = json.loads(match.group(1))
-        except (json.JSONDecodeError, ValueError):
-            pass
-    # Fallback: parse markdown bullets "- **Invoice_Hours:** 152"
-    if not parsed and "Invoice_Hours" in result:
-        parsed = _parse_markdown_extracted_info(result)
 
-    field_map = {
-        'Invoice_Number': 'invoice_number',
-        'Vendor_Name': 'vendor_name',
-        'Resource_Name': 'resource_name',
-        'Start_Date': 'start_date',
-        'End_Date': 'end_date',
-        'Invoice_Hours': 'invoice_hours',
-        'Vendor_Hours': 'invoice_hours',
-        'VendorHours': 'invoice_hours',
-        'Hours': 'invoice_hours',
-        'Total_Hours': 'invoice_hours',
-        'Billable_Hours': 'invoice_hours',
-        'Total Hours': 'invoice_hours',
-        'Quantity': 'invoice_hours',
-        'Hourly_Rate': 'hourly_rate',
-        'Total_Amount': 'invoice_amount',
-        'Payment_Terms': 'payment_terms',
-        'Invoice_Date': 'invoice_date',
-        'Business_Unit': 'business_unit',
-        'Project_Name': 'project_name',
-    }
+def _parsed_igentic_to_db(parsed: Dict) -> Dict:
+    """Map parsed iGentic keys (Invoice_Number, etc.) to DB column names."""
     out = {}
-    for src_key, db_key in field_map.items():
+    for src_key, db_key in _IGENTIC_JSON_FIELD_MAP.items():
         val = parsed.get(src_key)
         if val is None:
             continue
@@ -1160,6 +1132,59 @@ def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Di
     if out:
         logger.info("Extracted %d fields from iGentic JSON block: %s", len(out), list(out.keys()))
     return out
+
+
+def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Dict:
+    """
+    Extract structured fields from iGentic JSON block in result.
+    iGentic often returns: **Structured JSON Output:** ```json { "Invoice_Number": "...", ... } ```
+    Also handles result as dict, and result inside agentResponses[0].Content.
+    """
+    data = _get_igentic_searchable(orchestration_response)
+    result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+
+    # If result is already a dict (e.g. API parsed the JSON), map directly
+    if isinstance(result, dict) and (result.get("Invoice_Number") or result.get("Total_Amount") is not None):
+        return _parsed_igentic_to_db(result)
+
+    if isinstance(result, dict):
+        result = json.dumps(result)
+    result = (result or "").replace("\r\n", "\n").replace("\r", "\n")
+
+    def _extract_from_string(text: str) -> Dict:
+        parsed = {}
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            match = re.search(r'```\s*(\{[\s\S]*?"Invoice_Number"[\s\S]*?\})\s*```', text, re.IGNORECASE | re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+            except (json.JSONDecodeError, ValueError):
+                pass
+        if not parsed and ("Invoice_Hours" in text or "Invoice_Number" in text):
+            parsed = _parse_markdown_extracted_info(text)
+        return parsed
+
+    parsed = _extract_from_string(result)
+    if parsed:
+        return _parsed_igentic_to_db(parsed)
+
+    # Try first agentResponse Content (same markdown/JSON often appears there)
+    agent_responses = data.get("agentResponses") or data.get("agent_responses")
+    if isinstance(agent_responses, str):
+        try:
+            agent_responses = json.loads(agent_responses)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    if isinstance(agent_responses, list):
+        for item in agent_responses:
+            content = item.get("Content") or item.get("content") or ""
+            if isinstance(content, str):
+                content = content.replace("\\n", "\n").replace("\\\"", '"')
+                parsed = _extract_from_string(content)
+                if parsed:
+                    return _parsed_igentic_to_db(parsed)
+    return {}
 
 
 # Agent snake_case to DB column mapping (iGentic direct/flat output)
