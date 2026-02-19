@@ -34,15 +34,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         }
         if excel_url:
             payload["excelUrl"] = excel_url
-        return func.HttpResponse(
-            json.dumps(payload, default=_json_default),
-            status_code=200,
-            mimetype="application/json",
-        )
+        body = json.dumps(payload, default=_json_default)
+        headers = {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}
+        return func.HttpResponse(body, status_code=200, mimetype="application/json", headers=headers)
     except Exception as e:
         logger.exception("Dashboard data failed")
         return func.HttpResponse(
             json.dumps({"error": str(e)}),
             status_code=500,
             mimetype="application/json",
+            headers={"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
         )

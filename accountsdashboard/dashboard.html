@@ -342,16 +342,22 @@
                 const res = await fetch(API_BASE + '/api/dashboard/data', {
                     method: 'GET'
                 });
-                const data = await res.json().catch(() => ({}));
+                const contentType = res.headers.get('Content-Type') || '';
+                const isJson = contentType.toLowerCase().includes('application/json');
+                const data = isJson ? await res.json().catch(() => ({})) : {};
                 if (!res.ok) {
                     const msg = data.error || res.statusText || 'Failed to load dashboard data';
                     throw new Error(msg);
+                }
+                if (!isJson || (data.rows === undefined && !data.error)) {
+                    throw new Error('API did not return JSON. Check that ' + API_BASE + ' is the correct Function App URL and CORS is enabled.');
                 }
                 allRows = data.rows || [];
                 excelUrl = data.excelUrl || '';
                 applyFilters();
                 renderMetrics(data.metrics || {});
                 renderTable();
+                updateTileActiveState();
             } catch (err) {
                 console.error('Dashboard load error:', err);
                 alert('Dashboard failed: ' + (err.message || 'Check API URL and network.'));
@@ -406,6 +412,12 @@
         function renderTable() {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
+            if (filteredRows.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="21" style="text-align:center;padding:24px;color:#666;">No invoices to display. Upload invoices via the Vendor Portal or check that the API and database are connected.</td>';
+                tbody.appendChild(tr);
+                return;
+            }
             filteredRows.forEach((row, idx) => {
                 const id = row.invoice_uuid || row.invoice_id || '';
                 const tr = document.createElement('tr');
