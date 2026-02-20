@@ -129,8 +129,9 @@
         const msalConfig = {
             auth: {
                 clientId: clientId,
-                authority: 'https://de00830d-05d6-4534-bcf6-53c294e7d034.b2clogin.com/de00830d-05d6-4534-bcf6-53c294e7d034.onmicrosoft.com/B2X_1_vendorsigninflow', // 'common' allows personal and org accounts
-                redirectUri: redirectUri
+                authority: 'https://chitra2000lekha13gmail.b2clogin.com/chitra2000lekha13gmail.onmicrosoft.com/B2X_1_vendorsigninflow', // B2C Modified authority
+                redirectUri: redirectUri,
+                knownAuthorities: ["chitra2000lekha13gmail.b2clogin.com"]
             },
             cache: {
                 cacheLocation: 'sessionStorage',
