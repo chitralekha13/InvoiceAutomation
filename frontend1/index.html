@@ -122,19 +122,20 @@
     </div>
 
     <script>
-        const CLIENT_ID = "0bc455c4-2b5d-4ec4-baf5-a410ad564c66"; // SPA app registration client ID
+        const appConfig = window.APP_CONFIG || {};
+        const clientId = "0bc455c4-2b5d-4ec4-baf5-a410ad564c66"; // SPA app registration client ID
         const TENANT_PREFIX = "chitra2000lekha13"; // The prefix from somename.onmicrosoft.com
         const TENANT_DOMAIN = "chitra2000lekha13gmail.onmicrosoft.com"; // Full tenant domain
         const USER_FLOW = "B2X_1_vendorsigninflow"; // B2C user flow name
-        const REDIRECT_URI = window.location.origin + "/index.html"; 
+        const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
 
         const AUTHORITY = `https://${TENANT_PREFIX}.b2clogin.com/${TENANT_DOMAIN}/${USER_FLOW}`;
 
         const msalConfig = {
         auth: {
-            clientId: CLIENT_ID,
+            clientId: clientId,
             authority: AUTHORITY,
-            redirectUri: REDIRECT_URI,
+            redirectUri: redirectUri,
             knownAuthorities: [`${TENANT_PREFIX}.b2clogin.com`]
         },
         cache: {
