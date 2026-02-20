@@ -127,21 +127,21 @@
         const clientId = appConfig.clientId || '';
         const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
         const msalConfig = {
-            auth: {
-                clientId: clientId,
-                authority: 'https://chitra2000lekha13gmail.b2clogin.com/chitra2000lekha13gmail.onmicrosoft.com/B2X_1_vendorsigninflow', // B2C Modified authority
-                redirectUri: redirectUri,
-                knownAuthorities: ["chitra2000lekha13gmail.b2clogin.com"]
-            },
-            cache: {
-                cacheLocation: 'sessionStorage',
-                storeAuthStateInCookie: false
-            }
-        };
+        auth: {
+            clientId: clientId,
+            authority: 'https://chitra2000lekha13gmail.ciamlogin.com/', // ciamlogin
+            redirectUri: redirectUri,
+            knownAuthorities: ["chitra2000lekha13gmail.ciamlogin.com"] // ciamlogin 
+        },
+        cache: {
+            cacheLocation: 'sessionStorage',
+            storeAuthStateInCookie: false
+        }
+    };
 
-        const loginRequest = {
-            scopes: ['openid', 'offline_access', 'profile']
-        };
+    const loginRequest = {
+        scopes: ['openid', 'offline_access', 'profile']
+    };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
 
