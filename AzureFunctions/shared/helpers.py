@@ -1264,8 +1264,10 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     import io
     
     # Download Excel from SharePoint
-    excel_path = os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx"
-    server_relative_excel_url = _normalize_server_relative_url(excel_path)
+    #os.environ.get("SHAREPOINT_EXCEL_PATH") or 
+    excel_path ="https://invoiveautomation.sharepoint.com/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"
+    #server_relative_excel_url = _normalize_server_relative_url(excel_path)
+    server_relative_excel_url = excel_path
     try:
         excel_content = download_file_from_sharepoint(server_relative_excel_url)
     except Exception as e:
