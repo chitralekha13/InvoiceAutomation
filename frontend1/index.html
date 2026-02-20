@@ -140,7 +140,7 @@
         };
 
         const loginRequest = {
-            scopes: ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All']
+            scopes: ['openid', 'offline_access', 'profile']
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
