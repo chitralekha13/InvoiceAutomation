@@ -10,7 +10,7 @@
       align-items: center;
       height: 100vh;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      background: #e3e3e6;
       margin: 0;
       color: white;
     }
@@ -39,7 +39,7 @@
     }
     #loginBtn {
       background-color: #ffffff;
-      color: #4f46e5;
+      color: #0a0a0e;
       font-weight: bold;
     }
     #loginBtn:hover {
@@ -47,19 +47,19 @@
       transform: translateY(-2px);
     }
     #logoutBtn {
-      background-color: #f87171;
+      background-color: #0d0808;
       color: white;
     }
     #logoutBtn:hover {
-      background-color: #ef4444;
+      background-color: #0f0101;
       transform: translateY(-2px);
     }
     #uploadBtn {
-      background-color: #22c55e;
+      background-color: #5b665f;
       color: white;
     }
     #uploadBtn:hover {
-      background-color: #16a34a;
+      background-color: #3b3c3b;
       transform: translateY(-2px);
     }
   </style>
@@ -77,11 +77,11 @@
 
   <script>
     /********** Configuration **********/
-    const CLIENT_ID = "0bc455c4-2b5d-4ec4-baf5-a410ad564c66"; // Replace with your SPA app registration client ID
+    const CLIENT_ID = "0bc455c4-2b5d-4ec4-baf5-a410ad564c66"; // SPA app registration client ID
     const TENANT_PREFIX = "chitra2000lekha13"; // The prefix from somename.onmicrosoft.com
     const TENANT_DOMAIN = "chitra2000lekha13gmail.onmicrosoft.com"; // Full tenant domain
-    const USER_FLOW = "B2X_1_vendorsigninflow"; // Your B2C user flow name
-    const REDIRECT_URI = window.location.origin + "/index.html"; // Must match app registration
+    const USER_FLOW = "B2X_1_vendorsigninflow"; // B2C user flow name
+    const REDIRECT_URI = window.location.origin + "/index.html"; 
 
     const AUTHORITY = `https://${TENANT_PREFIX}.b2clogin.com/${TENANT_DOMAIN}/${USER_FLOW}`;
 
@@ -105,28 +105,28 @@
 
     /********** Login / Logout **********/
     document.getElementById("loginBtn").addEventListener("click", async () => {
-  try {
-    // Login popup
-    const loginResponse = await msalInstance.loginPopup(loginRequest);
-    console.log("Login successful:", loginResponse);
+        try {
+            // Login popup
+            const loginResponse = await msalInstance.loginPopup(loginRequest);
+            console.log("Login successful:", loginResponse);
 
-    // Get account info
-    const account = loginResponse.account;
+            // Get account info
+            const account = loginResponse.account;
 
-    // Email / username
-    const userEmail = account.username || loginResponse.idTokenClaims?.email;
-    const userName = account.name || userEmail;
+            // Email / username
+            const userEmail = account.username || loginResponse.idTokenClaims?.email;
+            const userName = account.name || userEmail;
 
-    alert(`Hello, ${userName}\nEmail: ${userEmail}`);
+            alert(`Hello, ${userName}\nEmail: ${userEmail}`);
 
-    // Store for later use
-    sessionStorage.setItem("userEmail", userEmail);
-    sessionStorage.setItem("userName", userName);
+            // Store for later use
+            sessionStorage.setItem("userEmail", userEmail);
+            sessionStorage.setItem("userName", userName);
 
-    // Acquire access token silently
-    const tokenResponse = await msalInstance.acquireTokenSilent({
-      ...loginRequest,
-      account: account
+            // Acquire access token silently
+            const tokenResponse = await msalInstance.acquireTokenSilent({
+            ...loginRequest,
+            account: account
     });
 
     sessionStorage.setItem("accessToken", tokenResponse.accessToken);
