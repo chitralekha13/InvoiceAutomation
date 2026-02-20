@@ -122,26 +122,21 @@
     </div>
 
     <script>
+        // MSAL Configuration - Values loaded from config.js (pipeline injects clientId in production)
         const appConfig = window.APP_CONFIG || {};
-        const clientId = "0bc455c4-2b5d-4ec4-baf5-a410ad564c66"; // SPA app registration client ID
-        const TENANT_PREFIX = "chitra2000lekha13"; // The prefix from somename.onmicrosoft.com
-        const TENANT_DOMAIN = "chitra2000lekha13gmail.onmicrosoft.com"; // Full tenant domain
-        const USER_FLOW = "B2X_1_vendorsigninflow"; // B2C user flow name
+        const clientId = appConfig.clientId || '';
         const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
-
-        const AUTHORITY = `https://${TENANT_PREFIX}.b2clogin.com/${TENANT_DOMAIN}/${USER_FLOW}`;
-
         const msalConfig = {
-        auth: {
-            clientId: clientId,
-            authority: AUTHORITY,
-            redirectUri: redirectUri,
-            knownAuthorities: [`${TENANT_PREFIX}.b2clogin.com`]
-        },
-        cache: {
-            cacheLocation: "localStorage",
-            storeAuthStateInCookie: false
-        }
+            auth: {
+                clientId: clientId,
+                authority: 'https://chitra2000lekha13gmail.b2clogin.com/chitra2000lekha13gmail.onmicrosoft.com/B2X_1_vendorsigninflow', // B2C Modified authority
+                redirectUri: redirectUri,
+                knownAuthorities: ["chitra2000lekha13gmail.b2clogin.com"]
+            },
+            cache: {
+                cacheLocation: 'sessionStorage',
+                storeAuthStateInCookie: false
+            }
         };
 
         const loginRequest = {
