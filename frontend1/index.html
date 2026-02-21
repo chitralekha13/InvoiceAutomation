@@ -114,7 +114,7 @@
 
         // ── Validate email against Function App / Postgres ──
         async function validateUserEmail(email) {
-
+            let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
             let base = (API_BASE || '').trim().replace(/\/+$/, '');
             if (base.startsWith('http://')) base = 'https://' + base.slice(7);
             const uploadUrl = base ? (base + '/api/validate-email') : '';
