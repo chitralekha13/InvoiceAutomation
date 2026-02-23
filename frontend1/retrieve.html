@@ -274,7 +274,15 @@
         
         document.getElementById('userName').textContent = userName || userEmail;
         
-        const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').replace(/\/+$/, '');
+        if (API_BASE && API_BASE.startsWith('http://')) {
+            API_BASE = 'https://' + API_BASE.slice(7);
+        }
+        
+        if (!API_BASE) {
+            console.error('API_BASE not configured. Please set apiBaseUrl in config.js');
+        }
         let allDocuments = [];
         
         // Load documents on page load
@@ -292,7 +300,7 @@
             message.style.display = 'none';
             
             try {
-                const response = await fetch(API_BASE + '/api/getdata', {
+                const response = await fetch(API_BASE + '/api/getdata/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
