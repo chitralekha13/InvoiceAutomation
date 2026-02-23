@@ -52,15 +52,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
 
         # Resolve vendor_id from token or body
-        token = extract_token_from_request(req) or (body or {}).get("accessToken")
-        vendor_id = "unknown"
-        if token:
-            try:
-                vendor_id = extract_vendor_name_from_token(token)
-            except Exception:
-                pass
-        if vendor_id == "unknown" and (body or {}).get("userEmail"):
-            vendor_id = (body or {}).get("userEmail")
+        token = body.get("accessToken")
+        #extract_token_from_request(req) or (body or {}).get("accessToken")
+        vendor_id = body.get("org")
+
+        #if token:
+        #    try:
+        #       vendor_id = extract_vendor_name_from_token(token)
+        #    except Exception:
+        #       pass
+        #if vendor_id == "unknown" and (body or {}).get("userEmail"):
+        #   vendor_id = (body or {}).get("userEmail")
 
         if action == "list":
             rows = get_invoices_by_vendor(vendor_id)
