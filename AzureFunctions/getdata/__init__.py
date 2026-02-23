@@ -20,7 +20,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError:
         body = {}
 
-    action = (body or {}).get("action") or "list"
+    #action = (body or {}).get("action") or "list"
+    action = (body or {}).get("action")
     document_id = (body or {}).get("documentId")
 
     try:
