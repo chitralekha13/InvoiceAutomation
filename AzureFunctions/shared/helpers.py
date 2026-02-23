@@ -381,8 +381,9 @@ def get_invoices_by_vendor(vendor_id: str) -> list:
     
     try:
         cursor.execute(
-            "SELECT * FROM invoices WHERE vendor_name like %s ORDER BY created_at DESC;",
-            (f"%{vendor_id}%",)
+            #"SELECT * FROM invoices WHERE vendor_name like %s ORDER BY created_at DESC;",
+            #(f"%{vendor_id}%",)
+            cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC;")
         )
         
         rows = cursor.fetchall()
