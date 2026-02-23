@@ -46,7 +46,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         from shared.helpers import (
             extract_token_from_request,
-            extract_vendor_id_from_token,
+            extract_vendor_name_from_token,
             get_invoices_by_vendor,
             get_invoice,
         )
@@ -56,7 +56,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         vendor_id = "unknown"
         if token:
             try:
-                vendor_id = extract_vendor_id_from_token(token)
+                vendor_id = extract_vendor_name_from_token(token)
             except Exception:
                 pass
         if vendor_id == "unknown" and (body or {}).get("userEmail"):

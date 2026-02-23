@@ -381,8 +381,8 @@ def get_invoices_by_vendor(vendor_id: str) -> list:
     
     try:
         cursor.execute(
-            "SELECT * FROM invoices WHERE vendor_id = %s ORDER BY created_at DESC",
-            (vendor_id,)
+            "SELECT * FROM invoices WHERE org like %s ORDER BY created_at DESC",
+            (f"%{vendor_id}%",)
         )
         
         rows = cursor.fetchall()
@@ -456,6 +456,13 @@ def extract_vendor_id_from_token(token: str) -> str:
         decoded.get('preferred_username') or
         decoded.get('sub') or
         decoded.get('oid')
+    )
+
+def extract_vendor_name_from_token(token: str) -> str:
+    """Extract vendor_name from JWT token"""
+    decoded = decode_token(token)
+    return (
+        decoded.get('org') 
     )
 
 def extract_user_id_from_token(token: str) -> str:
