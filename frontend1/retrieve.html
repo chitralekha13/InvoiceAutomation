@@ -414,7 +414,7 @@
         let currentDocName = null;
         let currentBlobUrl = null;
 
-        async function viewDocument(docId, fileName) {
+        async function downloadDocument(docId, fileName) {
             currentDocId   = docId;
             currentDocName = fileName;
 
@@ -448,8 +448,8 @@
                 document.getElementById('viewerFallback').href = currentBlobUrl;
 
             } catch (err) {
-                console.error('viewDocument error:', err);
-                showMessage(`Could not open document: ${err.message}`, 'error');
+                console.error('downloadDocument error:', err);
+                showMessage(`Could not download document: ${err.message}`, 'error');
                 closeViewer();
             }
         }
