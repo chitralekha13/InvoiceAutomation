@@ -51,6 +51,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             extract_vendor_name_from_token,
             get_invoices_by_vendor,
             get_invoice,
+            get_sharepoint_context,
         )
 
         # Resolve vendor_id from token or body
@@ -102,6 +103,33 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 json.dumps({"url": pdf_url, "name": inv.get("doc_name") or "document.pdf"}),
                 status_code=200,
                 mimetype="application/json",
+            )
+        
+        if action == "stream":
+            sharepoint_url = inv.get("pdf_url")
+            file_path = "/" + sharepoint_url.split("/", 3)[-1] if sharepoint_url.startswith("http") else sharepoint_url
+
+            try:
+                ctx = get_sharepoint_context()
+                file_content = ctx.web.get_file_by_server_relative_url(file_path).read()
+            except Exception as e:
+                logger.exception("SharePoint download failed")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Failed to fetch file: {str(e)}"}),
+                    status_code=502,
+                    mimetype="application/json"
+                )
+
+            file_name = inv.get("doc_name") or "document.pdf"
+
+            return func.HttpResponse(
+                body=file_content,
+                status_code=200,
+                headers={
+                    "Content-Type":                "application/pdf",
+                    "Content-Disposition":         f'inline; filename="{file_name}"',
+                    "Access-Control-Allow-Origin": "*",
+                }
             )
 
         return func.HttpResponse(

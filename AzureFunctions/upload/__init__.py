@@ -141,8 +141,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
-        pdf_url = f"{site_url}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
-
+        #pdf_url = f"{site_url}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
+        pdf_url = f"{site_url.split('/sites/')[0]}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
+        
         # 2) Document Intelligence (SQL insert deferred until after duplicate check)
         invoice_data = analyze_invoice_bytes(file_content, safe_name)
         if not invoice_data:
