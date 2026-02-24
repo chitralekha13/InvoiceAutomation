@@ -480,6 +480,10 @@
             sessionStorage.clear();
             window.location.href = 'index.html';
         }
+
+        function escapeHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
         
         // Search on Enter key
         document.getElementById('searchInput').addEventListener('keypress', (e) => {
