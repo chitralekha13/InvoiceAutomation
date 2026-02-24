@@ -266,6 +266,7 @@
         .file-org {
             font-size: 16px;
             color: #0a0101;
+            min-width: 0;
             align-items: center;
             gap: 8px;
             overflow-wrap: break-word;
@@ -274,6 +275,7 @@
         .file-status {
             font-size: 16px;
             color: #0a0101;
+            min-width: 0;
             align-items: center;
             gap: 8px;
             overflow-wrap: break-word;
@@ -688,7 +690,10 @@
         function formatDate(dateString) {
             if (!dateString) return 'N/A';
             const date = new Date(dateString);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+            //  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString(); -- UTC time
+            //  return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }); -- Indian Time Zone
+            //  return date.toLocaleString(undefined, { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone  }); -- Auto Detect 
+            return date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
         }
         
         function showMessage(text, type) {
