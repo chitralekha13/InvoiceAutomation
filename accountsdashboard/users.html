@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>User Management</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: white;
+      padding: 20px 40px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { color: #333; font-size: 24px; }
+
+    .btn-add-user {
+      background: #0078d4; color: white; border: none;
+      padding: 10px 20px; border-radius: 5px;
+      cursor: pointer; font-size: 14px; font-family: inherit;
+    }
+    .btn-add-user:hover { background: #006cbf; }
+
+    .container { max-width: 1200px; margin: 50px auto; padding: 0 20px; }
+
+    .stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .stat-card {
+      background: white; border-radius: 8px; padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.07); min-width: 130px;
+    }
+    .stat-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 28px; font-weight: 700; margin-top: 4px; color: #333; }
+    .stat-value.blue  { color: #0078d4; }
+    .stat-value.green { color: #107c10; }
+    .stat-value.grey  { color: #5c5c5c; }
+    .stat-value.red   { color: #d13438; }
+
+    .documents-card {
+      background: white; padding: 40px;
+      border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .message { padding: 15px; border-radius: 5px; margin-bottom: 20px; display: none; }
+    .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+    .message.error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+
+    .search-bar { display: flex; gap: 10px; margin-bottom: 30px; }
+    .search-input {
+      flex: 1; padding: 12px 20px; border: 1px solid #ddd;
+      border-radius: 5px; font-size: 14px; font-family: inherit;
+    }
+    .search-input:focus { outline: none; border-color: #0078d4; }
+
+    .btn-search {
+      background: #0078d4; color: white; border: none;
+      padding: 12px 30px; border-radius: 5px; cursor: pointer;
+      font-size: 14px; font-family: inherit;
+    }
+    .btn-search:hover { background: #006cbf; }
+
+    .btn-refresh {
+      background: #5c5c5c; color: white; border: none;
+      padding: 12px 30px; border-radius: 5px; cursor: pointer;
+      font-size: 14px; font-family: inherit;
+    }
+    .btn-refresh:hover { background: #484848; }
+
+    .documents-table {
+      width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed;
+    }
+    .documents-table th {
+      background: #f8f9fa; padding: 15px; text-align: left;
+      font-weight: 600; color: #333; border-bottom: 1px solid #dee2e6;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .documents-table td {
+      padding: 15px; border-bottom: 1px solid #dee2e6; color: #666;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .documents-table tr:hover { background: #f8f9fa; }
+
+    .documents-table th:nth-child(1), .documents-table td:nth-child(1) { width: 11%; }
+    .documents-table th:nth-child(2), .documents-table td:nth-child(2) { width: 18%; }
+    .documents-table th:nth-child(3), .documents-table td:nth-child(3) { width: 17%; }
+    .documents-table th:nth-child(4), .documents-table td:nth-child(4) { width: 15%; }
+    .documents-table th:nth-child(5), .documents-table td:nth-child(5) { width: 13%; }
+    .documents-table th:nth-child(6), .documents-table td:nth-child(6) { width: 11%; }
+    .documents-table th:nth-child(7), .documents-table td:nth-child(7) { width: 15%; }
+
+    .file-id   { font-size: 13px; color: #555; font-family: 'Courier New', monospace; }
+    .file-name { font-size: 16px; color: #0a0101; overflow-wrap: break-word; }
+    .file-email { font-size: 16px; color: #0a0101; overflow-wrap: break-word; }
+    .file-org  { font-size: 13px; color: #888; margin-top: 2px; }
+    .file-date { font-size: 14px; color: #0a0101; }
+
+    .status-badge {
+      display: inline-block; padding: 4px 10px;
+      border-radius: 12px; font-size: 12px; font-weight: 600;
+    }
+    .status-active    { background: #d4edda; color: #155724; }
+    .status-inactive  { background: #e2e3e5; color: #383d41; }
+    .status-suspended { background: #f8d7da; color: #721c24; }
+
+    .role-badge {
+      display: inline-block; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600;
+    }
+    .role-admin  { background: #ede7f6; color: #4527a0; }
+    .role-editor { background: #e3f2fd; color: #0d47a1; }
+    .role-viewer { background: #fff8e1; color: #e65100; }
+
+    .inline-select {
+      padding: 6px 10px; border: 1px solid #0078d4; border-radius: 4px;
+      font-size: 13px; font-family: inherit; background: white;
+      color: #333; cursor: pointer; outline: none;
+    }
+
+    .btn-edit {
+      background: #0078d4; color: white; border: none;
+      padding: 8px 15px; border-radius: 3px; cursor: pointer;
+      font-size: 12px; font-family: inherit; margin-right: 5px;
+    }
+    .btn-edit:hover { background: #006cbf; }
+
+    .btn-save {
+      background: #107c10; color: white; border: none;
+      padding: 8px 15px; border-radius: 3px; cursor: pointer;
+      font-size: 12px; font-family: inherit; margin-right: 5px;
+    }
+    .btn-save:hover { background: #0a5e0a; }
+
+    .btn-cancel-edit {
+      background: #5c5c5c; color: white; border: none;
+      padding: 8px 15px; border-radius: 3px; cursor: pointer;
+      font-size: 12px; font-family: inherit;
+    }
+    .btn-cancel-edit:hover { background: #484848; }
+
+    .loading { text-align: center; padding: 40px; color: #666; }
+    .spinner {
+      border: 3px solid #f3f3f3; border-top: 3px solid #0078d4;
+      border-radius: 50%; width: 40px; height: 40px;
+      animation: spin 1s linear infinite; margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    .empty-icon  { font-size: 64px; margin-bottom: 20px; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: white; border-radius: 10px; padding: 36px; width: 460px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2); animation: modalIn 0.2s ease;
+    }
+    @keyframes modalIn {
+      from { transform: translateY(-16px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .modal-box h2 { font-size: 20px; color: #333; margin-bottom: 24px; }
+
+    .form-group { margin-bottom: 18px; }
+    .form-group label {
+      display: block; font-size: 13px; font-weight: 600;
+      color: #555; margin-bottom: 7px;
+    }
+    .form-group input, .form-group select {
+      width: 100%; padding: 10px 14px; border: 1px solid #ddd;
+      border-radius: 5px; font-size: 14px; font-family: inherit; color: #333; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #0078d4; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    .modal-footer {
+      display: flex; gap: 10px; justify-content: flex-end;
+      margin-top: 28px; padding-top: 20px; border-top: 1px solid #dee2e6;
+    }
+    .btn-modal-cancel {
+      background: white; color: #333; border: 1px solid #ddd;
+      padding: 10px 20px; border-radius: 5px; font-size: 14px;
+      font-family: inherit; cursor: pointer;
+    }
+    .btn-modal-cancel:hover { background: #f5f5f5; }
+    .btn-modal-submit {
+      background: #0078d4; color: white; border: none;
+      padding: 10px 24px; border-radius: 5px; font-size: 14px;
+      font-weight: 600; font-family: inherit; cursor: pointer;
+    }
+    .btn-modal-submit:hover { background: #006cbf; }
+    .btn-modal-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    #toast-msg {
+      position: fixed; bottom: 28px; right: 28px;
+      padding: 14px 22px; border-radius: 5px; font-size: 14px;
+      font-weight: 500; display: none; z-index: 9999;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    #toast-msg.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+    #toast-msg.error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>User Management</h1>
+  <button class="btn-add-user" onclick="openAddModal()">+ Add New User</button>
+</div>
+
+<div class="container">
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Users</div>
+      <div class="stat-value blue" id="stat-total">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active</div>
+      <div class="stat-value green" id="stat-active">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Inactive</div>
+      <div class="stat-value grey" id="stat-inactive">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Suspended</div>
+      <div class="stat-value red" id="stat-suspended">—</div>
+    </div>
+  </div>
+
+  <div class="documents-card">
+
+    <div class="message" id="banner"></div>
+
+    <div class="search-bar">
+      <input type="text" class="search-input" id="search"
+             placeholder="Search by name, organisation, ID, role or status…"
+             oninput="filterTable()"/>
+      <button class="btn-search" onclick="filterTable()">Search</button>
+      <button class="btn-refresh" onclick="loadUsers()">Refresh</button>
+    </div>
+
+    <table class="documents-table">
+      <thead>
+        <tr>
+          <th>User ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Organisation</th>
+          <th>Last Access Date</th>
+          <th>Status</th>
+          <th>Role</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="user-tbody">
+        <tr><td colspan="7">
+          <div class="loading"><div class="spinner"></div>Loading users…</div>
+        </td></tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal-box">
+    <h2>Add New User</h2>
+    <div class="form-group">
+      <label>Full Name</label>
+      <input type="text" id="new-name" placeholder="e.g. Jane Smith"/>
+    </div>
+    <div class="form-group">
+      <label>Organisation</label>
+      <input type="text" id="new-org" placeholder="e.g. Acme Corp"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Status</label>
+        <select id="new-status">
+          <option value="active">active</option>
+          <option value="inactive">inactive</option>
+          <option value="suspended">suspended</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="new-role">
+          <option value="admin">admin</option>
+          <option value="user">user</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeAddModal()">Cancel</button>
+      <button class="btn-modal-submit" id="submit-btn" onclick="submitAddUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-msg"></div>
+
+<script>
+  // CONFIG
+  const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+
+  function apiUrl(path = "") {
+    const url = API_BASE + '/api/getdata' + path;
+    return url;
+  }
+
+  let allUsers  = [];
+  let editingId = null;
+
+  // Load 
+  async function loadUsers() {
+    document.getElementById("user-tbody").innerHTML =
+      `<tr><td colspan="7"><div class="loading"><div class="spinner"></div>Loading users…</div></td></tr>`;
+    try {
+      const res  = await fetch(apiUrl());
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      allUsers = data.users || [];
+      renderTable(allUsers);
+      updateStats(allUsers);
+    } catch (err) {
+      document.getElementById("user-tbody").innerHTML =
+        `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">⚠️</div>${err.message}</div></td></tr>`;
+      showBanner(err.message, "error");
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  function renderTable(users) {
+    const tbody = document.getElementById("user-tbody");
+    if (!users.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📋</div>No users found.</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = users.map(u => {
+      const isEditing = editingId === u.user_id;
+      const dateStr   = u.last_access_date
+        ? new Date(u.last_access_date).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })
+        : "—";
+
+      const statusCell = isEditing
+        ? `<select class="inline-select" id="edit-status-${u.user_id}">
+             ${["active","inactive","suspended"].map(s => `<option ${s===u.status?"selected":""}>${s}</option>`).join("")}
+           </select>`
+        : `<span class="status-badge status-${u.status.toLowerCase()}">${u.status}</span>`;
+
+      const roleCell = isEditing
+        ? `<select class="inline-select" id="edit-role-${u.user_id}">
+             ${["admin","user"].map(r => `<option ${r===u.role?"selected":""}>${r}</option>`).join("")}
+           </select>`
+        : `<span class="role-badge role-${u.role.toLowerCase()}">${u.role}</span>`;
+
+      const actionCell = isEditing
+        ? `<button class="btn-save"        onclick="saveEdit('${u.user_id}')">Save</button>
+           <button class="btn-cancel-edit" onclick="cancelEdit()">Cancel</button>`
+        : `<button class="btn-edit" onclick="startEdit('${u.user_id}')">Edit</button>`;
+
+      return `<tr style="${isEditing ? "background:#f0f7ff;" : ""}">
+        <td><span class="file-id">${u.user_id}</span></td>
+        <td><div class="file-name">${u.name}</div></td>
+        <td><div class="file-email">${u.email}</div></td>
+        <td><div class="file-org">${u.org}</div></td>
+        <td><div class="file-date">${dateStr}</div></td>
+        <td>${statusCell}</td>
+        <td>${roleCell}</td>
+        <td>${actionCell}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  // ── Edit ─────────────────────────────────────────────────────────────────────
+  function startEdit(id) { editingId = id;   renderTable(filterUsers()); }
+  function cancelEdit()  { editingId = null; renderTable(filterUsers()); }
+
+  async function saveEdit(userId) {
+    const status = document.getElementById(`edit-status-${userId}`).value;
+    const role   = document.getElementById(`edit-role-${userId}`).value;
+    try {
+      const res  = await fetch(apiUrl(`/${userId}`), {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      const u = allUsers.find(x => x.user_id === userId);
+      if (u) { u.status = status; u.role = role; }
+      editingId = null;
+      renderTable(filterUsers());
+      updateStats(allUsers);
+      showBanner("User updated successfully.", "success");
+      showToast("User updated successfully.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  // ── Add user ─────────────────────────────────────────────────────────────────
+  function openAddModal()  { document.getElementById("add-modal").classList.add("open"); document.getElementById("new-name").focus(); }
+  function closeAddModal() {
+    document.getElementById("add-modal").classList.remove("open");
+    document.getElementById("new-name").value = "";
+    document.getElementById("new-org").value  = "";
+  }
+
+  async function submitAddUser() {
+    const name   = document.getElementById("new-name").value.trim();
+    const org    = document.getElementById("new-org").value.trim();
+    const status = document.getElementById("new-status").value;
+    const role   = document.getElementById("new-role").value;
+    if (!name || !org) { showToast("Name and Organisation are required.", "error"); return; }
+
+    const btn = document.getElementById("submit-btn");
+    btn.disabled = true; btn.textContent = "Adding…";
+    try {
+      const res  = await fetch(apiUrl(), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, organisation: org, status, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add user");
+      allUsers.unshift(data.user);
+      renderTable(filterUsers());
+      updateStats(allUsers);
+      closeAddModal();
+      showBanner(`User "${name}" has been added.`, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Add User";
+    }
+  }
+
+  // ── Filter / stats ───────────────────────────────────────────────────────────
+  function filterUsers() {
+    const q = document.getElementById("search").value.toLowerCase();
+    return q ? allUsers.filter(u =>
+      u.name.toLowerCase().includes(q) || u.organisation.toLowerCase().includes(q) ||
+      String(u.user_id).toLowerCase().includes(q) || u.role.toLowerCase().includes(q) ||
+      u.status.toLowerCase().includes(q)) : [...allUsers];
+  }
+  function filterTable() { renderTable(filterUsers()); }
+
+  function updateStats(users) {
+    document.getElementById("stat-total").textContent     = users.length;
+    document.getElementById("stat-active").textContent    = users.filter(u => u.status === "active").length;
+    document.getElementById("stat-inactive").textContent  = users.filter(u => u.status === "inactive").length;
+    document.getElementById("stat-suspended").textContent = users.filter(u => u.status === "suspended").length;
+  }
+
+  // ── Banner & Toast ───────────────────────────────────────────────────────────
+  let bannerT, toastT;
+  function showBanner(msg, type) {
+    const el = document.getElementById("banner");
+    el.textContent = msg; el.className = `message ${type}`;
+    clearTimeout(bannerT);
+    bannerT = setTimeout(() => { el.className = "message"; }, 4500);
+  }
+  function showToast(msg, type) {
+    const el = document.getElementById("toast-msg");
+    el.textContent = msg; el.className = type;
+    clearTimeout(toastT);
+    toastT = setTimeout(() => { el.className = ""; }, 3500);
+  }
+
+  document.getElementById("add-modal").addEventListener("click", function(e) { if (e.target === this) closeAddModal(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAddModal(); });
+
+  loadUsers();
+</script>
+</body>
+</html>
