@@ -23,6 +23,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     #action = (body or {}).get("action") or "list"
     action = (body or {}).get("action")
     document_id = (body or {}).get("documentId")
+    vendor_id   = (body or {}).get("org")
 
     try:
         sys_path = os.path.join(os.path.dirname(__file__), '..')
@@ -55,7 +56,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Resolve vendor_id from token or body
         token = body.get("accessToken")
         #extract_token_from_request(req) or (body or {}).get("accessToken")
-        vendor_id = body.get("org")
+        
 
         #if token:
         #    try:
@@ -73,7 +74,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 documents.append({
                     "id": r.get("invoice_id") or r.get("invoice_uuid"),
                     "name": r.get("doc_name") or "document",
-                    "size": 0,  # DB may not store size
                     "uploadDate": r.get("created_at") or r.get("invoice_received_date") or "",
                 })
             return func.HttpResponse(
@@ -101,14 +101,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(
                 json.dumps({"url": pdf_url, "name": inv.get("doc_name") or "document.pdf"}),
                 status_code=200,
-                mimetype="application/json",
-            )
-
-        if action == "delete":
-            # Optional: implement soft delete or status update
-            return func.HttpResponse(
-                json.dumps({"error": "Delete not implemented in single backend"}),
-                status_code=501,
                 mimetype="application/json",
             )
 
