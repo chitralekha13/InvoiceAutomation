@@ -256,6 +256,19 @@
         </div>
     </div>
 
+    <div id="viewerOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:flex-end; align-items:stretch;">
+    <div id="viewerPanel" style="width:55%; background:#fff; display:flex; flex-direction:column; box-shadow:-4px 0 24px rgba(0,0,0,0.15);">
+        <div id="viewerHeader" style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #e2e0d8; background:#f4f3ef; gap:12px; flex-shrink:0;">
+            <span id="viewerFileName" style="font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+            <div style="display:flex; gap:8px; flex-shrink:0;">
+                <button class="btn btn-primary" onclick="triggerDownload()">⬇ Download</button>
+                <button class="btn btn-secondary" onclick="closeViewer()">✕ Close</button>
+            </div>
+        </div>
+        <iframe id="viewerFrame" src="" style="flex:1; border:none; width:100%;"></iframe>
+    </div>
+</div>
+
     <script>
         // Check authentication
         const userEmail   = sessionStorage.getItem('userEmail');
