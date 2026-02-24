@@ -412,23 +412,19 @@
                 
                 
                 
-                const data = await response.json();
                 if (!response.ok) {
-                    throw new Error(data.error || 'Download failed');
+                    const errText = await response.text();
+                    throw new Error(errText);
                 }
 
-                if (!data.url) {
-                    showMessage('Download failed. No URL returned.', 'error');
-                    return;
-                }
+                // It is a raw PDF
+                const blob    = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
 
-                const a = document.createElement('a');
-                a.href     = data.url;
-                a.download = data.name || fileName; // hints the browser to download
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                showMessage('Download started.', 'success');
+                // Open in viewer panel
+                document.getElementById('viewerFileName').textContent = fileName;
+                document.getElementById('viewerFrame').src = blobUrl;
+                document.getElementById('viewerOverlay').style.display = 'flex';
 
             } catch (error) {
                 console.error('Download error:', error);
