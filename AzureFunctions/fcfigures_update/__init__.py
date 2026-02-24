@@ -76,39 +76,46 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 val = body[dash_key]
                 if val == "":
                     val = None
+                # Coerce approved_hours to number for DB
+                if dash_key == "approved_hours" and val is not None:
+                    try:
+                        val = float(val)
+                    except (TypeError, ValueError):
+                        pass
                 kwargs[sql_col] = val
 
-        # When approved_hours is updated: continue the same iGentic session (same chat as upload).
-        # Match orchestrator conversation: (1) "approved hours is {value}" -> Approved/Ready for payment
-        # (2) if Ready for payment, send "ok" to get Payment Summary / Payment Details JSON.
+        # When approved_hours is updated: validation and payment details all happen on iGentic (same session).
+        # We only send the hours; iGentic validates (match vs invoice hours) and returns payment details if matched.
+        # If iGentic fails (e.g. endpoint down), we still save approved_hours to the DB.
         if "approved_hours" in body:
             try:
                 timesheet = float(body["approved_hours"]) if body["approved_hours"] not in ("", None) else None
             except (TypeError, ValueError):
                 timesheet = None
             if timesheet is not None:
-                # Turn 1: "approved hours is 152" (same format as orchestrator chat)
-                result = continue_igentic_session(
-                    invoice_id,
-                    f"approved hours is {int(timesheet) if timesheet == int(timesheet) else timesheet}",
-                    request_label="Validate approved hours",
-                )
-                cmp_result = _parse_continuation_response_for_approval(result)
-                if cmp_result:
-                    kwargs["approval_status"] = cmp_result.get("approval_status")
-                    kwargs["status"] = cmp_result.get("approval_status")
-                    if cmp_result.get("payment_details") is not None:
-                        kwargs["payment_details"] = cmp_result.get("payment_details")
-                    # Turn 2: if Ready for payment but no payment_details yet, send "ok" to get Payment Summary
-                    elif cmp_result.get("approval_status") in ("Approved", "Complete", "Ready for Payment", "ready for payment"):
-                        ok_result = continue_igentic_session(
-                            invoice_id,
-                            "ok",
-                            request_label="Get payment details",
-                        )
-                        payment_details = _extract_payment_details_from_igentic_response(ok_result)
-                        if payment_details:
-                            kwargs["payment_details"] = payment_details
+                try:
+                    result = continue_igentic_session(
+                        invoice_id,
+                        f"approved hours is {int(timesheet) if timesheet == int(timesheet) else timesheet}",
+                        request_label="Validate approved hours",
+                    )
+                    cmp_result = _parse_continuation_response_for_approval(result)
+                    if cmp_result:
+                        kwargs["approval_status"] = cmp_result.get("approval_status")
+                        kwargs["status"] = cmp_result.get("approval_status")
+                        if cmp_result.get("payment_details") is not None:
+                            kwargs["payment_details"] = cmp_result.get("payment_details")
+                        elif cmp_result.get("approval_status") in ("Approved", "Complete", "Ready for Payment", "ready for payment"):
+                            ok_result = continue_igentic_session(
+                                invoice_id,
+                                "payment details",
+                                request_label="Get payment details",
+                            )
+                            payment_details = _extract_payment_details_from_igentic_response(ok_result)
+                            if payment_details:
+                                kwargs["payment_details"] = payment_details
+                except Exception as igentic_err:
+                    logger.warning("iGentic approved-hours validation failed; saving approved_hours only: %s", igentic_err)
 
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)
