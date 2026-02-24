@@ -23,6 +23,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     #action = (body or {}).get("action") or "list"
     action = (body or {}).get("action")
     document_id = (body or {}).get("documentId")
+    vendor_id   = (body or {}).get("org")
 
     try:
         sys_path = os.path.join(os.path.dirname(__file__), '..')
@@ -50,12 +51,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             extract_vendor_name_from_token,
             get_invoices_by_vendor,
             get_invoice,
+            get_sharepoint_context,
         )
 
         # Resolve vendor_id from token or body
         token = body.get("accessToken")
         #extract_token_from_request(req) or (body or {}).get("accessToken")
-        vendor_id = body.get("org")
+        
 
         #if token:
         #    try:
@@ -73,8 +75,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 documents.append({
                     "id": r.get("invoice_id") or r.get("invoice_uuid"),
                     "name": r.get("doc_name") or "document",
-                    "size": 0,  # DB may not store size
                     "uploadDate": r.get("created_at") or r.get("invoice_received_date") or "",
+                    "OrganisationName": r.get("vendor_name") or "",
+                    "Status": r.get("status") or "",
                 })
             return func.HttpResponse(
                 json.dumps({"documents": documents}),
@@ -103,13 +106,36 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=200,
                 mimetype="application/json",
             )
+        
+        if action == "stream" and document_id:
+            inv = get_invoice(document_id)
+            sharepoint_url = inv.get("pdf_url")
+            file_path = "/" + sharepoint_url.split("/", 3)[-1] if sharepoint_url.startswith("http") else sharepoint_url
 
-        if action == "delete":
-            # Optional: implement soft delete or status update
+            try:
+                ctx = get_sharepoint_context()
+                file = ctx.web.get_file_by_server_relative_url(file_path)
+                ctx.load(file)
+                ctx.execute_query()
+                file_content = file.read()
+            except Exception as e:
+                logger.exception("SharePoint download failed")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Failed to fetch file: {str(e)}"}),
+                    status_code=502,
+                    mimetype="application/json"
+                )
+
+            file_name = inv.get("doc_name") or "document.pdf"
+
             return func.HttpResponse(
-                json.dumps({"error": "Delete not implemented in single backend"}),
-                status_code=501,
-                mimetype="application/json",
+                body=file_content,
+                status_code=200,
+                headers={
+                    "Content-Type":                "application/pdf",
+                    "Content-Disposition":         f'inline; filename="{file_name}"',
+                    "Access-Control-Allow-Origin": "*",
+                }
             )
 
         return func.HttpResponse(
