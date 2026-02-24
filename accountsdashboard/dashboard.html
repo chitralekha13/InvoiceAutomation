@@ -524,6 +524,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
+                const data = res.ok ? await res.json().catch(() => ({})) : {};
                 if (res.ok) {
                     const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId);
                     if (row) {
@@ -534,10 +535,20 @@
                         if (field === 'pay_period_end') row.end_date = value;
                         if (field === 'net_terms') row.payment_terms = value;
                         if (field === 'pay_rate') row.hourly_rate = value;
+                        // After approved_hours save, backend returns updated invoice with approval_status, payment_details
+                        if (data.invoice) {
+                            Object.assign(row, data.invoice);
+                            if (data.invoice.invoice_id) row.invoice_uuid = data.invoice.invoice_id;
+                        }
                     }
                     cell.textContent = value || '';
                     cell.removeChild(cell.querySelector('input'));
                     bindEditableCells();
+                    // Re-render table so status column and View Payment button update
+                    if (data.invoice) {
+                        applyFilters();
+                        renderTable();
+                    }
                 }
             } catch (e) {
                 console.error(e);

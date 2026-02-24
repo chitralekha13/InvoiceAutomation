@@ -137,8 +137,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception as e:
                     logger.warning("Excel sync after dashboard edit failed: %s", e)
 
+        # Return updated invoice so dashboard can show new approval_status, status, payment_details
+        payload = {"status": "ok"}
+        try:
+            inv = get_invoice(invoice_id)
+            if inv:
+                inv["invoice_id"] = invoice_id
+                payload["invoice"] = inv
+        except Exception as e:
+            logger.warning("Could not load updated invoice for response: %s", e)
+
         return func.HttpResponse(
-            json.dumps({"status": "ok"}),
+            json.dumps(payload, default=str),
             status_code=200,
             mimetype="application/json",
         )

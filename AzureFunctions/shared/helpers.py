@@ -888,18 +888,48 @@ def continue_igentic_session(session_id: str, user_input: Union[Dict, str], requ
 
 
 def _parse_continuation_response_for_approval(result: Dict) -> Optional[Dict]:
-    """Parse iGentic continuation response into approval_status, hours_match, payment_details."""
+    """Parse iGentic continuation response into approval_status, hours_match, payment_details.
+    Tries structured fields first, then derives status from result/display_text text.
+    """
     if not result or result.get("status") == "error":
         return None
     data = result.get("responseData") or result.get("response_data") or result
-    approval_status = data.get("approval_status") or (data.get("result") or {}).get("approval_status")
+    res_obj = data.get("result")
+    if not isinstance(res_obj, dict):
+        res_obj = {}
+
+    approval_status = data.get("approval_status") or res_obj.get("approval_status")
     hours_match = data.get("hours_match")
-    if hours_match is None and isinstance(data.get("result"), dict):
-        hours_match = data["result"].get("hours_match")
+    if hours_match is None:
+        hours_match = res_obj.get("hours_match")
+
+    # Fallback: derive approval_status from raw text (result/display_text)
+    if not approval_status:
+        raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+        if isinstance(raw, dict):
+            raw = json.dumps(raw)
+        if isinstance(raw, str) and raw.strip():
+            raw_lower = raw.lower()
+            if "ready for payment" in raw_lower or "ready for payment." in raw_lower:
+                approval_status = "Ready for Payment"
+            elif "approved" in raw_lower and "need" not in raw_lower:
+                approval_status = "Approved"
+            elif "complete" in raw_lower:
+                approval_status = "Complete"
+            elif "need approval" in raw_lower or "needs approval" in raw_lower:
+                approval_status = "NEED APPROVAL"
+            elif "pending" in raw_lower:
+                approval_status = "Pending"
+            elif "match" in raw_lower and "do not" not in raw_lower and "don't" not in raw_lower:
+                approval_status = "Approved"
+            elif "do not match" in raw_lower or "mismatch" in raw_lower:
+                approval_status = "NEED APPROVAL"
+
     if not approval_status:
         return None
     out = {"approval_status": approval_status, "hours_match": hours_match}
-    if approval_status in ("Complete", "Ready for Payment", "ready for payment"):
+    # Extract payment details when status indicates ready for payment
+    if approval_status in ("Complete", "Ready for Payment", "ready for payment", "Approved"):
         payment_details = _extract_payment_details_from_igentic_response(result)
         if payment_details:
             out["payment_details"] = payment_details
