@@ -525,12 +525,12 @@
                     </td>`;
                 tbody.appendChild(row);
             });
-
-            tbody.addEventListener('click', function(e) {
-                const btn = e.target.closest('.btn-view');
-                if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
-            });
         }
+
+        document.getElementById('documentsContainer').addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-view');
+            if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
         
         // View Document - fetch as blob and render with PDF.js
         async function viewDocument(docId, fileName) {
