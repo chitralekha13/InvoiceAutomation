@@ -248,6 +248,14 @@
         .file-date {
             font-size: 16px;
             color: #0a0101;
+            min-width: 0;
+            align-items: center;
+            gap: 8px;
+            overflow-wrap: break-word;
+        }
+
+        .file-date span {
+            flex-shrink: 0; 
         }
 
         .file-name {
@@ -260,7 +268,7 @@
         }
 
         .file-name span {
-            flex-shrink: 0; /* Icon doesn't shrink */
+            flex-shrink: 0; 
         }
 
         .file-org {
@@ -270,6 +278,10 @@
             align-items: center;
             gap: 8px;
             overflow-wrap: break-word;
+        }
+
+        .file-org span {
+            flex-shrink: 0; 
         }
 
         .file-status {
