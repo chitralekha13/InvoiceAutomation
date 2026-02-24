@@ -76,6 +76,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     "id": r.get("invoice_id") or r.get("invoice_uuid"),
                     "name": r.get("doc_name") or "document",
                     "uploadDate": r.get("created_at") or r.get("invoice_received_date") or "",
+                    "Status": r.get("status") or "",
+                    "OrganisationName": r.get("vendor_id") or "",
                 })
             return func.HttpResponse(
                 json.dumps({"documents": documents}),
