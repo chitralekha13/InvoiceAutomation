@@ -427,59 +427,60 @@
         
         function renderDocuments(documents) {
             const container = document.getElementById('documentsContainer');
-            
+
             if (!documents.length) {
                 container.innerHTML = `
                     <div class="empty-state">
-                    <div class="empty-icon">📭</div>
-                    <h3>No documents found</h3>
-                    <p>No invoices match your search, or none have been uploaded yet.</p>
-                </div>`;
+                        <div class="empty-icon">📭</div>
+                        <h3>No documents found</h3>
+                        <p>No invoices match your search, or none have been uploaded yet.</p>
+                    </div>`;
                 return;
             }
-            
+
+            // Set innerHTML FIRST
             container.innerHTML = `
-            <p style="margin-bottom:10px; color:#666; font-size:13px;">
-                <strong>${documents.length}</strong> document${documents.length !== 1 ? 's' : ''}
-            </p>
-            <documents-table>
-                <thead>
-                    <tr>
-                        <th>File Name</th>
-                        <th>Upload Date</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody"></tbody>
-            </documents-table>`;
-            
-            const tbody = document.getElementById('tableBody');
-            
+                <p style="margin-bottom:10px; color:#666; font-size:13px;">
+                    <strong>${documents.length}</strong> document${documents.length !== 1 ? 's' : ''}
+                </p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Upload Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>`;
+
+            // Get tbody AFTER innerHTML is set
+            const tbody = container.querySelector('#tableBody');
+
             documents.forEach(doc => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
-                    <div class="file-name">
-                        <span class="file-icon">${getFileIcon(doc.name)}</span>
-                        ${escapeHtml(doc.name)}
-                    </div>
-                </td>
-                <td class="file-date">${formatDate(doc.uploadDate)}</td>
-                <td>
-                    <button class="btn-view" onclick="downloadDocument('${escapeAttr(doc.id)}', '${escapeAttr(doc.name)}')">
-                        View / Download
-                    </button>
-                </td>`;
-
+                        <div class="file-name">
+                            <span class="file-icon">${getFileIcon(doc.name)}</span>
+                            ${escapeHtml(doc.name)}
+                        </div>
+                    </td>
+                    <td class="file-date">${formatDate(doc.uploadDate)}</td>
+                    <td>
+                        <button class="btn-view"
+                            data-id="${escapeAttr(doc.id)}"
+                            data-name="${escapeAttr(doc.name)}">
+                            View / Download
+                        </button>
+                    </td>`;
                 tbody.appendChild(row);
             });
-            
-             // Single delegated listener 
+
             tbody.addEventListener('click', function(e) {
                 const btn = e.target.closest('.btn-view');
                 if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
-        });
-            
+            });
         }
         
         // View Document - fetch as blob and render with PDF.js
