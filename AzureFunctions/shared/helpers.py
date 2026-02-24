@@ -12,7 +12,7 @@ from psycopg2.extras import RealDictCursor
 import jwt
 import re
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Union
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.client_credential import ClientCredential
 
@@ -863,11 +863,11 @@ def _extract_payment_details_from_igentic_response(resp: Dict) -> Optional[str]:
     return None
 
 
-def continue_igentic_session(session_id: str, user_input: Dict, request_label: str = "Continue session") -> Dict:
+def continue_igentic_session(session_id: str, user_input: Union[Dict, str], request_label: str = "Continue session") -> Dict:
     """
     Continue the same iGentic session (same chat). Use after process_with_igentic().
-    Same sessionId so the orchestrator keeps conversation context; send only the new info
-    (e.g. approved_hours); iGentic uses existing session context to respond.
+    Same sessionId so the orchestrator keeps conversation context. user_input can be
+    natural language (e.g. "approved hours is 152") or a dict; sent as-is to match chat flow.
     """
     import requests
     endpoint = os.environ.get('IGENTIC_ENDPOINT')

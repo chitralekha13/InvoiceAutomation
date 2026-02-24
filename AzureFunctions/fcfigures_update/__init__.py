@@ -58,6 +58,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             update_invoice,
             continue_igentic_session,
             _parse_continuation_response_for_approval,
+            _extract_payment_details_from_igentic_response,
         )
 
         existing = get_invoice(invoice_id)
@@ -78,16 +79,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 kwargs[sql_col] = val
 
         # When approved_hours is updated: continue the same iGentic session (same chat as upload).
-        # Send only the new approved_hours; orchestrator uses existing session context.
+        # Match orchestrator conversation: (1) "approved hours is {value}" -> Approved/Ready for payment
+        # (2) if Ready for payment, send "ok" to get Payment Summary / Payment Details JSON.
         if "approved_hours" in body:
             try:
                 timesheet = float(body["approved_hours"]) if body["approved_hours"] not in ("", None) else None
             except (TypeError, ValueError):
                 timesheet = None
             if timesheet is not None:
+                # Turn 1: "approved hours is 152" (same format as orchestrator chat)
                 result = continue_igentic_session(
                     invoice_id,
-                    {"action": "validate_approved_hours", "approved_hours": timesheet},
+                    f"approved hours is {int(timesheet) if timesheet == int(timesheet) else timesheet}",
                     request_label="Validate approved hours",
                 )
                 cmp_result = _parse_continuation_response_for_approval(result)
@@ -96,6 +99,16 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     kwargs["status"] = cmp_result.get("approval_status")
                     if cmp_result.get("payment_details") is not None:
                         kwargs["payment_details"] = cmp_result.get("payment_details")
+                    # Turn 2: if Ready for payment but no payment_details yet, send "ok" to get Payment Summary
+                    elif cmp_result.get("approval_status") in ("Approved", "Complete", "Ready for Payment", "ready for payment"):
+                        ok_result = continue_igentic_session(
+                            invoice_id,
+                            "ok",
+                            request_label="Get payment details",
+                        )
+                        payment_details = _extract_payment_details_from_igentic_response(ok_result)
+                        if payment_details:
+                            kwargs["payment_details"] = payment_details
 
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)
