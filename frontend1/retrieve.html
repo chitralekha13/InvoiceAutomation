@@ -129,7 +129,7 @@
             border-bottom: 1px solid #dee2e6;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
+            
         }
         
         .documents-table td {
@@ -139,18 +139,19 @@
             text-align: left;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
+            
         }
         
         .documents-table tr:hover {
             background: #f8f9fa;
         }
         
-        .documents-table th:nth-child(1), .documents-table td:nth-child(1) { max-width: 0;width: 20%; }
-        .documents-table th:nth-child(2), .documents-table td:nth-child(2) { max-width: 0;width: 25%; }
-        .documents-table th:nth-child(3), .documents-table td:nth-child(3) { max-width: 0;width: 20%; }
-        .documents-table th:nth-child(4), .documents-table td:nth-child(4) { max-width: 0;width: 20%; }
-        .documents-table th:nth-child(5), .documents-table td:nth-child(5) { max-width: 0;width: 15%; text-align: center; }
+        
+        .documents-table th:nth-child(2), .documents-table td:nth-child(2),
+        .documents-table th:nth-child(3), .documents-table td:nth-child(3),
+        .documents-table th:nth-child(4), .documents-table td:nth-child(4),
+        .documents-table th:nth-child(5), .documents-table td:nth-child(5) 
+        { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
         .file-icon {
             font-size: 20px;
@@ -252,10 +253,10 @@
         .file-name {
             font-size: 16px;
             color: #0a0101;
-            display: flex;
             min-width: 0;
             align-items: center;
             gap: 8px;
+            overflow-wrap: break-word;
         }
 
         .file-name span {
@@ -265,17 +266,17 @@
         .file-org {
             font-size: 16px;
             color: #0a0101;
-            display: flex;
             align-items: center;
             gap: 8px;
+            overflow-wrap: break-word;
         }
 
         .file-status {
             font-size: 16px;
             color: #0a0101;
-            display: flex;
             align-items: center;
             gap: 8px;
+            overflow-wrap: break-word;
         }
         
         .file-size {
