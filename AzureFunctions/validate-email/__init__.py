@@ -18,6 +18,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         conn = psycopg2.connect(os.environ["SQL_CONNECTION_STRING"])
         with conn.cursor() as cur:
+
+            cur.execute("""
+                UPDATE users
+                SET last_access_date = CURRENT_TIMESTAMP
+                WHERE email = %s
+                AND status = 'active'
+            """, (email,))
+
             cur.execute("""
                 SELECT org
                 FROM users
@@ -25,6 +33,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 AND status = 'active'
                 group by 1;
             """, (email,))
+            
             row = cur.fetchone()
         conn.close()
     except Exception as e:
