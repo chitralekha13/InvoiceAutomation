@@ -216,7 +216,13 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         }
         .payment-modal h3 { margin-bottom: 12px; color: #333; }
-        .payment-modal pre { background: #f5f5f5; padding: 16px; border-radius: 4px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+        .payment-modal-body { background: #f8f9fa; padding: 16px; border-radius: 4px; overflow-x: auto; font-size: 13px; }
+        .payment-details-table { width: 100%; border-collapse: collapse; }
+        .payment-details-table td { padding: 8px 12px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+        .payment-details-table .payment-label { font-weight: 600; color: #444; width: 40%; }
+        .payment-details-table .payment-value { color: #333; }
+        .payment-details-table .payment-section { font-weight: 600; color: #1e3a5f; padding-top: 12px; }
+        .payment-pre { white-space: pre-wrap; margin: 0; font-family: inherit; }
         .payment-modal-close { float: right; background: #666; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
@@ -303,7 +309,7 @@
         <div class="payment-modal-content">
             <button type="button" class="payment-modal-close" onclick="closePaymentModal()">Close</button>
             <h3>Payment Information</h3>
-            <pre id="paymentModalContent"></pre>
+            <div id="paymentModalContent" class="payment-modal-body"></div>
         </div>
     </div>
 
@@ -457,16 +463,56 @@
             return s === 'complete' || s === 'ready for payment' || s === 'approved';
         }
 
+        function formatPaymentLabel(key) {
+            return String(key)
+                .replace(/_/g, ' ')
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^\s+|\s+$/g, '')
+                .replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        }
+
+        function renderPaymentDetailsAsHtml(details) {
+            if (details == null || typeof details !== 'object') return '';
+            const rows = [];
+            function add(obj, prefix) {
+                for (const [k, v] of Object.entries(obj)) {
+                    if (v == null) continue;
+                    const label = formatPaymentLabel(k);
+                    if (typeof v === 'object' && v !== null && !Array.isArray(v) && (typeof v.getMonth !== 'function')) {
+                        rows.push('<tr><td colspan="2" class="payment-section">' + escapeHtml(label) + '</td></tr>');
+                        add(v, prefix + k + '.');
+                    } else {
+                        const val = Array.isArray(v) ? v.join(', ') : String(v);
+                        rows.push('<tr><td class="payment-label">' + escapeHtml(label) + '</td><td class="payment-value">' + escapeHtml(val) + '</td></tr>');
+                    }
+                }
+            }
+            add(details, '');
+            return rows.length ? '<table class="payment-details-table">' + rows.join('') + '</table>' : '';
+        }
+
         function viewPaymentInfo(invoiceId) {
             const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId);
             const el = document.getElementById('paymentModalContent');
             if (!el) return;
             if (!row) {
-                el.textContent = 'Invoice not found.';
+                el.innerHTML = '<p>Invoice not found.</p>';
             } else if (row.payment_details && String(row.payment_details).trim()) {
-                el.textContent = row.payment_details;
+                const raw = row.payment_details.trim();
+                let html = '';
+                try {
+                    const parsed = typeof raw === 'string' && (raw.startsWith('{') || raw.startsWith('[')) ? JSON.parse(raw) : raw;
+                    if (typeof parsed === 'object' && parsed !== null) {
+                        html = renderPaymentDetailsAsHtml(parsed);
+                    }
+                } catch (_) {}
+                if (html) {
+                    el.innerHTML = html;
+                } else {
+                    el.innerHTML = '<pre class="payment-pre">' + escapeHtml(raw) + '</pre>';
+                }
             } else {
-                el.textContent = 'No payment details stored yet. Payment details are generated when approved hours are submitted and verified via iGentic (hours match).';
+                el.innerHTML = '<p>No payment details stored yet. Payment details are generated when approved hours are submitted and verified via iGentic (hours match).</p>';
             }
             document.getElementById('paymentModal').style.display = 'flex';
         }

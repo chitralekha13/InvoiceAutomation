@@ -824,42 +824,59 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
         return {"status": "error", "error": str(e)}
 
 
+def _is_payment_like(obj: dict) -> bool:
+    """True if dict looks like payment details (has payment-related keys)."""
+    if not isinstance(obj, dict):
+        return False
+    keys_lower = [str(k).lower() for k in obj.keys()]
+    payment_keys = ("payment", "bank", "account", "amount", "payee", "beneficiary", "iban", "bic", "routing", "reference")
+    return any(pk in " ".join(keys_lower) for pk in payment_keys)
+
+
 def _extract_payment_details_from_igentic_response(resp: Dict) -> Optional[str]:
     """
-    Extract payment details JSON from iGentic response (payment agent output).
-    Looks for JSON block with payment-related keys in result/display_text.
+    Extract payment details from iGentic response only when iGentic provides structured payment data.
+    No fallback: we do not use raw text snippets. Payment details are only stored when approved hours
+    match vendor hours (validated by iGentic) and iGentic returns a proper payment object or ```json block.
     """
     data = resp.get("responseData") or resp.get("response_data") or resp
-    raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+    # 1) Explicit payment object from iGentic (structured API response)
+    for key in ("paymentSummary", "payment_details", "paymentDetails", "payment_summary"):
+        obj = data.get(key)
+        if isinstance(obj, dict) and _is_payment_like(obj):
+            return json.dumps(obj, indent=2)
+    res = data.get("result")
+    if isinstance(res, dict) and _is_payment_like(res):
+        return json.dumps(res, indent=2)
+    if isinstance(res, dict):
+        for key in ("paymentSummary", "payment_details", "paymentDetails", "payment_summary"):
+            obj = res.get(key)
+            if isinstance(obj, dict) and _is_payment_like(obj):
+                return json.dumps(obj, indent=2)
+    # 2) Markdown ```json ... ``` block in result/display_text (iGentic payment agent output)
+    raw = res or data.get("display_text") or data.get("displayText") or ""
     if isinstance(raw, dict):
+        if _is_payment_like(raw):
+            return json.dumps(raw, indent=2)
         raw = json.dumps(raw)
     if not raw or not isinstance(raw, str):
         return None
-    raw_lower = raw.lower()
-    if "ready for payment" not in raw_lower and "payment" not in raw_lower and "payment_summary" not in raw_lower:
-        return None
-    # Look for ```json ... ``` block
     match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
     if match:
         try:
             parsed = json.loads(match.group(1))
-            if isinstance(parsed, dict):
+            if isinstance(parsed, dict) and _is_payment_like(parsed):
                 return json.dumps(parsed, indent=2)
         except (json.JSONDecodeError, ValueError):
             pass
-    # Also try unlabeled ``` block with payment keys
     match = re.search(r'```\s*(\{[\s\S]*?"(?:payment|bank|account|amount|payee)[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
     if match:
         try:
             parsed = json.loads(match.group(1))
-            if isinstance(parsed, dict):
+            if isinstance(parsed, dict) and _is_payment_like(parsed):
                 return json.dumps(parsed, indent=2)
         except (json.JSONDecodeError, ValueError):
             pass
-    # Fallback: return raw text snippet if it mentions payment
-    if "payment" in raw_lower:
-        snippet = raw[:2000] if len(raw) > 2000 else raw
-        return snippet
     return None
 
 
