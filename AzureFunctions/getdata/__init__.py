@@ -112,8 +112,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
             try:
                 ctx = get_sharepoint_context()
-                file_content = ctx.web.get_file_by_server_relative_url(file_path).read()
-                logger.info(f"Fetching SharePoint file: {file_path}")
+                file = ctx.web.get_file_by_server_relative_url(file_path)
+                ctx.load(file)
+                ctx.execute_query()
+                file_content = file.read()
             except Exception as e:
                 logger.exception("SharePoint download failed")
                 return func.HttpResponse(
