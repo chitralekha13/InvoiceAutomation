@@ -56,8 +56,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         from shared.helpers import (
             get_invoice,
             update_invoice,
-            validate_timesheet_hours_with_igentic,
-            _compare_hours_locally,
+            continue_igentic_session,
+            _parse_continuation_response_for_approval,
         )
 
         existing = get_invoice(invoice_id)
@@ -77,21 +77,25 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     val = None
                 kwargs[sql_col] = val
 
-        # When approved_hours is updated: send to iGentic for timesheet vs vendor_hours comparison
+        # When approved_hours is updated: continue the same iGentic session (same chat as upload).
+        # Send only the new approved_hours; orchestrator uses existing session context.
         if "approved_hours" in body:
-            vendor_hrs = existing.get("invoice_hours") or existing.get("vendor_hours")
             try:
                 timesheet = float(body["approved_hours"]) if body["approved_hours"] not in ("", None) else None
             except (TypeError, ValueError):
                 timesheet = None
-            if vendor_hrs is not None and timesheet is not None:
-                cmp_result = validate_timesheet_hours_with_igentic(
-                    float(vendor_hrs), timesheet, invoice_id
+            if timesheet is not None:
+                result = continue_igentic_session(
+                    invoice_id,
+                    {"action": "validate_approved_hours", "approved_hours": timesheet},
+                    request_label="Validate approved hours",
                 )
-                if not cmp_result:
-                    cmp_result = _compare_hours_locally(float(vendor_hrs), timesheet)
-                kwargs["approval_status"] = cmp_result.get("approval_status")
-                kwargs["status"] = cmp_result.get("approval_status")
+                cmp_result = _parse_continuation_response_for_approval(result)
+                if cmp_result:
+                    kwargs["approval_status"] = cmp_result.get("approval_status")
+                    kwargs["status"] = cmp_result.get("approval_status")
+                    if cmp_result.get("payment_details") is not None:
+                        kwargs["payment_details"] = cmp_result.get("payment_details")
 
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)

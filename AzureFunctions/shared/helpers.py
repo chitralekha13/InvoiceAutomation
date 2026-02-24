@@ -785,12 +785,18 @@ def process_with_document_intelligence(pdf_url: str) -> Dict:
     return extracted_data
 
 # ============================================================================
-# iGentic Orchestrator Helpers
+# iGentic Orchestrator Helpers (single session per invoice)
 # ============================================================================
+# One session per invoice: sessionId = invoice_id.
+# - First: process_with_igentic() at upload (parsing/structuring).
+# - Later: continue_igentic_session(session_id, user_input) for follow-ups (e.g.
+#   approved_hours validation). Same sessionId so iGentic keeps chat context.
+
 
 def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Optional[str] = None) -> Dict:
     """
-    Process invoice with iGentic Orchestrator (same payload as Backend igentic_json_post).
+    Process invoice with iGentic (first call for this invoice). Uses sessionId = invoice_id
+    so follow-ups can continue the same chat via continue_igentic_session().
     
     Args:
         extracted_data: Dict with doc_name, full_text, extracted_text, timestamp, status
@@ -855,6 +861,49 @@ def _extract_payment_details_from_igentic_response(resp: Dict) -> Optional[str]:
         snippet = raw[:2000] if len(raw) > 2000 else raw
         return snippet
     return None
+
+
+def continue_igentic_session(session_id: str, user_input: Dict, request_label: str = "Continue session") -> Dict:
+    """
+    Continue the same iGentic session (same chat). Use after process_with_igentic().
+    Same sessionId so the orchestrator keeps conversation context; send only the new info
+    (e.g. approved_hours); iGentic uses existing session context to respond.
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_ENDPOINT')
+    if not endpoint:
+        return {"status": "error", "error": "IGENTIC_ENDPOINT not configured"}
+    payload = {
+        "request": request_label,
+        "userInput": json.dumps(user_input) if isinstance(user_input, dict) else str(user_input),
+        "sessionId": session_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.exception("iGentic continue session failed")
+        return {"status": "error", "error": str(e)}
+
+
+def _parse_continuation_response_for_approval(result: Dict) -> Optional[Dict]:
+    """Parse iGentic continuation response into approval_status, hours_match, payment_details."""
+    if not result or result.get("status") == "error":
+        return None
+    data = result.get("responseData") or result.get("response_data") or result
+    approval_status = data.get("approval_status") or (data.get("result") or {}).get("approval_status")
+    hours_match = data.get("hours_match")
+    if hours_match is None and isinstance(data.get("result"), dict):
+        hours_match = data["result"].get("hours_match")
+    if not approval_status:
+        return None
+    out = {"approval_status": approval_status, "hours_match": hours_match}
+    if approval_status in ("Complete", "Ready for Payment", "ready for payment"):
+        payment_details = _extract_payment_details_from_igentic_response(result)
+        if payment_details:
+            out["payment_details"] = payment_details
+    return out
 
 
 def validate_timesheet_hours_with_igentic(vendor_hours: float, timesheet: float, invoice_id: str) -> Optional[Dict]:

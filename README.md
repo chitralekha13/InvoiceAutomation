@@ -1,6 +1,7 @@
 # Invoice Automation
 
-Invoice upload → Document Intelligence → iGentic → PostgreSQL → Dashboard + Excel.
+Invoice upload → Document Intelligence → iGentic → PostgreSQL → Dashboard + Excel.  
+iGentic uses **one session per invoice** (sessionId = invoice_id); follow-ups (e.g. approved hours) use `continue_igentic_session()` so the same chat context is used.
 
 ## Structure
 
