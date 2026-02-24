@@ -105,7 +105,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json",
             )
         
-        if action == "stream":
+        if action == "stream" and document_id:
+            inv = get_invoice(document_id)
             sharepoint_url = inv.get("pdf_url")
             file_path = "/" + sharepoint_url.split("/", 3)[-1] if sharepoint_url.startswith("http") else sharepoint_url
 
