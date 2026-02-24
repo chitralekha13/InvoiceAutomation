@@ -231,8 +231,23 @@
         }
         
         .file-date {
-            font-size: 12px;
-            color: #999;
+            font-size: 16px;
+            color: #0a0101;
+        }
+
+        .file-name {
+            font-size: 16px;
+            color: #0a0101;
+        }
+
+        .file-org {
+            font-size: 16px;
+            color: #0a0101;
+        }
+
+        .file-status {
+            font-size: 16px;
+            color: #0a0101;
         }
         
         .file-size {
@@ -467,6 +482,8 @@
                         </div>
                     </td>
                     <td class="file-date">${formatDate(doc.uploadDate)}</td>
+                    <td class="file-org">${doc.OrganisationName}</td>
+                    <td class="file-status">${doc.Status}</td>
                     <td>
                         <button class="btn-view"
                             data-id="${escapeAttr(doc.id)}"
