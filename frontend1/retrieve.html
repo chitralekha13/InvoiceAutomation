@@ -439,25 +439,40 @@
                 const blob     = await response.blob();
                 const pdfBlob  = new Blob([blob], { type: 'application/pdf' });
                 
-                
-                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-                
                 if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
                 currentBlobUrl = URL.createObjectURL(pdfBlob);
 
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const dataUrl = e.target.result;
-                    document.getElementById('viewerObject').data = dataUrl;
-                    document.getElementById('viewerFrame').src   = dataUrl;
-                    document.getElementById('viewerFallback').href = currentBlobUrl;
-                };
-                reader.readAsDataURL(pdfBlob);
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                renderPDF(arrayBuffer);
 
             } catch (err) {
                 console.error('downloadDocument error:', err);
                 showMessage(`Could not download document: ${err.message}`, 'error');
                 closeViewer();
+            }
+        }
+
+        async function renderPDF(arrayBuffer) {
+            const container = document.getElementById('pdfContainer');
+            container.innerHTML = '<p style="color:#fff; padding:20px;">Loading PDF...</p>';
+
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            container.innerHTML = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page    = await pdf.getPage(i);
+                const scale   = 1.5;
+                const viewport = page.getViewport({ scale });
+
+                const canvas  = document.createElement('canvas');
+                canvas.width  = viewport.width;
+                canvas.height = viewport.height;
+                canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.3); max-width:100%;';
+
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                container.appendChild(canvas);
             }
         }
 
