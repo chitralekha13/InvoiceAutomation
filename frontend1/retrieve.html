@@ -256,16 +256,19 @@
         </div>
     </div>
 
-    <div id="viewerOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:flex-end; align-items:stretch;">
+    
+<div id="viewerOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:flex-end; align-items:stretch;">
     <div id="viewerPanel" style="width:55%; background:#fff; display:flex; flex-direction:column; box-shadow:-4px 0 24px rgba(0,0,0,0.15);">
-        <div id="viewerHeader" style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #e2e0d8; background:#f4f3ef; gap:12px; flex-shrink:0;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #e2e0d8; background:#f4f3ef; gap:12px; flex-shrink:0;">
             <span id="viewerFileName" style="font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
             <div style="display:flex; gap:8px; flex-shrink:0;">
-                <button class="btn btn-primary" onclick="triggerDownload()">Download</button>
-                <button class="btn btn-secondary" onclick="closeViewer()">Close</button>
+                <button id="btnDownload" style="padding:6px 14px; background:#2d6a4f; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px;">⬇ Download</button>
+                <button id="btnClose" style="padding:6px 14px; background:#fff; border:1px solid #ccc; border-radius:6px; cursor:pointer; font-size:13px;">✕ Close</button>
             </div>
         </div>
-        <iframe id="viewerFrame" src="" style="flex:1; border:none; width:100%;"></iframe>
+        <object id="viewerObject" type="application/pdf" style="flex:1; width:100%; border:none;">
+            <p style="padding:20px;">PDF cannot be displayed. <a id="viewerFallback" href="#">Click here to download</a></p>
+        </object>
     </div>
 </div>
 
@@ -407,44 +410,85 @@
             
         }
         
-        async function downloadDocument(docId, fileName) {
+        let currentDocId   = null;
+        let currentDocName = null;
+        let currentBlobUrl = null;
+
+        async function viewDocument(docId, fileName) {
+            currentDocId   = docId;
+            currentDocName = fileName;
+
+            document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('viewerOverlay').style.display = 'flex';
+
             try {
                 const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
                 const response = await fetch(API_BASE + '/api/getdata', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        userEmail: userEmail,
-                        accessToken: accessToken,
-                        action: 'stream',
-                        documentId: docId
+                        userEmail,
+                        accessToken,
+                        action:     'stream',
+                        documentId: docId,
                     })
                 });
-                
-                
-                
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(errText);
-                }
 
-                // It is a raw PDF
-                const blob    = await response.blob();
-                const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-                const blobUrl = URL.createObjectURL(pdfBlob);
+                if (!response.ok) throw new Error('Failed to load file');
 
-                // Open in viewer panel
-                document.getElementById('viewerFileName').textContent = fileName;
-                document.getElementById('viewerFrame').src = blobUrl;
-                document.getElementById('viewerOverlay').style.display = 'flex';
+                const blob     = await response.blob();
+                const pdfBlob  = new Blob([blob], { type: 'application/pdf' });
+                
+                // Revoke previous blob URL to free memory
+                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = URL.createObjectURL(pdfBlob);
 
-            } catch (error) {
-                console.error('Download error:', error);
-                showMessage(`Download failed: ${error.message}`, 'error');
+                // Use object tag instead of iframe — better browser support for blobs
+                document.getElementById('viewerObject').data = currentBlobUrl;
+                document.getElementById('viewerFallback').href = currentBlobUrl;
+
+            } catch (err) {
+                console.error('viewDocument error:', err);
+                showMessage(`Could not open document: ${err.message}`, 'error');
+                closeViewer();
             }
         }
+
+        // Wire up buttons directly by ID — no inline onclick needed
+        document.getElementById('btnClose').addEventListener('click', closeViewer);
+        document.getElementById('btnDownload').addEventListener('click', triggerDownload);
+
+        function closeViewer() {
+            document.getElementById('viewerOverlay').style.display = 'none';
+            document.getElementById('viewerObject').data = '';
+            if (currentBlobUrl) {
+                URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = null;
+            }
+            currentDocId   = null;
+            currentDocName = null;
+        }
+
+        async function triggerDownload() {
+            if (!currentBlobUrl) return;
+
+            const a    = document.createElement('a');
+            a.href     = currentBlobUrl;
+            a.download = currentDocName || 'document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Close on clicking dark background
+        document.getElementById('viewerOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeViewer();
+        });
+
+        // Close on Escape
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeViewer();
+        });
         
         
         function getFileIcon(fileName) {
