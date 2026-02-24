@@ -595,6 +595,7 @@
 
         // Search 
         function searchDocuments() {
+            if (!allDocuments.length) return; // Don't run until documents are loaded
             const term = document.getElementById('searchInput').value.toLowerCase().trim();
             renderDocuments(term ? allDocuments.filter(d => d.name.toLowerCase().includes(term)) : allDocuments);
         }
