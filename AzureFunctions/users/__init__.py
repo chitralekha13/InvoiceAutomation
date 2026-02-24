@@ -61,7 +61,7 @@ def get_users() -> func.HttpResponse:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT user_id, name, organisation, last_access_date, status, role
+                SELECT user_id, name, email, org, last_access_date, status, role
                 FROM users
                 ORDER BY user_id;
             """)
@@ -72,7 +72,7 @@ def get_users() -> func.HttpResponse:
 
 def add_user(req: func.HttpRequest) -> func.HttpResponse:
     body     = req.get_json()
-    required = ["name", "organisation", "status", "role"]
+    required = ["name", "email","org", "status", "role"]
     missing  = [f for f in required if not body.get(f)]
     if missing:
         return func.HttpResponse(
@@ -91,10 +91,10 @@ def add_user(req: func.HttpRequest) -> func.HttpResponse:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO users (name, organisation, last_access_date, status, role)
-                VALUES (%s, %s, CURRENT_DATE, %s, %s)
-                RETURNING user_id, name, organisation, last_access_date, status, role;
-            """, (body["name"], body["organisation"], body["status"], body["role"]))
+                INSERT INTO users (name, email,org, last_access_date, status, role)
+                VALUES (%s, %s, %s, CURRENT_DATE, %s, %s)
+                RETURNING user_id, name, email, org, last_access_date, status, role;
+            """, (body["name"], body["email"], body["org"], body["status"], body["role"]))
             new_row = dict(cur.fetchone())
         conn.commit()
 
