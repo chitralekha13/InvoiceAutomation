@@ -197,6 +197,22 @@
             margin-left: 4px;
         }
         .btn-view-payment:hover { background: #0e6b0e; }
+        .btn-payment-done {
+            background: #d83b01;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 4px;
+        }
+        .btn-payment-done.done {
+            background: #0078d4;
+        }
+        tr.row-payment-done {
+            background-color: #e0f5e0 !important;
+        }
         .payment-modal {
             position: fixed;
             inset: 0;
@@ -449,8 +465,17 @@
                     <td class="editable" data-field="template" data-id="${id}">${escapeHtml(row.template || '')}</td>
                     <td class="editable" data-field="current_comments" data-id="${id}">${escapeHtml(row.notes || row.current_comments || '')}</td>
                     <td class="editable" data-field="addl_comments" data-id="${id}">${escapeHtml(row.addl_comments || '')}</td>
-                    <td class="actions-col" data-invoice-id="${escapeHtml(id)}">${isCompleteRow(row) ? '<button type="button" class="btn-view-payment">View Payment</button> ' : ''}<button type="button" class="btn-delete-row">Delete</button></td>
+                    <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
+                        ${isCompleteRow(row)
+                            ? '<button type="button" class="btn-view-payment">View Payment</button> '
+                              + '<button type="button" class="btn-payment-done' + (row.payment_done ? ' done' : '') + '">Payment Done</button> '
+                            : ''}
+                        <button type="button" class="btn-delete-row">Delete</button>
+                    </td>
                 `;
+                if (row.payment_done) {
+                    tr.classList.add('row-payment-done');
+                }
                 tbody.appendChild(tr);
             });
             bindEditableCells();
@@ -537,6 +562,20 @@
                     const td = this.closest('.actions-col');
                     const id = td && td.dataset.invoiceId;
                     if (id) viewPaymentInfo(id);
+                };
+            });
+            document.querySelectorAll('.btn-payment-done').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    const td = this.closest('.actions-col');
+                    const id = td && td.dataset.invoiceId;
+                    if (!id) return;
+                    const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === id);
+                    if (!row) return;
+                    row.payment_done = true;
+                    this.classList.add('done');
+                    const tr = this.closest('tr');
+                    if (tr) tr.classList.add('row-payment-done');
                 };
             });
         }
