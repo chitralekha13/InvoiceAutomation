@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Retrieve Documents - Invoice Portal</title>
     <script src="config.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -162,6 +163,21 @@
             cursor: pointer;
             font-size: 12px;
         }
+
+        .btn-view {
+            background: #28a745; 
+            color: white; 
+            border: none;
+            padding: 8px 15px; 
+            border-radius: 3px; 
+            cursor: pointer; 
+            font-size: 12px;
+        }
+
+        .btn-view:hover { 
+            background: #218838; 
+        }
+
         
         .empty-state {
             text-align: center;
@@ -223,6 +239,63 @@
             font-size: 12px;
             color: #999;
         }
+
+        #viewerOverlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: flex-end;
+            align-items: stretch;
+        }
+
+        #viewerPanel {
+            width: 60%;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+        }
+
+        #viewerHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        #viewerFileName {
+            font-size: 14px; font-weight: 600;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        #viewerActions { display: flex; gap: 8px; flex-shrink: 0; }
+
+        .viewer-btn {
+            padding: 7px 16px; border-radius: 5px;
+            border: none; cursor: pointer; font-size: 13px; font-weight: 500;
+        }
+
+        .viewer-btn-download { background: #0078d4; color: #fff; }
+        .viewer-btn-download:hover { background: #006cbf; }
+        .viewer-btn-close { background: #fff; color: #333; border: 1px solid #ccc; }
+        .viewer-btn-close:hover { background: #f0f0f0; }
+
+        #pdfContainer {
+            flex: 1;
+            overflow-y: auto;
+            background: #525659;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
     </style>
 </head>
 <body>
@@ -257,18 +330,16 @@
     </div>
 
     
-<div id="viewerOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:flex-end; align-items:stretch;">
-    <div id="viewerPanel" style="width:55%; background:#fff; display:flex; flex-direction:column; box-shadow:-4px 0 24px rgba(0,0,0,0.15);">
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #e2e0d8; background:#f4f3ef; gap:12px; flex-shrink:0;">
-            <span id="viewerFileName" style="font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-            <div style="display:flex; gap:8px; flex-shrink:0;">
-                <button id="btnDownload" style="padding:6px 14px; background:#2d6a4f; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px;">⬇ Download</button>
-                <button id="btnClose" style="padding:6px 14px; background:#fff; border:1px solid #ccc; border-radius:6px; cursor:pointer; font-size:13px;">✕ Close</button>
+<div id="viewerOverlay">
+    <div id="viewerPanel">
+        <div id="viewerHeader">
+            <span id="viewerFileName"></span>
+            <div id="viewerActions">
+                <button class="viewer-btn viewer-btn-download" id="btnDownload">Download</button>
+                <button class="viewer-btn viewer-btn-close"    id="btnClose">Close</button>
             </div>
         </div>
-        <object id="viewerObject" type="application/pdf" style="flex:1; width:100%; border:none;">
-            <iframe id="viewerFrame" style="width:100%; height:100%; border:none;" src="about:blank"></iframe>
-        </object>
+        <div id="pdfContainer"></div>
     </div>
 </div>
 
@@ -287,21 +358,19 @@
         document.getElementById('userEmail').textContent =  userEmail;
         
         let allDocuments = [];
+        let currentDocId   = null;
+        let currentDocName = null;
+        let currentBlobUrl = null;
         
         // Load documents on page load
         window.addEventListener('load', () => {
             loadDocuments();
         });
-
-        document.getElementById('searchInput').addEventListener('input', () => {
-        const term = document.getElementById('searchInput').value.toLowerCase().trim();
-        renderDocuments(term ? allDocuments.filter(d => d.name.toLowerCase().includes(term)) : allDocuments);
-        });
-        
+    
         async function loadDocuments() {
             const loading   = document.getElementById('loading');
             const container = document.getElementById('documentsContainer');
-            //const message = document.getElementById('message');
+            const message = document.getElementById('message');
             
             loading.style.display = 'block';
             container.innerHTML = '';
@@ -311,7 +380,7 @@
                 const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
 
                 const controller = new AbortController();
-                const timer      = setTimeout(() => controller.abort(), 10000);
+                const timer      = setTimeout(() => controller.abort(), 20000);
                 
                 const response = await fetch(API_BASE + '/api/getdata', {
                     method: 'POST',
@@ -340,8 +409,8 @@
                 throw new Error('Invalid JSON from server: ' + text.slice(0, 200));
                 }
 
-            allDocuments = Array.isArray(data.documents) ? data.documents : [];
-            renderDocuments(allDocuments);
+                allDocuments = Array.isArray(data.documents) ? data.documents : [];
+                renderDocuments(allDocuments);
                 
             } catch (err) {
             console.error('loadDocuments error:', err);
@@ -359,7 +428,7 @@
         function renderDocuments(documents) {
             const container = document.getElementById('documentsContainer');
             
-            if (documents.length === 0) {
+            if (!documents.length) {
                 container.innerHTML = `
                     <div class="empty-state">
                     <div class="empty-icon">📭</div>
@@ -370,21 +439,19 @@
             }
             
             container.innerHTML = `
-            <div class="stats-bar">
-                <span class="doc-count"><strong>${documents.length}</strong> document${documents.length !== 1 ? 's' : ''}</span>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>File Name</th>
-                            <th>Upload Date</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
-            </div>`;
+            <p style="margin-bottom:10px; color:#666; font-size:13px;">
+                <strong>${documents.length}</strong> document${documents.length !== 1 ? 's' : ''}
+            </p>
+            <documents-table>
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>Upload Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </documents-table>`;
             
             const tbody = document.getElementById('tableBody');
             
@@ -407,20 +474,22 @@
                 tbody.appendChild(row);
             });
             
+             // Single delegated listener 
+            tbody.addEventListener('click', function(e) {
+                const btn = e.target.closest('.btn-view');
+                if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
             
         }
         
-        let currentDocId   = null;
-        let currentDocName = null;
-        let currentBlobUrl = null;
-
-        async function downloadDocument(docId, fileName) {
+        // View Document - fetch as blob and render with PDF.js
+        async function viewDocument(docId, fileName) {
             currentDocId   = docId;
             currentDocName = fileName;
 
             document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('pdfContainer').innerHTML      = '<p style="color:#fff; padding:40px; text-align:center;">Loading...</p>';
             document.getElementById('viewerOverlay').style.display = 'flex';
-            //document.getElementById('pdfContainer').innerHTML = '<p style="color:#fff; padding:20px;">Loading PDF...</p>';
 
             try {
                 const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
@@ -435,7 +504,10 @@
                     })
                 });
 
-                if (!response.ok) throw new Error('Failed to load file');
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errText}`);
+                }
 
                 const blob     = await response.blob();
                 const pdfBlob  = new Blob([blob], { type: 'application/pdf' });
@@ -444,59 +516,51 @@
                 currentBlobUrl = URL.createObjectURL(pdfBlob);
 
                 const arrayBuffer = await pdfBlob.arrayBuffer();
-                renderPDF(arrayBuffer);
+                await renderPDF(arrayBuffer);
 
-            } catch (err) {
-                console.error('downloadDocument error:', err);
-                showMessage(`Could not download document: ${err.message}`, 'error');
-                //document.getElementById('pdfContainer').innerHTML = `<p style="color:red; padding:20px;">${err.message}</p>`;
-                closeViewer();
+            }   catch (err) {
+            console.error('viewDocument error:', err);
+            document.getElementById('pdfContainer').innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to load: ${err.message}</p>`;
             }
         }
 
+        //Render PDF using PDF.js
         async function renderPDF(arrayBuffer) {
             const container = document.getElementById('pdfContainer');
-            container.innerHTML = '<p style="color:#fff; padding:20px;">Loading PDF...</p>';
+            container.innerHTML = '<p style="color:#fff; padding:40px; text-align:center;">Rendering pages...</p>';
 
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            try {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             container.innerHTML = '';
 
             for (let i = 1; i <= pdf.numPages; i++) {
-                const page    = await pdf.getPage(i);
-                const scale   = 1.5;
-                const viewport = page.getViewport({ scale });
+                const page     = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
 
-                const canvas  = document.createElement('canvas');
-                canvas.width  = viewport.width;
-                canvas.height = viewport.height;
-                canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.3); max-width:100%;';
+                const canvas   = document.createElement('canvas');
+                canvas.width   = viewport.width;
+                canvas.height  = viewport.height;
+                canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.4); max-width:100%; display:block;';
 
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
                 container.appendChild(canvas);
             }
+
+        } catch (err) {
+            console.error('renderPDF error:', err);
+            container.innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to render PDF: ${err.message}</p>`;
         }
+    
+    }
 
-        // Wire up buttons directly by ID — no inline onclick needed
-        document.getElementById('btnClose').addEventListener('click', closeViewer);
-        document.getElementById('btnDownload').addEventListener('click', triggerDownload);
-
-        function closeViewer() {
-            document.getElementById('viewerOverlay').style.display = 'none';
-            document.getElementById('viewerObject').data = '';
-            document.getElementById('viewerFrame').src   = 'about:blank';
-            if (currentBlobUrl) {
-                URL.revokeObjectURL(currentBlobUrl);
-                currentBlobUrl = null;
-            }
-            currentDocId   = null;
-            currentDocName = null;
-        }
-
-        async function triggerDownload() {
+        //Download the PDF file
+        function triggerDownload() {
             if (!currentBlobUrl) return;
-
             const a    = document.createElement('a');
             a.href     = currentBlobUrl;
             a.download = currentDocName || 'document.pdf';
@@ -505,15 +569,41 @@
             document.body.removeChild(a);
         }
 
-        // Close on clicking dark background
+        //Close Viewer and cleanup
+       function closeViewer() {
+        document.getElementById('viewerOverlay').style.display = 'none';
+        document.getElementById('pdfContainer').innerHTML      = '';
+        if (currentBlobUrl) {
+            URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = null;
+        }
+        currentDocId   = null;
+        currentDocName = null;
+    }
+
+        //Viewer button listeners
+        document.getElementById('btnDownload').addEventListener('click', triggerDownload);
+        document.getElementById('btnClose').addEventListener('click', closeViewer);
+
         document.getElementById('viewerOverlay').addEventListener('click', function(e) {
             if (e.target === this) closeViewer();
         });
 
-        // Close on Escape
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') closeViewer();
         });
+
+        // Search 
+        function searchDocuments() {
+            const term = document.getElementById('searchInput').value.toLowerCase().trim();
+            renderDocuments(term ? allDocuments.filter(d => d.name.toLowerCase().includes(term)) : allDocuments);
+        }
+
+        document.getElementById('searchInput').addEventListener('input', searchDocuments);
+        document.getElementById('searchInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') searchDocuments();
+        });
+        
         
         
         function getFileIcon(fileName) {
@@ -568,12 +658,6 @@
         return String(str).replace(/'/g, "\\'");
     }
         
-        // Search on Enter key
-        document.getElementById('searchInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                searchDocuments();
-            }
-        });
     </script>
 </body>
 </html>
