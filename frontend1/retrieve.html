@@ -420,7 +420,7 @@
 
             document.getElementById('viewerFileName').textContent = fileName;
             document.getElementById('viewerOverlay').style.display = 'flex';
-            document.getElementById('pdfContainer').innerHTML = '<p style="color:#fff; padding:20px;">Loading PDF...</p>';
+            //document.getElementById('pdfContainer').innerHTML = '<p style="color:#fff; padding:20px;">Loading PDF...</p>';
 
             try {
                 const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
@@ -449,7 +449,7 @@
             } catch (err) {
                 console.error('downloadDocument error:', err);
                 showMessage(`Could not download document: ${err.message}`, 'error');
-                document.getElementById('pdfContainer').innerHTML = `<p style="color:red; padding:20px;">${err.message}</p>`;
+                //document.getElementById('pdfContainer').innerHTML = `<p style="color:red; padding:20px;">${err.message}</p>`;
                 closeViewer();
             }
         }
