@@ -146,6 +146,12 @@
             background: #f8f9fa;
         }
         
+        .documents-table th:nth-child(1), .documents-table td:nth-child(1) { max-width: 0;width: 20%; }
+        .documents-table th:nth-child(2), .documents-table td:nth-child(2) { max-width: 0;width: 25%; }
+        .documents-table th:nth-child(3), .documents-table td:nth-child(3) { max-width: 0;width: 20%; }
+        .documents-table th:nth-child(4), .documents-table td:nth-child(4) { max-width: 0;width: 20%; }
+        .documents-table th:nth-child(5), .documents-table td:nth-child(5) { max-width: 0;width: 15%; text-align: center; }
+
         .file-icon {
             font-size: 20px;
             margin-right: 10px;
@@ -247,8 +253,13 @@
             font-size: 16px;
             color: #0a0101;
             display: flex;
+            min-width: 0;
             align-items: center;
             gap: 8px;
+        }
+
+        .file-name span {
+            flex-shrink: 0; /* Icon doesn't shrink */
         }
 
         .file-org {
