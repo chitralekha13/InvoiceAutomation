@@ -111,6 +111,32 @@
         }
         .metric-card.clickable.active .value,
         .metric-card.clickable.active .label { color: white; }
+        .panes-wrapper { display: flex; flex-direction: column; gap: 24px; }
+        .pane {
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .pane-title {
+            padding: 16px 24px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        .pane-body { padding: 20px 24px; }
+        .btn-manage-users {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-manage-users:hover { background: #005a9e; }
+        .sow-placeholder { color: #666; font-size: 14px; }
         .table-section {
             background: white;
             border-radius: 6px;
@@ -294,35 +320,52 @@
             <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')"><div class="value" id="mNeedApproval">0</div><div class="label">NEED APPROVAL</div></div>
         </div>
 
-        <div class="table-section">
-            <div class="table-title">Invoice Management Table</div>
-            <div class="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                            <th>S.No</th>
-                            <th>ID (UUID)</th>
-                            <th>Doc Name</th>
-                            <th>Invoice No</th>
-                            <th>Consultancy Name</th>
-                            <th>Resource Name</th>
-                            <th>Pay Period Start</th>
-                            <th>Pay Period End</th>
-                            <th>Net Terms</th>
-                            <th>Vendor Hours</th>
-                            <th>Approved Hours</th>
-                            <th>Status</th>
-                            <th>Pay Rate</th>
-                            <th>Invoice Amount</th>
-                            <th>Date Inv Recd</th>
-                            <th>Due Date</th>
-                            <th>Project Name</th>
-                            <th>Payment initiated on</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
+        <div class="panes-wrapper">
+            <div class="pane table-section">
+                <div class="table-title">Invoice Management Table</div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                <th>S.No</th>
+                                <th>ID (UUID)</th>
+                                <th>Doc Name</th>
+                                <th>Invoice No</th>
+                                <th>Consultancy Name</th>
+                                <th>Resource Name</th>
+                                <th>Pay Period Start</th>
+                                <th>Pay Period End</th>
+                                <th>Net Terms</th>
+                                <th>Vendor Hours</th>
+                                <th>Approved Hours</th>
+                                <th>Status</th>
+                                <th>Pay Rate</th>
+                                <th>Invoice Amount</th>
+                                <th>Date Inv Recd</th>
+                                <th>Due Date</th>
+                                <th>Project Name</th>
+                                <th>Payment initiated on</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="pane">
+                <div class="pane-title">Users</div>
+                <div class="pane-body">
+                    <button class="btn-manage-users" onclick="window.open('users.html', '_blank')">Manage Users</button>
+                    <p style="margin-top:12px;color:#666;font-size:14px;">Open Manage Users to view and manage user accounts.</p>
+                </div>
+            </div>
+
+            <div class="pane">
+                <div class="pane-title">SOW Info</div>
+                <div class="pane-body">
+                    <p class="sow-placeholder">SOW information will be displayed here.</p>
+                </div>
             </div>
         </div>
     </div>
