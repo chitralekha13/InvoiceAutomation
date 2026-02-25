@@ -100,7 +100,7 @@ def add_user(body):
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO users (firstname, lastname, email, org, last_access_date, status, role)
-                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, %s, %s)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s)
                 RETURNING firstname, lastname, email, org, last_access_date, status, role;
             """, (body["firstname"], body["lastname"], body["email"], body["org"], body["status"], body["role"]))
             new_row = dict(cur.fetchone())
