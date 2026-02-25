@@ -128,7 +128,7 @@
         });
 
         // Login button handler
-        document.getElementById('loginBtn').addEventListener('click', async () => {
+        document.getElementById('loginMicrosoft').addEventListener('click', async () => {
             if (!clientId) {
                 document.getElementById('error').textContent = 'Login not configured. Add AZURE_CLIENT_ID to GitHub Secrets (see PIPELINE_SETUP.md).';
                 document.getElementById('error').style.display = 'block';
@@ -137,11 +137,11 @@
             if (loginInProgress) return;
             loginInProgress = true;
 
-            const loginBtn = document.getElementById('loginBtn');
+            const loginMicrosoft = document.getElementById('loginMicrosoft');
             const loading = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
             
-            loginBtn.disabled = true;
+            loginMicrosoft.disabled = true;
             loading.style.display = 'block';
             errorDiv.style.display = 'none';
 
@@ -176,7 +176,7 @@
                 errorDiv.style.display = 'block';
             } finally {
                 loginInProgress = false;
-                loginBtn.disabled = false;
+                loginMicrosoft.disabled = false;
                 loading.style.display = 'none';
             }
         });
