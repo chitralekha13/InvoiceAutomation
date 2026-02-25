@@ -46,9 +46,48 @@
             transition: background 0.3s;
             width: 100%;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         .btn-login:hover    { background: #005a9e; }
         .btn-login:disabled { background: #ccc; cursor: not-allowed; }
+
+        .btn-google {
+            background: white;
+            color: #444;
+            border: 1px solid #ddd;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-google:hover    { background: #f5f5f5; }
+        .btn-google:disabled { background: #ccc; cursor: not-allowed; }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #ddd;
+        }
 
         .error  { color: #d13438; margin-top: 20px; font-size: 14px; display: none; }
         .loading { display: none; margin-top: 20px; }
@@ -74,20 +113,32 @@
         <h1>Invoice Portal</h1>
         <p>Secure document management system</p>
 
-        <br><br>
+        <br>
 
-        <button id="loginCommon" class="btn-login">
-        Sign in with Microsoft Personal
+        <button id="loginMicrosoft" class="btn-login">
+            <svg width="20" height="20" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft
         </button>
 
-        <br><br>
+        <div class="divider">or</div>
 
-        <button id="loginTenant" class="btn-login">
-        Sign in with Organization (Microsoft) / Google
+        <button id="loginGoogle" class="btn-google">
+            <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Sign in with Google
         </button>
 
-        <br><br>
-        <!--<button id="loginBtn" class="btn-login">Sign in with Microsoft / Google</button> -->
+        <br>
+        
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p>Signing in...</p>
@@ -97,83 +148,106 @@
 
     <script>
         const appConfig   = window.APP_CONFIG || {};
-        const clientId    = appConfig.clientId || '';
+        const clientId    = appConfig.clientId    || '';
         const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
 
+        // ── Authorities ────────────────────────────────────────────────────────
+        // /common  → Microsoft personal (@outlook, @hotmail) + any org (@company.com)
+        // /tenant  → Your tenant only, where Google External Identity federation lives
         const commonAuthority = "https://login.microsoftonline.com/common";
         const tenantAuthority = `https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034`;
 
-        sessionStorage.clear();
-        localStorage.clear();
+        const microsoftLoginRequest = {
+            scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
+            prompt: "login"
+        };
 
-        const loginRequest  = { scopes: ['openid', 'offline_access', 'profile', 'User.Read'], prompt:"login"};
+        const googleLoginRequest = {
+            scopes: ['openid', 'offline_access', 'profile'],
+            prompt: "login"
+        };
         
-        function createMsalInstance(authority){
-            return new msal.PublicClientApplication({
-            auth:{
-                clientId:clientId,
-                authority:authority,
-                redirectUri:redirectUri
-                },
-            cache:{
-                cacheLocation:"sessionStorage",
-                storeAuthStateInCookie:false
-                }
-              });
-            }
+        const apiTokenRequest = {
+            scopes: [`api://${clientId}/access_as_user`]
+        };
+
         let msalInstance;
-        let loginInProgress=false;
-        
-        async function acquireRealToken(account) {
-            try {
-                const response = await msalInstance.acquireTokenSilent({
-                    ...loginRequest,
-                    account: account
-                });
+        let loginInProgress = false;
 
-                // Guard: if accessToken is missing/empty
-                if (response.accessToken && response.accessToken.trim() !== '') {
-                    console.log("Token acquired silently.");
-                    return response.accessToken;
+        function createMsalInstance(authority) {
+            return new msal.PublicClientApplication({
+                auth: {
+                    clientId:    clientId,
+                    authority:   authority,
+                    redirectUri: redirectUri
+                },
+                cache: {
+                    cacheLocation:          "sessionStorage",
+                    storeAuthStateInCookie: false
                 }
+            });
+        }
 
-                throw new Error("Silent token was empty – falling back to popup.");
-
-            } catch (silentErr) {
-                console.warn("Silent token acquisition failed:", silentErr);
-
-                // Popup fallback – always returns a genuine access token
-                const popupResponse = await msalInstance.acquireTokenPopup({
-                    ...loginRequest,
-                    account: account
-                });
-
-                if (!popupResponse.accessToken || popupResponse.accessToken.trim() === '') {
-                    throw new Error("Popup token acquisition also returned an empty token.");
-                }
-
-                console.log("Token acquired via popup fallback.");
-                return popupResponse.accessToken;
+        function clearMsalCache() {
+            [sessionStorage, localStorage].forEach(store => {
+                Object.keys(store)
+                    .filter(k => k.startsWith("msal.") || k.startsWith("msal|"))
+                    .forEach(k => store.removeItem(k));
+            });
+        }
+        function assertValidJwt(token, source) {
+            if (!token || token.trim() === '') {
+                throw new Error(`${source} returned an empty token.`);
+            }
+            if (token.split('.').length !== 3) {
+                throw new Error(
+                    `${source} returned a malformed token (${token.split('.').length} segments). ` +
+                    `Ensure "api://${clientId}/access_as_user" is exposed in Azure Portal ` +
+                    `under App Registrations → Expose an API.`
+                );
             }
         }
 
+        async function acquireApiToken(account) {
+            const request = { ...apiTokenRequest, account };
 
+
+            try {
+                const silent = await msalInstance.acquireTokenSilent(request);
+                assertValidJwt(silent.accessToken, "Silent API token");
+                console.log("API token acquired silently.");
+                return silent.accessToken;
+            } catch (silentErr) {
+                console.warn("Silent API token failed:", silentErr.message);
+            }
+
+            const popup = await msalInstance.acquireTokenPopup(request);
+            assertValidJwt(popup.accessToken, "Popup API token");
+            console.log("API token acquired via popup.");
+            return popup.accessToken;
+        }
+
+        // Sends the API token to Function App to check if email is allowed
         async function validateUserEmail(email) {
             let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || "";
-            let base = (API_BASE || "").trim().replace(/\/+$/, "");
+            let base = API_BASE.trim().replace(/\/+$/, "");
             if (base.startsWith("http://")) base = "https://" + base.slice(7);
-            const url = base ? base + "/api/validate-email" : "";
+
+            if (!base) throw new Error("apiBaseUrl not configured in config.js");
 
             const token = sessionStorage.getItem("accessToken");
+            const url   = base + "/api/validate-email";
 
             const res = await fetch(url, {
-                method: "POST",
+                method:  "POST",
                 headers: {
                     "Content-Type":  "application/json",
-                    "Authorization": `Bearer ${token}`   
+                    "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ email: email })
+                body: JSON.stringify({ email })
             });
+
+            if (!res.ok) throw new Error(`validate-email returned HTTP ${res.status}`);
 
             const result = await res.json();
 
@@ -187,85 +261,70 @@
             return true;
         }
 
-        async function loginFlow(authority, type) {
-            if (!clientId) {
-                showError("Client ID missing in config.js");
-                return;
+        function handleLoginError(e) {
+            console.error("Login flow error:", e);
+            if (e.errorCode === "interaction_in_progress") {
+                clearMsalCache();
+                showError("Login conflict detected. Please click the button again.");
+            } else if (e.errorCode === "user_cancelled") {
+                showError("Login was cancelled. Please try again.");
+            } else if (e.errorCode === "consent_required" || e.errorCode === "interaction_required") {
+                showError("Additional permissions required. Please try signing in again.");
+            } else {
+                showError("Login failed: " + (e.message || "Please try again."));
             }
+        }
 
+        async function loginFlow(authority, type, loginRequest) {
+            if (!clientId)       { showError("Client ID missing in config.js"); return; }
             if (loginInProgress) return;
+
             loginInProgress = true;
+            document.getElementById("loading").style.display = "block";
+            document.getElementById("error").style.display   = "none";
 
-            const loading = document.getElementById("loading");
-            loading.style.display = "block";
-            document.getElementById("error").style.display = "none";
-
-            Object.keys(sessionStorage)
-                .filter(k => k.startsWith("msal.") || k.startsWith("msal|"))
-                .forEach(k => sessionStorage.removeItem(k));
-            Object.keys(localStorage)
-                .filter(k => k.startsWith("msal.") || k.startsWith("msal|"))
-                .forEach(k => localStorage.removeItem(k));
+            clearMsalCache();
 
             try {
-                // Always create a FRESH instance — never reuse across logins
                 msalInstance = createMsalInstance(authority);
                 await msalInstance.initialize();
 
+                // Login popup 
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
 
-                sessionStorage.setItem("loginType",  type);
-                sessionStorage.setItem("userEmail",  loginResponse.account.username);
-                sessionStorage.setItem("userName",   loginResponse.account.name);
+                sessionStorage.setItem("loginType", type);
+                sessionStorage.setItem("userEmail", loginResponse.account.username);
+                sessionStorage.setItem("userName",  loginResponse.account.name);
 
-                // Acquire real token with silent → popup fallback
-                const accessToken = await acquireRealToken(loginResponse.account);
-                sessionStorage.setItem("accessToken", accessToken);
+                // Acquire API token
+                // apiTokenRequest — same for Microsoft personal, org, Google.
+                // aud = api://<clientId>  for your Function App
+                const apiAccessToken = await acquireApiToken(loginResponse.account);
+                sessionStorage.setItem("accessToken", apiAccessToken);
 
+                // Validate email + redirect
                 const allowed = await validateUserEmail(loginResponse.account.username);
                 if (!allowed) return;
 
-                redirectToUpload();
+                window.location.href = "upload.html";
 
             } catch (e) {
-                console.error("Login flow error:", e);
-
-                // FIX: Give specific error messages for the most common second-login failures
-                if (e.errorCode === "interaction_in_progress") {
-                    // Stale MSAL lock — clear it and ask user to retry
-                    Object.keys(sessionStorage)
-                        .filter(k => k.startsWith("msal"))
-                        .forEach(k => sessionStorage.removeItem(k));
-                    showError("Login conflict detected. Please click the button again.");
-                } else if (e.errorCode === "user_cancelled") {
-                    showError("Login was cancelled. Please try again.");
-                } else {
-                    showError("Login failed: " + (e.message || "Please try again."));
-                }
+                handleLoginError(e);
             } finally {
-                loading.style.display = "none";
+                document.getElementById("loading").style.display = "none";
                 loginInProgress = false;
             }
         }
 
-        document.getElementById("loginCommon").onclick = () => {
-            loginFlow(commonAuthority, "common");
-        };
 
-        document.getElementById("loginTenant").onclick = () => {
-            loginFlow(tenantAuthority, "tenant");
-        };
+        // Microsoft button → /common authority + microsoftLoginRequest
 
-        
-        function showError(msg) {
-            const div = document.getElementById("error");
-            div.textContent = msg;
-            div.style.display = "block";
-        }
+        document.getElementById("loginMicrosoft").onclick = () =>
+            loginFlow(commonAuthority, "microsoft", microsoftLoginRequest);
 
-        function redirectToUpload() {
-            window.location.href = "upload.html";
-        }
+        // Google button → /tenant authority + googleLoginRequest
+        document.getElementById("loginGoogle").onclick = () =>
+            loginFlow(tenantAuthority, "google", googleLoginRequest);
 
     </script>
 </body>
