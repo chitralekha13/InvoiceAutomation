@@ -503,11 +503,12 @@
                 </p>
                 <table class="documents-table">
                     <colgroup>
+                        <col style="width:18%">
+                        <col style="width:14%">
+                        <col style="width:18%">
+                        <col style="width:12%">
+                        <col style="width:18%">
                         <col style="width:20%">
-                        <col style="width:25%">
-                        <col style="width:20%">
-                        <col style="width:20%">
-                        <col style="width:15%">
                     </colgroup>
                     <thead>
                         <tr>
@@ -515,6 +516,7 @@
                             <th>Upload Date</th>
                             <th>Organisation</th>
                             <th>Status</th>
+                            <th>Payment initiated on</th>
                             <th style="text-align:center;">Action</th>
                         </tr>
                     </thead>
@@ -536,6 +538,7 @@
                     <td class="file-date">${formatDate(doc.uploadDate)}</td>
                     <td class="file-org">${doc.OrganisationName}</td>
                     <td class="file-status">${doc.Status}</td>
+                    <td class="file-payment-initiated">${doc.bill_pay_initiated_on ? formatDate(doc.bill_pay_initiated_on) : '—'}</td>
                     <td>
                         <button class="btn-view"
                             data-id="${escapeAttr(doc.id)}"

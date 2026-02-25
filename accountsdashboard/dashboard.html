@@ -318,9 +318,7 @@
                             <th>Date Inv Recd</th>
                             <th>Due Date</th>
                             <th>Project Name</th>
-                            <th>Template</th>
-                            <th>Current Comments</th>
-                            <th>Addl Comments</th>
+                            <th>Payment initiated on</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody"></tbody>
@@ -451,7 +449,7 @@
             tbody.innerHTML = '';
             if (filteredRows.length === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="21" style="text-align:center;padding:24px;color:#666;">No invoices to display. Upload invoices via the Vendor Portal or check that the API and database are connected.</td>';
+                tr.innerHTML = '<td colspan="19" style="text-align:center;padding:24px;color:#666;">No invoices to display. Upload invoices via the Vendor Portal or check that the API and database are connected.</td>';
                 tbody.appendChild(tr);
                 return;
             }
@@ -477,9 +475,7 @@
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
                     <td class="editable" data-field="due_date" data-id="${id}">${formatDate(row.due_date || row.dueDate)}</td>
                     <td class="editable" data-field="project_name" data-id="${id}">${escapeHtml(row.project_name || '')}</td>
-                    <td class="editable" data-field="template" data-id="${id}">${escapeHtml(row.template || '')}</td>
-                    <td class="editable" data-field="current_comments" data-id="${id}">${escapeHtml(row.notes || row.current_comments || '')}</td>
-                    <td class="editable" data-field="addl_comments" data-id="${id}">${escapeHtml(row.addl_comments || '')}</td>
+                    <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
                     <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
                         ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment">View Payment</button>' : ''}
                     </td>
@@ -759,7 +755,7 @@
                 window.open(excelUrl, '_blank');
             } else {
                 // Fallback: export filtered rows as CSV
-                const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Status','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Template','Current Comments','Addl Comments'];
+                const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Status','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Payment initiated on'];
                 const rows = filteredRows.map((r, i) => [
                     i + 1, r.invoice_uuid || r.invoice_id, r.doc_name, r.invoice_number,
                     r.vendor_name || r.consultancy_name, r.resource_name,
@@ -768,8 +764,7 @@
                     r.pay_rate ?? '',
                     r.invoice_amount ?? '',
                     r.invoice_received_date || r.date_inv_recd || r.created_at || '',
-                    r.due_date || r.dueDate || '', r.project_name || '', r.template || '',
-                    r.notes || r.current_comments || '', r.addl_comments || ''
+                    r.due_date || r.dueDate || '', r.project_name || '', r.bill_pay_initiated_on ? (r.bill_pay_initiated_on.toString().slice(0, 19)) : ''
                 ]);
                 const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
