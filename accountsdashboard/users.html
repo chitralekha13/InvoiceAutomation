@@ -469,7 +469,7 @@
       const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
       const res  = await fetch(API_BASE + '/api/users', {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, organisation: org, email, status, role,action: "adduser" }),
+        body: JSON.stringify({ name, email, org, status, role,action: "adduser" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add user");
