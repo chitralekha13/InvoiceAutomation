@@ -158,21 +158,29 @@
         const tenantAuthority = `https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034`;
 
         const microsoftLoginRequest = {
-            scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
+            scopes: [
+                'openid',
+                'offline_access',
+                'profile',
+                'User.Read',
+                `api://${clientId}/access_as_user`
+            ],
             prompt: "login"
         };
 
         const googleLoginRequest = {
-            scopes: ['openid', 'offline_access', 'profile'],
+            scopes: [
+                'openid',
+                'offline_access',
+                'profile',
+                `api://${clientId}/access_as_user`
+            ],
             prompt: "login"
         };
         
-        const apiTokenRequest = {
-            scopes: [`api://${clientId}/access_as_user`]
-        };
-
         let msalInstance;
         let loginInProgress = false;
+
 
         function createMsalInstance(authority) {
             return new msal.PublicClientApplication({
@@ -195,6 +203,7 @@
                     .forEach(k => store.removeItem(k));
             });
         }
+
         function assertValidJwt(token, source) {
             if (!token || token.trim() === '') {
                 throw new Error(`${source} returned an empty token.`);
@@ -206,25 +215,6 @@
                     `under App Registrations → Expose an API.`
                 );
             }
-        }
-
-        async function acquireApiToken(account) {
-            const request = { ...apiTokenRequest, account };
-
-
-            try {
-                const silent = await msalInstance.acquireTokenSilent(request);
-                assertValidJwt(silent.accessToken, "Silent API token");
-                console.log("API token acquired silently.");
-                return silent.accessToken;
-            } catch (silentErr) {
-                console.warn("Silent API token failed:", silentErr.message);
-            }
-
-            const popup = await msalInstance.acquireTokenPopup(request);
-            assertValidJwt(popup.accessToken, "Popup API token");
-            console.log("API token acquired via popup.");
-            return popup.accessToken;
         }
 
         // Sends the API token to Function App to check if email is allowed
@@ -262,7 +252,8 @@
         }
 
         function handleLoginError(e) {
-            console.error("Login flow error:", e);
+            console.error("Login error — code:", e.errorCode, "| message:", e.message);
+
             if (e.errorCode === "interaction_in_progress") {
                 clearMsalCache();
                 showError("Login conflict detected. Please click the button again.");
@@ -270,6 +261,12 @@
                 showError("Login was cancelled. Please try again.");
             } else if (e.errorCode === "consent_required" || e.errorCode === "interaction_required") {
                 showError("Additional permissions required. Please try signing in again.");
+            } else if (e.errorCode === "invalid_scope" || (e.message && e.message.includes("AADSTS"))) {
+                showError(
+                    "Scope error — ensure api://" + clientId + "/access_as_user " +
+                    "is exposed in Azure Portal under App Registrations → Expose an API. " +
+                    "Detail: " + e.message
+                );
             } else {
                 showError("Login failed: " + (e.message || "Please try again."));
             }
@@ -289,20 +286,21 @@
                 msalInstance = createMsalInstance(authority);
                 await msalInstance.initialize();
 
-                // Login popup 
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
 
-                sessionStorage.setItem("loginType", type);
-                sessionStorage.setItem("userEmail", loginResponse.account.username);
-                sessionStorage.setItem("userName",  loginResponse.account.name);
+                console.log("Login success:", loginResponse.account.username);
+                console.log("Token segments:", loginResponse.accessToken
+                    ? loginResponse.accessToken.split('.').length : "NO TOKEN");
 
-                // Acquire API token
-                // apiTokenRequest — same for Microsoft personal, org, Google.
-                // aud = api://<clientId>  for your Function App
-                const apiAccessToken = await acquireApiToken(loginResponse.account);
-                sessionStorage.setItem("accessToken", apiAccessToken);
+                // Validate the token is a proper JWT before storing
+                assertValidJwt(loginResponse.accessToken, "Login response API token");
 
-                // Validate email + redirect
+                sessionStorage.setItem("loginType",   type);
+                sessionStorage.setItem("userEmail",   loginResponse.account.username);
+                sessionStorage.setItem("userName",    loginResponse.account.name);
+                sessionStorage.setItem("accessToken", loginResponse.accessToken);
+
+                // Validate email against your Function App then redirect
                 const allowed = await validateUserEmail(loginResponse.account.username);
                 if (!allowed) return;
 
@@ -316,16 +314,19 @@
             }
         }
 
-
-        // Microsoft button → /common authority + microsoftLoginRequest
-
+        // Microsoft: /common handles personal + any org accounts
         document.getElementById("loginMicrosoft").onclick = () =>
             loginFlow(commonAuthority, "microsoft", microsoftLoginRequest);
 
-        // Google button → /tenant authority + googleLoginRequest
+        // Google: /tenant where External Identity federation is configured
         document.getElementById("loginGoogle").onclick = () =>
             loginFlow(tenantAuthority, "google", googleLoginRequest);
 
+        function showError(msg) {
+            const div = document.getElementById("error");
+            div.textContent = msg;
+            div.style.display = "block";
+        }
     </script>
 </body>
 </html>
