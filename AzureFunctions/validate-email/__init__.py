@@ -21,9 +21,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
             cur.execute("""
                 UPDATE users
-                SET last_access_date = CURRENT_TIMESTAMP
+                SET last_access_date = NOW() AT TIME ZONE 'UTC'
                 WHERE email = %s
-                AND status = 'active'
+                AND status = 'active';
             """, (email,))
 
             cur.execute("""
@@ -35,6 +35,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             """, (email,))
             
             row = cur.fetchone()
+        conn.commit()
         conn.close()
     except Exception as e:
         logging.error(f"DB error: {str(e)}")
