@@ -449,19 +449,36 @@ def decode_token(token: str) -> Dict:
         raise
 '''
 
+# Read client ID
+EXPECTED_AUD = os.environ.get("AZURE_CLIENT_ID", "")
+
 def decode_token(token: str) -> Dict:
-    """Decode JWT token (without verification for now)"""
+    """Decode JWT token - accepts raw Authorization header or bare token"""
     try:
-        # Strip "Bearer " prefix if present
+        # Strip Bearer prefix if caller passed the full header value
         if token.startswith("Bearer "):
             token = token[7:]
-        
+
         token = token.strip()
 
-        if not token or token.count('.') != 2:
-            raise ValueError(f"Malformed token: {token.count('.')+1} segments found")
+        if not token:
+            raise ValueError("Token is empty")
+
+        if token.count('.') != 2:
+            raise ValueError(
+                f"Malformed token: expected 3 segments, got {token.count('.')+1}. "
+                f"Preview: '{token[:30]}'"
+            )
 
         decoded = jwt.decode(token, options={"verify_signature": False})
+
+        # Validate audience 
+        aud = decoded.get("aud", "")
+        if EXPECTED_AUD and aud != EXPECTED_AUD:
+            logger.warning(f"Unexpected audience: {aud}, expected: {EXPECTED_AUD}")
+
+        logger.info(f"Token decoded — email: {decoded.get('preferred_username') or decoded.get('email')}")
+
         return decoded
 
     except Exception as e:

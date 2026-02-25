@@ -158,29 +158,17 @@
         const tenantAuthority = `https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034`;
 
         const microsoftLoginRequest = {
-            scopes: [
-                'openid',
-                'offline_access',
-                'profile',
-                'User.Read',
-                `api://${clientId}/access_as_user`
-            ],
+            scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
             prompt: "login"
         };
 
         const googleLoginRequest = {
-            scopes: [
-                'openid',
-                'offline_access',
-                'profile',
-                `api://${clientId}/access_as_user`
-            ],
+            scopes: ['openid', 'offline_access', 'profile'],
             prompt: "login"
         };
-        
+
         let msalInstance;
         let loginInProgress = false;
-
 
         function createMsalInstance(authority) {
             return new msal.PublicClientApplication({
@@ -209,15 +197,10 @@
                 throw new Error(`${source} returned an empty token.`);
             }
             if (token.split('.').length !== 3) {
-                throw new Error(
-                    `${source} returned a malformed token (${token.split('.').length} segments). ` +
-                    `Ensure "api://${clientId}/access_as_user" is exposed in Azure Portal ` +
-                    `under App Registrations → Expose an API.`
-                );
+                throw new Error(`${source} returned a malformed token (${token.split('.').length} segments).`);
             }
         }
 
-        // Sends the API token to Function App to check if email is allowed
         async function validateUserEmail(email) {
             let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || "";
             let base = API_BASE.trim().replace(/\/+$/, "");
@@ -261,12 +244,6 @@
                 showError("Login was cancelled. Please try again.");
             } else if (e.errorCode === "consent_required" || e.errorCode === "interaction_required") {
                 showError("Additional permissions required. Please try signing in again.");
-            } else if (e.errorCode === "invalid_scope" || (e.message && e.message.includes("AADSTS"))) {
-                showError(
-                    "Scope error — ensure api://" + clientId + "/access_as_user " +
-                    "is exposed in Azure Portal under App Registrations → Expose an API. " +
-                    "Detail: " + e.message
-                );
             } else {
                 showError("Login failed: " + (e.message || "Please try again."));
             }
@@ -289,16 +266,13 @@
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
 
                 console.log("Login success:", loginResponse.account.username);
-                console.log("Token segments:", loginResponse.accessToken
-                    ? loginResponse.accessToken.split('.').length : "NO TOKEN");
 
-                // Validate the token is a proper JWT before storing
-                assertValidJwt(loginResponse.accessToken, "Login response API token");
+                assertValidJwt(loginResponse.idToken, "ID token");
 
                 sessionStorage.setItem("loginType",   type);
                 sessionStorage.setItem("userEmail",   loginResponse.account.username);
                 sessionStorage.setItem("userName",    loginResponse.account.name);
-                sessionStorage.setItem("accessToken", loginResponse.accessToken);
+                sessionStorage.setItem("accessToken", loginResponse.idToken);
 
                 // Validate email against your Function App then redirect
                 const allowed = await validateUserEmail(loginResponse.account.username);
@@ -314,11 +288,11 @@
             }
         }
 
-        // Microsoft: /common handles personal + any org accounts
+        // Microsoft: /common — personal + any org accounts
         document.getElementById("loginMicrosoft").onclick = () =>
             loginFlow(commonAuthority, "microsoft", microsoftLoginRequest);
 
-        // Google: /tenant where External Identity federation is configured
+        // Google: /tenant — External Identity federation
         document.getElementById("loginGoogle").onclick = () =>
             loginFlow(tenantAuthority, "google", googleLoginRequest);
 
