@@ -22,12 +22,7 @@
         align-items: center;
     }
 
-    .btn-add-user {
-      background: #0078d4; color: white; border: none;
-      padding: 10px 20px; border-radius: 5px;
-      cursor: pointer; font-size: 14px; font-family: inherit;
-    }
-    .btn-add-user:hover { background: #006cbf; }
+    
 
     .container { max-width: 1200px; margin: 50px auto; padding: 0 20px; }
 
@@ -96,11 +91,11 @@
     .documents-table th:nth-child(7), .documents-table td:nth-child(7) { width: 10%; }
     .documents-table th:nth-child(8), .documents-table td:nth-child(8) { width: 15%; }
 
-    .file-id   { font-size: 13px; color: #555; font-family: 'Courier New', monospace; }
-    .file-name { font-size: 16px; color: #0a0101; overflow-wrap: break-word; }
-    .file-email { font-size: 16px; color: #0a0101; overflow-wrap: break-word; }
-    .file-org  { font-size: 13px; color: #888; margin-top: 2px; }
-    .file-date { font-size: 14px; color: #0a0101; }
+    .file-id   { font-size: 13px; color: #0a0101; }
+    .file-name { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+    .file-email { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+    .file-org  { font-size: 13px; color: #0a0101; margin-top: 2px; }
+    .file-date { font-size: 13px; color: #0a0101; }
 
     .status-badge {
       display: inline-block; padding: 4px 10px;
@@ -112,7 +107,7 @@
 
     .role-badge {
       display: inline-block; padding: 3px 10px;
-      border-radius: 4px; font-size: 12px; font-weight: 600;
+      border-radius: 4px; font-size: 14px; font-weight: 600;
     }
     .role-admin  { background: #ede7f6; color: #4527a0; }
     .role-editor { background: #e3f2fd; color: #0d47a1; }
@@ -214,6 +209,17 @@
 
     .btn-logout { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.6); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-right: 12px; }
     .btn-logout:hover { background: rgba(255,255,255,0.1); }
+
+    .btn-acctdash { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.6); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-right: 12px; }
+    .btn-acctdash:hover { background: rgba(255,255,255,0.1); }
+
+    .btn-add-user {
+      background: #0078d4; color: white; border: none;
+      padding: 10px 20px; border-radius: 5px;
+      cursor: pointer; font-size: 13px; font-family: inherit;
+    }
+    .btn-add-user:hover { background: #006cbf; }
+
     .user-name { color: rgba(255,255,255,0.9); font-size: 14px; }
     .header-title { color: white; font-size: 20px; font-weight: 600; }
   </style>
@@ -226,7 +232,7 @@
   <div class="user-info">
     <span class="user-name" id="userName"></span>
     <button class="btn-add-user" onclick="openAddModal()">+ Add New User</button>
-    <button type="button" onclick="window.open('dashboard.html')">Accounts Dashboard</button>
+    <button type="button" class="btn-acctdash" onclick="window.location.href='dashboard.html'">Accounts Dashboard</button>
     <button type="button" class="btn-logout" onclick="logout()">Logout</button>
   </div>
 </div>
