@@ -72,12 +72,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             # Shape expected by retrieve.html: { documents: [ { id, name, size, uploadDate } ] }
             documents = []
             for r in rows:
+                bill_pay = r.get("bill_pay_initiated_on")
                 documents.append({
                     "id": r.get("invoice_id") or r.get("invoice_uuid"),
                     "name": r.get("doc_name") or "document",
                     "uploadDate": r.get("created_at") or r.get("invoice_received_date") or "",
                     "OrganisationName": r.get("vendor_name") or "",
-                    "Status": r.get("status") or "",
+                    "Status": "Completed" if bill_pay else "Pending",
+                    "bill_pay_initiated_on": bill_pay,
                 })
             return func.HttpResponse(
                 json.dumps({"documents": documents}),
