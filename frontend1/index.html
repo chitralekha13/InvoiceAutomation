@@ -106,7 +106,7 @@
         sessionStorage.clear();
         localStorage.clear();
 
-        const loginRequest  = { scopes: ['openid', 'offline_access', 'profile'], prompt:"login"};
+        const loginRequest  = { scopes: ['openid', 'offline_access', 'profile', 'User.Read'], prompt:"login"};
         
         function createMsalInstance(authority){
             return new msal.PublicClientApplication({
@@ -123,105 +123,137 @@
             }
         let msalInstance;
         let loginInProgress=false;
+        
+        async function acquireRealToken(account) {
+            try {
+                const response = await msalInstance.acquireTokenSilent({
+                    ...loginRequest,
+                    account: account
+                });
 
-        // ── Validate email against Function App / Postgres ──
-        async function validateUserEmail(email){
+                // Guard: if accessToken is missing/empty
+                if (response.accessToken && response.accessToken.trim() !== '') {
+                    console.log("Token acquired silently.");
+                    return response.accessToken;
+                }
 
-        let API_BASE=(window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl)||"";
-        let base=(API_BASE||"").trim().replace(/\/+$/,"");
-        if(base.startsWith("http://")) base="https://"+base.slice(7);
-        const url=base?base+"/api/validate-email":"";
+                throw new Error("Silent token was empty – falling back to popup.");
 
-        const res=await fetch(url,{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({email:email})
-        });
+            } catch (silentErr) {
+                console.warn("Silent token acquisition failed:", silentErr);
 
-        const result=await res.json();
+                // Popup fallback – always returns a genuine access token
+                const popupResponse = await msalInstance.acquireTokenPopup({
+                    ...loginRequest,
+                    account: account
+                });
 
-        if(!result.allowed){
-        sessionStorage.setItem("denied_email",email);
-        window.location.href="access-denied.html";
-        return false;
-        }
+                if (!popupResponse.accessToken || popupResponse.accessToken.trim() === '') {
+                    throw new Error("Popup token acquisition also returned an empty token.");
+                }
 
-        sessionStorage.setItem("org",result.org);
-        return true;
-        }
-
-        async function loginFlow(authority,type){
-
-        if(!clientId){
-        showError("Client ID missing in config.js");
-        return;
-        }
-
-        if(loginInProgress) return;
-        loginInProgress=true;
-
-        const loading=document.getElementById("loading");
-        loading.style.display="block";
-
-        try{
-
-            msalInstance=createMsalInstance(authority);
-            await msalInstance.initialize();
-
-            /* Clear any cached accounts just in case */
-            const accounts=msalInstance.getAllAccounts();
-            for(const acc of accounts){
-            await msalInstance.logoutPopup({account:acc});
+                console.log("Token acquired via popup fallback.");
+                return popupResponse.accessToken;
             }
+        }
 
-            const loginResponse=await msalInstance.loginPopup(loginRequest);
 
-            sessionStorage.setItem("loginType",type);
-            sessionStorage.setItem("userEmail",loginResponse.account.username);
-            sessionStorage.setItem("userName",loginResponse.account.name);
+        async function validateUserEmail(email) {
+            let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || "";
+            let base = (API_BASE || "").trim().replace(/\/+$/, "");
+            if (base.startsWith("http://")) base = "https://" + base.slice(7);
+            const url = base ? base + "/api/validate-email" : "";
 
-            const tokenResponse=await msalInstance.acquireTokenSilent({
-            ...loginRequest,
-            account:loginResponse.account
+            const token = sessionStorage.getItem("accessToken");
+
+            const res = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type":  "application/json",
+                    "Authorization": `Bearer ${token}`   
+                },
+                body: JSON.stringify({ email: email })
             });
 
-            sessionStorage.setItem("accessToken",tokenResponse.accessToken);
+            const result = await res.json();
 
-            const allowed=await validateUserEmail(loginResponse.account.username);
-            if(!allowed) return;
+            if (!result.allowed) {
+                sessionStorage.setItem("denied_email", email);
+                window.location.href = "access-denied.html";
+                return false;
+            }
 
-            redirectToUpload();
-
-        }catch(e){
-            console.error(e);
-            showError("Login failed. Try again.");
-        }
-        finally{
-            loading.style.display="none";
-            loginInProgress=false;
-        }
+            sessionStorage.setItem("org", result.org);
+            return true;
         }
 
-        /* ---------- BUTTONS ---------- */
+        async function loginFlow(authority, type) {
+            if (!clientId) {
+                showError("Client ID missing in config.js");
+                return;
+            }
 
-        document.getElementById("loginCommon").onclick=()=>{
-        loginFlow(commonAuthority,"common");
+            if (loginInProgress) return;
+            loginInProgress = true;
+
+            const loading = document.getElementById("loading");
+            loading.style.display = "block";
+            document.getElementById("error").style.display = "none";
+
+            try {
+                msalInstance = createMsalInstance(authority);
+                await msalInstance.initialize();
+
+                // Clear any cached accounts
+                const accounts = msalInstance.getAllAccounts();
+                for (const acc of accounts) {
+                    await msalInstance.logoutPopup({ account: acc });
+                }
+
+                // Login popup (returns loginResponse with account info)
+                const loginResponse = await msalInstance.loginPopup(loginRequest);
+
+                sessionStorage.setItem("loginType",  type);
+                sessionStorage.setItem("userEmail",  loginResponse.account.username);
+                sessionStorage.setItem("userName",   loginResponse.account.name);
+
+                // Acquire a REAL access token (silent → popup fallback)
+                const accessToken = await acquireRealToken(loginResponse.account);
+                sessionStorage.setItem("accessToken", accessToken);
+
+                // Validate user & redirect
+                const allowed = await validateUserEmail(loginResponse.account.username);
+                if (!allowed) return;
+
+                redirectToUpload();
+
+            } catch (e) {
+                console.error("Login flow error:", e);
+                showError("Login failed: " + (e.message || "Please try again."));
+            } finally {
+                loading.style.display = "none";
+                loginInProgress = false;
+            }
+        }
+
+
+        document.getElementById("loginCommon").onclick = () => {
+            loginFlow(commonAuthority, "common");
         };
 
-        document.getElementById("loginTenant").onclick=()=>{
-        loginFlow(tenantAuthority,"tenant");
+        document.getElementById("loginTenant").onclick = () => {
+            loginFlow(tenantAuthority, "tenant");
         };
 
-        /* ---------- UI HELPERS ---------- */
-
-        function showError(msg){
-        const div=document.getElementById("error");
-        div.textContent=msg;
-        div.style.display="block";
+        
+        function showError(msg) {
+            const div = document.getElementById("error");
+            div.textContent = msg;
+            div.style.display = "block";
         }
 
-        function redirectToUpload(){
-        window.location.href="upload.html";
+        function redirectToUpload() {
+            window.location.href = "upload.html";
         }
 
     </script>
