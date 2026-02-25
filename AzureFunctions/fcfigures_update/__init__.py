@@ -6,6 +6,7 @@ import azure.functions as func
 import logging
 import json
 import os
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +118,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 except Exception as igentic_err:
                     logger.warning("iGentic approved-hours validation failed; saving approved_hours only: %s", igentic_err)
 
+        # Payment Done from View Payment modal: persist so row stays green forever
+        if body.get("payment_done"):
+            kwargs["bill_pay_initiated_on"] = datetime.now(timezone.utc)
+
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)
             allowed = {"invoice_number", "vendor_name", "resource_name", "start_date", "end_date",
                        "payment_terms", "invoice_hours", "approved_hours", "hourly_rate",
                        "invoice_amount", "invoice_date", "due_date", "project_name", "business_unit",
-                       "notes", "template", "addl_comments", "approval_status", "status", "payment_details"}
+                       "notes", "template", "addl_comments", "approval_status", "status", "payment_details",
+                       "bill_pay_initiated_on"}
             kwargs_clean = {k: v for k, v in kwargs.items() if k in allowed}
             if kwargs_clean:
                 update_invoice(invoice_id, **kwargs_clean)

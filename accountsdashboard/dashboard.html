@@ -240,6 +240,18 @@
         .payment-details-table .payment-section { font-weight: 600; color: #1e3a5f; padding-top: 12px; }
         .payment-pre { white-space: pre-wrap; margin: 0; font-family: inherit; }
         .payment-modal-close { float: right; background: #666; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        .payment-modal-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; }
+        .btn-payment-done-modal {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-payment-done-modal:hover { background: #0e6b0e; }
+        .btn-payment-done-modal.done { background: #2e7d32; cursor: default; }
     </style>
 </head>
 <body>
@@ -326,6 +338,9 @@
             <button type="button" class="payment-modal-close" onclick="closePaymentModal()">Close</button>
             <h3>Payment Information</h3>
             <div id="paymentModalContent" class="payment-modal-body"></div>
+            <div class="payment-modal-footer">
+                <button type="button" id="btnModalPaymentDone" class="btn-payment-done-modal" onclick="markPaymentDoneFromModal()" style="display:none">Payment Done</button>
+            </div>
         </div>
     </div>
 
@@ -466,14 +481,10 @@
                     <td class="editable" data-field="current_comments" data-id="${id}">${escapeHtml(row.notes || row.current_comments || '')}</td>
                     <td class="editable" data-field="addl_comments" data-id="${id}">${escapeHtml(row.addl_comments || '')}</td>
                     <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
-                        ${isCompleteRow(row)
-                            ? '<button type="button" class="btn-view-payment">View Payment</button> '
-                              + '<button type="button" class="btn-payment-done' + (row.payment_done ? ' done' : '') + '">Payment Done</button> '
-                            : ''}
-                        <button type="button" class="btn-delete-row">Delete</button>
+                        ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment">View Payment</button>' : ''}
                     </td>
                 `;
-                if (row.payment_done) {
+                if (row.bill_pay_initiated_on) {
                     tr.classList.add('row-payment-done');
                 }
                 tbody.appendChild(tr);
@@ -516,12 +527,17 @@
             return rows.length ? '<table class="payment-details-table">' + rows.join('') + '</table>' : '';
         }
 
+        let currentPaymentModalInvoiceId = null;
+
         function viewPaymentInfo(invoiceId) {
+            currentPaymentModalInvoiceId = invoiceId;
             const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId);
             const el = document.getElementById('paymentModalContent');
+            const btnDone = document.getElementById('btnModalPaymentDone');
             if (!el) return;
             if (!row) {
                 el.innerHTML = '<p>Invoice not found.</p>';
+                if (btnDone) btnDone.style.display = 'none';
             } else if (row.payment_details && String(row.payment_details).trim()) {
                 const raw = row.payment_details.trim();
                 let html = '';
@@ -536,8 +552,15 @@
                 } else {
                     el.innerHTML = '<pre class="payment-pre">' + escapeHtml(raw) + '</pre>';
                 }
+                if (btnDone) {
+                    btnDone.style.display = 'inline-block';
+                    btnDone.textContent = row.bill_pay_initiated_on ? 'Done' : 'Payment Done';
+                    btnDone.classList.toggle('done', !!row.bill_pay_initiated_on);
+                    btnDone.disabled = !!row.bill_pay_initiated_on;
+                }
             } else {
                 el.innerHTML = '<p>No payment details stored yet. Payment details are generated when approved hours are submitted and verified via iGentic (hours match).</p>';
+                if (btnDone) btnDone.style.display = 'none';
             }
             document.getElementById('paymentModal').style.display = 'flex';
         }
@@ -564,20 +587,34 @@
                     if (id) viewPaymentInfo(id);
                 };
             });
-            document.querySelectorAll('.btn-payment-done').forEach(btn => {
-                btn.onclick = function(e) {
-                    e.stopPropagation();
-                    const td = this.closest('.actions-col');
-                    const id = td && td.dataset.invoiceId;
-                    if (!id) return;
+        }
+
+        async function markPaymentDoneFromModal() {
+            const id = currentPaymentModalInvoiceId;
+            if (!id) return;
+            const btn = document.getElementById('btnModalPaymentDone');
+            if (btn && btn.disabled) return;
+            try {
+                const res = await fetch(API_BASE + '/api/fcfigures/' + encodeURIComponent(id) + '/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_done: true })
+                });
+                const data = res.ok ? await res.json().catch(() => ({})) : {};
+                if (res.ok && data.invoice) {
                     const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === id);
-                    if (!row) return;
-                    row.payment_done = true;
-                    this.classList.add('done');
-                    const tr = this.closest('tr');
-                    if (tr) tr.classList.add('row-payment-done');
-                };
-            });
+                    if (row) Object.assign(row, data.invoice);
+                    if (btn) {
+                        btn.classList.add('done');
+                        btn.disabled = true;
+                    }
+                    closePaymentModal();
+                    applyFilters();
+                    renderTable();
+                }
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         function bindEditableCells() {
