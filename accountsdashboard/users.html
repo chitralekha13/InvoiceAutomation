@@ -373,7 +373,7 @@
       return;
     }
     tbody.innerHTML = users.map(u => {
-      const isEditing = editingId === u.user_id;
+      const isEditing = String(editingId) === String(u.user_id);
       const dateStr   = u.last_access_date
         ? new Date(u.last_access_date).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })
         : "—";
@@ -409,7 +409,7 @@
   }
 
   // Edit
-  function startEdit(id) { editingId = id;   renderTable(filterUsers()); }
+  function startEdit(id) { editingId = String(id); renderTable(filterUsers()); }
   function cancelEdit()  { editingId = null; renderTable(filterUsers()); }
 
   async function saveEdit(userId) {
@@ -454,7 +454,7 @@
     btn.disabled = true; btn.textContent = "Adding…";
     try {
       const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
-      const res  = fetch(API_BASE + '/api/users', {
+      const res  = await fetch(API_BASE + '/api/users', {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, organisation: org, status, role,action: "adduser" }),
       });
@@ -476,9 +476,13 @@
   function filterUsers() {
     const q = document.getElementById("search").value.toLowerCase();
     return q ? allUsers.filter(u =>
-      u.name.toLowerCase().includes(q) || u.organisation.toLowerCase().includes(q) ||
-      String(u.user_id).toLowerCase().includes(q) || u.role.toLowerCase().includes(q) ||
-      u.status.toLowerCase().includes(q)) : [...allUsers];
+      u.name.toLowerCase().includes(q) || 
+      u.email.toLowerCase().includes(q) || 
+      u.org.toLowerCase().includes(q) ||
+      String(u.user_id).toLowerCase().includes(q) || 
+      u.role.toLowerCase().includes(q) ||
+      u.status.toLowerCase().includes(q)
+    ) : [...allUsers];
   }
   function filterTable() { renderTable(filterUsers()); }
 
