@@ -47,8 +47,9 @@
             outline: none;
             border-color: #1e3a5f;
         }
+
         .btn-login {
-            background: #1e3a5f;
+            background: #0078d4;
             color: white;
             border: none;
             padding: 15px 40px;
@@ -58,9 +59,13 @@
             transition: background 0.3s;
             width: 100%;
             font-weight: 600;
-            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
-        .btn-login:hover { background: #0f2744; }
+        .btn-login:hover    { background: #005a9e; }
+        .btn-login:disabled { background: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -68,31 +73,117 @@
         <div class="logo">📊</div>
         <h1>Accounts Portal</h1>
         <p>Invoice management dashboard for the accounts team</p>
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" placeholder="Enter username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" placeholder="Enter password" required>
-            </div>
-            <button type="submit" class="btn-login">Sign In</button>
-        </form>
+        <button id="loginMicrosoft" class="btn-login">
+            <svg width="20" height="20" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft
+        </button>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Signing in...</p>
+        </div>
+        <div class="error" id="error"></div>
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-            if (!username) return;
-            // Simple login - no validation for now. Stores user and redirects.
-            sessionStorage.setItem('userName', username);
-            sessionStorage.setItem('userEmail', username);
-            sessionStorage.setItem('loggedIn', 'true');
-            window.location.href = 'dashboard.html';
+        const appConfig   = window.APP_CONFIG || {};
+        const clientId    = appConfig.clientId    || '';
+        const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
+
+        const msalConfig = {
+            auth: {
+                clientId: clientId,
+                authority: 'https://login.microsoftonline.com/common', // 'common' allows Microsoft personal and org accounts
+                redirectUri: redirectUri
+            },
+            cache: {
+                cacheLocation: 'sessionStorage',
+                storeAuthStateInCookie: false
+            }
+        };
+
+        const loginRequest = {
+            scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
+            prompt: "login"
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        let msalReady = false;
+        let loginInProgress = false;
+
+        // Initialize MSAL
+        msalInstance.initialize().then(() => {
+            msalReady = true;
+            // Check if user is already logged in
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                msalInstance.setActiveAccount(accounts[0]);
+                redirectToUpload();
+            }
         });
+
+        // Login button handler
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            if (!clientId) {
+                document.getElementById('error').textContent = 'Login not configured. Add AZURE_CLIENT_ID to GitHub Secrets (see PIPELINE_SETUP.md).';
+                document.getElementById('error').style.display = 'block';
+                return;
+            }
+            if (loginInProgress) return;
+            loginInProgress = true;
+
+            const loginBtn = document.getElementById('loginBtn');
+            const loading = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            
+            loginBtn.disabled = true;
+            loading.style.display = 'block';
+            errorDiv.style.display = 'none';
+
+            try {
+                // Wait for MSAL to be ready (prevents interaction_in_progress)
+                if (!msalReady) {
+                    await msalInstance.initialize();
+                    msalReady = true;
+                }
+
+                const loginResponse = await msalInstance.loginPopup(loginRequest);
+                msalInstance.setActiveAccount(loginResponse.account);
+                
+                // Store user info
+                sessionStorage.setItem('userEmail', loginResponse.account.username);
+                sessionStorage.setItem('userName', loginResponse.account.name);
+                
+                // Get access token
+                const tokenResponse = await msalInstance.acquireTokenSilent({
+                    ...loginRequest,
+                    account: loginResponse.account
+                });
+                
+                sessionStorage.setItem('accessToken', tokenResponse.accessToken);
+                
+                // Redirect to upload page
+                redirectToUpload();
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.style.display = 'block';
+            } finally {
+                loginInProgress = false;
+                loginBtn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+
+        function redirectToUpload() {
+            window.location.href = 'dashboard.html';
+        }
     </script>
 </body>
 </html>
