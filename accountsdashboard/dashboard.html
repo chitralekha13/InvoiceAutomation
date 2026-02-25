@@ -354,7 +354,7 @@
 
         <div class="pane-headers">
             <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
-            <div class="pane-header" data-pane="users" onclick="switchPane('users')">Users</div>
+            <div class="pane-header" onclick="window.open('users.html', '_blank')">Manage Users</div>
             <div class="pane-header" data-pane="sow" onclick="switchPane('sow')">SOW Info</div>
         </div>
         <div class="panes-wrapper">
@@ -387,14 +387,6 @@
                         </thead>
                         <tbody id="tableBody"></tbody>
                     </table>
-                </div>
-            </div>
-
-            <div class="pane" id="pane-users">
-                <div class="pane-title">Users</div>
-                <div class="pane-body">
-                    <button class="btn-manage-users" onclick="window.open('users.html', '_blank')">Manage Users</button>
-                    <p style="margin-top:12px;color:#666;font-size:14px;">Open Manage Users to view and manage user accounts.</p>
                 </div>
             </div>
 
