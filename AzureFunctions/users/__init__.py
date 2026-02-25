@@ -74,16 +74,16 @@ def list_users():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT user_id, name, email, org, last_access_date, status, role
+                SELECT firstname, lastname, email, org, last_access_date, status, role
                 FROM users
-                ORDER BY name ASC;
+                ORDER BY firstname ASC;
             """)
             rows = cur.fetchall()
     return resp({"users": [dict(r) for r in rows]})
 
 
 def add_user(body):
-    required = ["name", "email", "org", "status", "role"]
+    required = ["firstname", "lastname", "email", "org", "status", "role"]
     missing  = [f for f in required if not body.get(f)]
     if missing:
         return resp({"error": f"Missing fields: {', '.join(missing)}"}, 400)
@@ -99,10 +99,10 @@ def add_user(body):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO users (name, email, org, last_access_date, status, role)
+                INSERT INTO users (firstname, lastname, email, org, last_access_date, status, role)
                 VALUES (%s, %s, %s, CURRENT_TIMESTAMP, %s, %s)
-                RETURNING user_id, name, email, org, last_access_date, status, role;
-            """, (body["name"], body["email"], body["org"], body["status"], body["role"]))
+                RETURNING firstname, lastname, email, org, last_access_date, status, role;
+            """, (body["firstname"], body["lastname"], body["email"], body["org"], body["status"], body["role"]))
             new_row = dict(cur.fetchone())
         conn.commit()
 
@@ -110,9 +110,9 @@ def add_user(body):
 
 
 def update_user(body):
-    user_id = body.get("user_id")
-    if not user_id:
-        return resp({"error": "user_id is required"}, 400)
+    email = body.get("email")
+    if not email:
+        return resp({"error": "email is required"}, 400)
 
     VALID_STATUSES = {"active", "inactive", "suspended"}
     VALID_ROLES    = {"admin", "user"}
@@ -134,8 +134,8 @@ def update_user(body):
     if not updates:
         return resp({"error": "Provide at least one of: status, role"}, 400)
 
-    params.append(user_id)
-    sql = f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s RETURNING user_id, name, email, org, status, role;"
+    params.append(email)
+    sql = f"UPDATE users SET {', '.join(updates)} WHERE email = %s RETURNING firstname, lastname, email, org, status, role;"
 
     with get_conn() as conn:
         with conn.cursor() as cur:

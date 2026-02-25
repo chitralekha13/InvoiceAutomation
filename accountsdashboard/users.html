@@ -91,8 +91,8 @@
     .documents-table th:nth-child(7), .documents-table td:nth-child(7) { width: 10%; }
     .documents-table th:nth-child(8), .documents-table td:nth-child(8) { width: 15%; }
 
-    .file-id   { font-size: 13px; color: #0a0101; }
-    .file-name { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+    .file-firstname   { font-size: 13px; color: #0a0101;overflow-wrap: break-word; }
+    .file-lastname { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
     .file-email { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
     .file-org  { font-size: 13px; color: #0a0101; margin-top: 2px; }
     .file-date { font-size: 13px; color: #0a0101; }
@@ -298,8 +298,12 @@
   <div class="modal-box">
     <h2>Add New User</h2>
     <div class="form-group">
-      <label>Full Name</label>
+      <label>First Name</label>
       <input type="text" id="new-name" placeholder="e.g. Jane Smith"/>
+    </div>
+    <div class="form-group">
+      <label>Last Name</label>
+      <input type="text" id="new-lastname" placeholder="e.g. Smith"/>    
     </div>
     <div class="form-group">
       <label>Email</label>
@@ -342,7 +346,7 @@
 
   const userEmail = sessionStorage.getItem('userEmail');
   const userName = sessionStorage.getItem('userName');
-  document.getElementById('userName').textContent = userEmail;
+  document.getElementById('userName').textContent = userName;
 
   // Load 
   async function loadUsers() {
@@ -384,31 +388,31 @@
       return;
     }
     tbody.innerHTML = users.map(u => {
-      const isEditing = String(editingId) === String(u.user_id);
+      const isEditing = String(editingId) === String(u.email);
       const dateStr   = u.last_access_date
         ? new Date(u.last_access_date).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })
         : "—";
 
       const statusCell = isEditing
-        ? `<select class="inline-select" id="edit-status-${u.user_id}">
+        ? `<select class="inline-select" id="edit-status-${u.email}">
              ${["active","inactive","suspended"].map(s => `<option ${s===u.status?"selected":""}>${s}</option>`).join("")}
            </select>`
         : `<span class="status-badge status-${u.status.toLowerCase()}">${u.status}</span>`;
 
       const roleCell = isEditing
-        ? `<select class="inline-select" id="edit-role-${u.user_id}">
+        ? `<select class="inline-select" id="edit-role-${u.email}">
              ${["admin","user"].map(r => `<option ${r===u.role?"selected":""}>${r}</option>`).join("")}
            </select>`
         : `<span class="role-badge role-${u.role.toLowerCase()}">${u.role}</span>`;
 
       const actionCell = isEditing
-        ? `<button class="btn-save"        onclick="saveEdit('${u.user_id}')">Save</button>
+        ? `<button class="btn-save"        onclick="saveEdit('${u.email}')">Save</button>
            <button class="btn-cancel-edit" onclick="cancelEdit()">Cancel</button>`
-        : `<button class="btn-edit" onclick="startEdit('${u.user_id}')">Edit</button>`;
+        : `<button class="btn-edit" onclick="startEdit('${u.email}')">Edit</button>`;
 
       return `<tr style="${isEditing ? "background:#f0f7ff;" : ""}">
-        <td><span class="file-id">${u.user_id}</span></td>
-        <td><div class="file-name">${u.name}</div></td>
+        <td><span class="file-firstname">${u.firstname}</span></td>
+        <td><div class="file-lastname">${u.lastname}</div></td>
         <td><div class="file-email">${u.email}</div></td>
         <td><div class="file-org">${u.org}</div></td>
         <td><div class="file-date">${dateStr}</div></td>
@@ -420,21 +424,21 @@
   }
 
   // Edit
-  function startEdit(id) { editingId = String(id); renderTable(filterUsers()); }
+  function startEdit(email) { editingId = String(email); renderTable(filterUsers()); }
   function cancelEdit()  { editingId = null; renderTable(filterUsers()); }
 
-  async function saveEdit(userId) {
-    const status = document.getElementById(`edit-status-${userId}`).value;
-    const role   = document.getElementById(`edit-role-${userId}`).value;
+  async function saveEdit(email) {
+    const status = document.getElementById(`edit-status-${email}`).value;
+    const role   = document.getElementById(`edit-role-${email}`).value;
     try {
       const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
       const res  = await fetch(API_BASE + '/api/users', {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, role, user_id: userId, action: "updateuser" }),
+        body: JSON.stringify({ status, role, email, action: "updateuser" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
-      const u = allUsers.find(x => x.user_id === userId);
+      const u = allUsers.find(x => x.email === email);
       if (u) { u.status = status; u.role = role; }
       editingId = null;
       renderTable(filterUsers());
@@ -451,17 +455,19 @@
   function closeAddModal() {
     document.getElementById("add-modal").classList.remove("open");
     document.getElementById("new-name").value = "";
+    document.getElementById("new-lastname").value  = "";
     document.getElementById("new-org").value  = "";
     document.getElementById("new-email").value  = "";
   }
 
   async function submitAddUser() {
     const name   = document.getElementById("new-name").value.trim();
+    const lastname   = document.getElementById("new-lastname").value.trim();
     const org    = document.getElementById("new-org").value.trim();
     const email  = document.getElementById("new-email").value.trim();
     const status = document.getElementById("new-status").value;
     const role   = document.getElementById("new-role").value;
-    if (!name || !org || !email) { showToast("Name, Organisation and Email are required.", "error"); return; }
+    if (!name || !lastname || !org || !email) { showToast("First Name, Last Name, Organisation and Email are required.", "error"); return; }
 
     const btn = document.getElementById("submit-btn");
     btn.disabled = true; btn.textContent = "Adding…";
@@ -489,10 +495,10 @@
   function filterUsers() {
     const q = document.getElementById("search").value.toLowerCase();
     return q ? allUsers.filter(u =>
-      u.name.toLowerCase().includes(q) || 
+      u.firstname.toLowerCase().includes(q) || 
+      u.lastname.toLowerCase().includes(q) ||
       u.email.toLowerCase().includes(q) || 
-      u.org.toLowerCase().includes(q) ||
-      String(u.user_id).toLowerCase().includes(q) || 
+      u.org.toLowerCase().includes(q) || 
       u.role.toLowerCase().includes(q) ||
       u.status.toLowerCase().includes(q)
     ) : [...allUsers];

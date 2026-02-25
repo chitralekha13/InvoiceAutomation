@@ -225,7 +225,7 @@
     <div class="header">
         <h1>📄 Invoice Portal</h1>
         <div class="user-info">
-            <span class="user-name" id="userEmail"></span>
+            <span class="user-name" id="userName"></span>
             <a href="retrieve.html" class="btn-retrieve">View Documents</a>
             <button class="btn-logout" onclick="logout()">Logout</button>
         </div>
@@ -268,7 +268,7 @@
             window.location.href = 'index.html';
         }
         
-        document.getElementById('userEmail').textContent = userEmail;
+        document.getElementById('userName').textContent = userName;
         
         let selectedFiles = [];
         const uploadArea = document.getElementById('uploadArea');

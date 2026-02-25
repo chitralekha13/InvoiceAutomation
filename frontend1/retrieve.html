@@ -317,7 +317,7 @@
     <div class="header">
         <h1>📄 Invoice Portal</h1>
         <div class="user-info">
-            <span class="user-name" id="userEmail"></span>
+            <span class="user-name" id="userName"></span>
             <a href="upload.html" class="btn-upload">Upload Documents</a>
             <button class="btn-logout" onclick="logout()">Logout</button>
         </div>
@@ -370,7 +370,7 @@
             throw new Error('Unauthenticated');
         }
         
-        document.getElementById('userEmail').textContent =  userEmail;
+        document.getElementById('userName').textContent =  userName;
         
         let allDocuments = [];
         let currentDocId   = null;
