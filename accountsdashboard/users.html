@@ -87,13 +87,14 @@
     }
     .documents-table tr:hover { background: #f8f9fa; }
 
-    .documents-table th:nth-child(1), .documents-table td:nth-child(1) { width: 11%; }
-    .documents-table th:nth-child(2), .documents-table td:nth-child(2) { width: 18%; }
-    .documents-table th:nth-child(3), .documents-table td:nth-child(3) { width: 17%; }
-    .documents-table th:nth-child(4), .documents-table td:nth-child(4) { width: 15%; }
+    .documents-table th:nth-child(1), .documents-table td:nth-child(1) { width: 7%; }
+    .documents-table th:nth-child(2), .documents-table td:nth-child(2) { width: 11%; }
+    .documents-table th:nth-child(3), .documents-table td:nth-child(3) { width: 16%; }
+    .documents-table th:nth-child(4), .documents-table td:nth-child(4) { width: 11%; }
     .documents-table th:nth-child(5), .documents-table td:nth-child(5) { width: 13%; }
-    .documents-table th:nth-child(6), .documents-table td:nth-child(6) { width: 11%; }
-    .documents-table th:nth-child(7), .documents-table td:nth-child(7) { width: 15%; }
+    .documents-table th:nth-child(6), .documents-table td:nth-child(6) { width: 10%; }
+    .documents-table th:nth-child(7), .documents-table td:nth-child(7) { width: 8%; }
+    .documents-table th:nth-child(8), .documents-table td:nth-child(8) { width: 24%; }
 
     .file-id   { font-size: 13px; color: #555; font-family: 'Courier New', monospace; }
     .file-name { font-size: 16px; color: #0a0101; overflow-wrap: break-word; }
@@ -364,7 +365,7 @@
     }
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // Render
   function renderTable(users) {
     const tbody = document.getElementById("user-tbody");
     if (!users.length) {
@@ -407,7 +408,7 @@
     }).join("");
   }
 
-  // ── Edit ─────────────────────────────────────────────────────────────────────
+  // Edit
   function startEdit(id) { editingId = id;   renderTable(filterUsers()); }
   function cancelEdit()  { editingId = null; renderTable(filterUsers()); }
 
@@ -434,7 +435,7 @@
     }
   }
 
-  // ── Add user ─────────────────────────────────────────────────────────────────
+  // Add user
   function openAddModal()  { document.getElementById("add-modal").classList.add("open"); document.getElementById("new-name").focus(); }
   function closeAddModal() {
     document.getElementById("add-modal").classList.remove("open");
@@ -471,7 +472,7 @@
     }
   }
 
-  // ── Filter / stats ───────────────────────────────────────────────────────────
+  // Filter / stats
   function filterUsers() {
     const q = document.getElementById("search").value.toLowerCase();
     return q ? allUsers.filter(u =>
@@ -488,7 +489,7 @@
     document.getElementById("stat-suspended").textContent = users.filter(u => u.status === "suspended").length;
   }
 
-  // ── Banner & Toast ───────────────────────────────────────────────────────────
+  // Banner & Toast
   let bannerT, toastT;
   function showBanner(msg, type) {
     const el = document.getElementById("banner");
