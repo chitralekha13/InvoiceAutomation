@@ -418,7 +418,7 @@
     try {
       const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
       const res  = await fetch(API_BASE + '/api/users', {
-        method: "PUT", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, role, user_id: userId, action: "updateuser" }),
       });
       const data = await res.json();
