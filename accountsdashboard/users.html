@@ -15,14 +15,12 @@
     }
 
     .header {
-      background: white;
-      padding: 20px 40px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+        background: #1e3a5f;
+        padding: 16px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
-    .header h1 { color: #333; font-size: 24px; }
 
     .btn-add-user {
       background: #0078d4; color: white; border: none;
@@ -212,13 +210,23 @@
     }
     #toast-msg.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
     #toast-msg.error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+
+    .btn-logout { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.6); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-right: 12px; }
+    .btn-logout:hover { background: rgba(255,255,255,0.1); }
+    .user-name { color: rgba(255,255,255,0.9); font-size: 14px; }
+    .header-title { color: white; font-size: 20px; font-weight: 600; }
   </style>
 </head>
+
 <body>
 
 <div class="header">
-  <h1>User Management</h1>
-  <button class="btn-add-user" onclick="openAddModal()">+ Add New User</button>
+  <span class="header-title">User Management</span>
+  <div class="user-info">
+    <span class="user-name" id="userName"></span>
+    <button class="btn-add-user" onclick="openAddModal()">+ Add New User</button>
+    <button type="button" class="btn-logout" onclick="logout()">Logout</button>
+  </div>
 </div>
 
 <div class="container">
@@ -277,7 +285,7 @@
   </div>
 </div>
 
-<!-- Add User Modal -->
+
 <div class="modal-overlay" id="add-modal">
   <div class="modal-box">
     <h2>Add New User</h2>
@@ -316,23 +324,34 @@
 <div id="toast-msg"></div>
 
 <script>
-  // CONFIG
-  const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
-
-  function apiUrl(path = "") {
-    const url = API_BASE+path;
-    return url;
-  }
 
   let allUsers  = [];
   let editingId = null;
+
+  const userEmail = sessionStorage.getItem('userEmail');
+  const userName = sessionStorage.getItem('userName');
+  document.getElementById('userName').textContent = userEmail;
 
   // Load 
   async function loadUsers() {
     document.getElementById("user-tbody").innerHTML =
       `<tr><td colspan="7"><div class="loading"><div class="spinner"></div>Loading users…</div></td></tr>`;
-    try {
-      const res  = await fetch(apiUrl());
+    
+      try {
+          const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+          const res = await fetch(API_BASE + '/api/users', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  action: "list",
+              })
+          });
+
+          if (!res.ok) {
+              const errText = await res.text();
+              throw new Error(`Server error ${res.status}: ${errText}`);
+          }
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
       allUsers = data.users || [];
@@ -396,9 +415,10 @@
     const status = document.getElementById(`edit-status-${userId}`).value;
     const role   = document.getElementById(`edit-role-${userId}`).value;
     try {
-      const res  = await fetch(apiUrl(`/${userId}`), {
+      const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+      const res  = await fetch(API_BASE + '/api/users', {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, role }),
+        body: JSON.stringify({ status, role, user_id: userId, action: "updateuser" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
@@ -432,9 +452,10 @@
     const btn = document.getElementById("submit-btn");
     btn.disabled = true; btn.textContent = "Adding…";
     try {
-      const res  = await fetch(apiUrl(), {
+      const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+      const res  = fetch(API_BASE + '/api/users', {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, organisation: org, status, role }),
+        body: JSON.stringify({ name, organisation: org, status, role,action: "adduser" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add user");
@@ -480,6 +501,12 @@
     el.textContent = msg; el.className = type;
     clearTimeout(toastT);
     toastT = setTimeout(() => { el.className = ""; }, 3500);
+  }
+
+  function logout() {
+    sessionStorage.removeItem('userName');
+    sessionStorage.removeItem('userEmail');
+    window.location.href = 'index.html';
   }
 
   document.getElementById("add-modal").addEventListener("click", function(e) { if (e.target === this) closeAddModal(); });

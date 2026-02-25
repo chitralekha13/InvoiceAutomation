@@ -4,10 +4,9 @@ import os
 import azure.functions as func
 import psycopg2
 import psycopg2.extras
-from datetime import date
+from datetime import date, datetime
 
-# ── Connection ───────────────────────────────────────────────────────────────
-# Set POSTGRES_CONNECTION_STRING in your Function App → Configuration → App Settings
+# ── Connection ────────────────────────────────────────────────────────────────
 CONNECTION_STRING = os.environ.get("SQL_CONNECTION_STRING", "")
 
 def get_conn():
@@ -17,129 +16,133 @@ def cors_headers():
     return {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
     }
 
 def json_serial(obj):
-    if isinstance(obj, date):
+    if isinstance(obj, (date, datetime)):
         return obj.isoformat()
     raise TypeError(f"Type {type(obj)} not serialisable")
 
+def resp(data, status=200):
+    return func.HttpResponse(
+        json.dumps(data, default=json_serial),
+        status_code=status,
+        headers=cors_headers(),
+    )
+
+# ── Main entry point ──────────────────────────────────────────────────────────
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info(f"[UserMgmt] {req.method} {req.url}")
 
+    # CORS preflight
     if req.method == "OPTIONS":
         return func.HttpResponse("", status_code=200, headers=cors_headers())
 
-    method = req.method.upper()
-    route  = req.route_params.get("action", "")
+    if req.method != "POST":
+        return resp({"error": "Method not allowed"}, 405)
 
     try:
-        if method == "GET" and route == "":
-            return get_users()
-        if method == "POST" and route == "add":
-            return add_user(req)
-        if method == "PATCH" and route == "update":
-            return update_user(req)
+        body = req.get_json()
+    except ValueError:
+        return resp({"error": "Invalid JSON body"}, 400)
 
-        return func.HttpResponse(
-            json.dumps({"error": "Route not found"}),
-            status_code=404, headers=cors_headers(),
-        )
+    action = body.get("action", "").strip()
+
+    try:
+        if action == "list":
+            return list_users()
+
+        elif action == "adduser":
+            return add_user(body)
+
+        elif action == "updateuser":
+            return update_user(body)
+
+        else:
+            return resp({"error": f"Unknown action: '{action}'. Use list, adduser, or updateuser."}, 400)
+
     except Exception as e:
         logging.exception("Unhandled error")
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            status_code=500, headers=cors_headers(),
-        )
+        return resp({"error": str(e)}, 500)
 
 
-# Handlers
+# Handlers 
 
-def get_users() -> func.HttpResponse:
+def list_users():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT user_id, name, email, org, last_access_date, status, role
                 FROM users
-                ORDER BY user_id;
+                ORDER BY name ASC;
             """)
             rows = cur.fetchall()
-    data = json.dumps({"users": [dict(r) for r in rows]}, default=json_serial)
-    return func.HttpResponse(data, status_code=200, headers=cors_headers())
+    return resp({"users": [dict(r) for r in rows]})
 
 
-def add_user(req: func.HttpRequest) -> func.HttpResponse:
-    body     = req.get_json()
-    required = ["name", "email","org", "status", "role"]
+def add_user(body):
+    required = ["name", "email", "org", "status", "role"]
     missing  = [f for f in required if not body.get(f)]
     if missing:
-        return func.HttpResponse(
-            json.dumps({"error": f"Missing fields: {', '.join(missing)}"}),
-            status_code=400, headers=cors_headers(),
-        )
+        return resp({"error": f"Missing fields: {', '.join(missing)}"}, 400)
 
     VALID_STATUSES = {"active", "inactive", "suspended"}
-    VALID_ROLES    = {"admin","user"}
+    VALID_ROLES    = {"admin", "user"}
 
     if body["status"] not in VALID_STATUSES:
-        return func.HttpResponse(json.dumps({"error": f"Invalid status"}), status_code=400, headers=cors_headers())
+        return resp({"error": "Invalid status. Use: active, inactive, suspended"}, 400)
     if body["role"] not in VALID_ROLES:
-        return func.HttpResponse(json.dumps({"error": f"Invalid role"}), status_code=400, headers=cors_headers())
+        return resp({"error": "Invalid role. Use: admin, user"}, 400)
 
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO users (name, email,org, last_access_date, status, role)
-                VALUES (%s, %s, %s, CURRENT_DATE, %s, %s)
+                INSERT INTO users (name, email, org, last_access_date, status, role)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, %s, %s)
                 RETURNING user_id, name, email, org, last_access_date, status, role;
             """, (body["name"], body["email"], body["org"], body["status"], body["role"]))
             new_row = dict(cur.fetchone())
         conn.commit()
 
-    return func.HttpResponse(
-        json.dumps({"message": "User created", "user": new_row}, default=json_serial),
-        status_code=201, headers=cors_headers(),
-    )
+    return resp({"message": "User created", "user": new_row}, 201)
 
 
-def update_user(req: func.HttpRequest) -> func.HttpResponse:
-    body    = req.get_json()
+def update_user(body):
     user_id = body.get("user_id")
     if not user_id:
-        return func.HttpResponse(json.dumps({"error": "user_id is required"}), status_code=400, headers=cors_headers())
+        return resp({"error": "user_id is required"}, 400)
 
     VALID_STATUSES = {"active", "inactive", "suspended"}
-    VALID_ROLES    = {"admin","user"}
+    VALID_ROLES    = {"admin", "user"}
 
     updates, params = [], []
 
     if "status" in body:
         if body["status"] not in VALID_STATUSES:
-            return func.HttpResponse(json.dumps({"error": "Invalid status"}), status_code=400, headers=cors_headers())
-        updates.append("status = %s"); params.append(body["status"])
+            return resp({"error": "Invalid status. Use: active, inactive, suspended"}, 400)
+        updates.append("status = %s")
+        params.append(body["status"])
 
     if "role" in body:
         if body["role"] not in VALID_ROLES:
-            return func.HttpResponse(json.dumps({"error": "Invalid role"}), status_code=400, headers=cors_headers())
-        updates.append("role = %s"); params.append(body["role"])
+            return resp({"error": "Invalid role. Use: admin, user"}, 400)
+        updates.append("role = %s")
+        params.append(body["role"])
 
     if not updates:
-        return func.HttpResponse(json.dumps({"error": "Provide at least one of: status, role"}), status_code=400, headers=cors_headers())
+        return resp({"error": "Provide at least one of: status, role"}, 400)
 
     params.append(user_id)
-    sql = f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s RETURNING user_id, name, status, role;"
+    sql = f"UPDATE users SET {', '.join(updates)} WHERE user_id = %s RETURNING user_id, name, email, org, status, role;"
 
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             updated = cur.fetchone()
             if not updated:
-                return func.HttpResponse(json.dumps({"error": "User not found"}), status_code=404, headers=cors_headers())
+                return resp({"error": "User not found"}, 404)
         conn.commit()
 
-    return func.HttpResponse(
-        json.dumps({"message": "User updated", "user": dict(updated)}),
-        status_code=200, headers=cors_headers(),
-    )
+    return resp({"message": "User updated", "user": dict(updated)})
