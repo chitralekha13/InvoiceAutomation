@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice Portal - Login</title>
+
     <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
     <script src="config.js"></script>
     </script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -71,7 +73,21 @@
         <div class="logo">📄</div>
         <h1>Invoice Portal</h1>
         <p>Secure document management system</p>
-        <button id="loginBtn" class="btn-login">Sign in with Microsoft / Google</button>
+
+        <br><br>
+
+        <button id="loginCommon" class="btn-login">
+        Sign in with Microsoft Personal
+        </button>
+
+        <br><br>
+
+        <button id="loginTenant" class="btn-login">
+        Sign in with Organization (Microsoft) / Google
+        </button>
+
+        <br><br>
+        <!--<button id="loginBtn" class="btn-login">Sign in with Microsoft / Google</button> -->
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p>Signing in...</p>
@@ -84,119 +100,130 @@
         const clientId    = appConfig.clientId || '';
         const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
 
-        const msalConfig = {
-            auth: {
-                clientId:    clientId,
-                //authority:   'https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034',
-                authority:   'https://login.microsoftonline.com/common',
-                redirectUri: redirectUri
-            },
-            cache: {
-                cacheLocation:          'sessionStorage',
-                storeAuthStateInCookie: false
+        const commonAuthority = "https://login.microsoftonline.com/common";
+        const tenantAuthority = `https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034`;
+
+        sessionStorage.clear();
+        localStorage.clear();
+
+        const loginRequest  = { scopes: ['openid', 'offline_access', 'profile'], prompt:"login"};
+        
+        function createMsalInstance(authority){
+            return new msal.PublicClientApplication({
+            auth:{
+                clientId:clientId,
+                authority:authority,
+                redirectUri:redirectUri
+                },
+            cache:{
+                cacheLocation:"sessionStorage",
+                storeAuthStateInCookie:false
+                }
+              });
             }
-        };
-
-        const loginRequest  = { scopes: ['openid', 'offline_access', 'profile']};
-        const msalInstance  = new msal.PublicClientApplication(msalConfig);
-
-        let msalReady       = false;
-        let loginInProgress = false;
-
-        // Initialize MSAL — if already logged in, go straight to upload
-        msalInstance.initialize().then(() => {
-            msalReady = true;
-            const accounts = msalInstance.getAllAccounts();
-            if (accounts.length > 0) {
-                msalInstance.setActiveAccount(accounts[0]);
-                redirectToUpload();
-            }
-        });
+        let msalInstance;
+        let loginInProgress=false;
 
         // ── Validate email against Function App / Postgres ──
-        async function validateUserEmail(email) {
-            let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
-            let base = (API_BASE || '').trim().replace(/\/+$/, '');
-            if (base.startsWith('http://')) base = 'https://' + base.slice(7);
-            const uploadUrl = base ? (base + '/api/validate-email') : '';
+        async function validateUserEmail(email){
 
-            const response = await fetch(uploadUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: email })
-            });
+        let API_BASE=(window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl)||"";
+        let base=(API_BASE||"").trim().replace(/\/+$/,"");
+        if(base.startsWith("http://")) base="https://"+base.slice(7);
+        const url=base?base+"/api/validate-email":"";
 
-            const result = await response.json();
-
-            if (!result.allowed) {
-                sessionStorage.setItem("denied_email", email); 
-                window.location.href = "access-denied.html";   
-                return false;
-            }
-
-            sessionStorage.setItem("org", result.org); 
-            return true;
-        }
-
-        // ── Login button handler ──
-        document.getElementById('loginBtn').addEventListener('click', async () => {
-            if (!clientId) {
-                document.getElementById('error').textContent = 'Login not configured. Add AZURE_CLIENT_ID to GitHub Secrets.';
-                document.getElementById('error').style.display = 'block';
-                return;
-            }
-            if (loginInProgress) return;
-            loginInProgress = true;
-
-            const loginBtn = document.getElementById('loginBtn');
-            const loading  = document.getElementById('loading');
-            const errorDiv = document.getElementById('error');
-
-            loginBtn.disabled      = true;
-            loading.style.display  = 'block';
-            errorDiv.style.display = 'none';
-
-            try {
-                if (!msalReady) {
-                    await msalInstance.initialize();
-                    msalReady = true;
-                }
-
-                const loginResponse = await msalInstance.loginPopup(loginRequest);
-                msalInstance.setActiveAccount(loginResponse.account);
-
-                sessionStorage.setItem('userEmail', loginResponse.account.username);
-                sessionStorage.setItem('userName',  loginResponse.account.name);
-
-                const tokenResponse = await msalInstance.acquireTokenSilent({
-                    ...loginRequest,
-                    account: loginResponse.account
-                });
-
-                sessionStorage.setItem('accessToken', tokenResponse.accessToken);
-
-                // ── Check email exists in Postgres ──
-                // If not found: auto-redirects to access-denied.html and returns false
-                // If found:     stores org_name in sessionStorage and returns true
-                const allowed = await validateUserEmail(loginResponse.account.username);
-                if (!allowed) return;
-
-                redirectToUpload();
-
-            } catch (error) {
-                console.error('Login error:', error);
-                errorDiv.textContent   = 'Login failed. Please try again.';
-                errorDiv.style.display = 'block';
-            } finally {
-                loginInProgress       = false;
-                loginBtn.disabled     = false;
-                loading.style.display = 'none';
-            }
+        const res=await fetch(url,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({email:email})
         });
 
-        function redirectToUpload() {
-            window.location.href = 'upload.html';
+        const result=await res.json();
+
+        if(!result.allowed){
+        sessionStorage.setItem("denied_email",email);
+        window.location.href="access-denied.html";
+        return false;
         }
+
+        sessionStorage.setItem("org",result.org);
+        return true;
+        }
+
+        async function loginFlow(authority,type){
+
+        if(!clientId){
+        showError("Client ID missing in config.js");
+        return;
+        }
+
+        if(loginInProgress) return;
+        loginInProgress=true;
+
+        const loading=document.getElementById("loading");
+        loading.style.display="block";
+
+        try{
+
+            msalInstance=createMsalInstance(authority);
+            await msalInstance.initialize();
+
+            /* Clear any cached accounts just in case */
+            const accounts=msalInstance.getAllAccounts();
+            for(const acc of accounts){
+            await msalInstance.logoutPopup({account:acc});
+            }
+
+            const loginResponse=await msalInstance.loginPopup(loginRequest);
+
+            sessionStorage.setItem("loginType",type);
+            sessionStorage.setItem("userEmail",loginResponse.account.username);
+            sessionStorage.setItem("userName",loginResponse.account.name);
+
+            const tokenResponse=await msalInstance.acquireTokenSilent({
+            ...loginRequest,
+            account:loginResponse.account
+            });
+
+            sessionStorage.setItem("accessToken",tokenResponse.accessToken);
+
+            const allowed=await validateUserEmail(loginResponse.account.username);
+            if(!allowed) return;
+
+            redirectToUpload();
+
+        }catch(e){
+            console.error(e);
+            showError("Login failed. Try again.");
+        }
+        finally{
+            loading.style.display="none";
+            loginInProgress=false;
+        }
+        }
+
+        /* ---------- BUTTONS ---------- */
+
+        document.getElementById("loginCommon").onclick=()=>{
+        loginFlow(commonAuthority,"common");
+        };
+
+        document.getElementById("loginTenant").onclick=()=>{
+        loginFlow(tenantAuthority,"tenant");
+        };
+
+        /* ---------- UI HELPERS ---------- */
+
+        function showError(msg){
+        const div=document.getElementById("error");
+        div.textContent=msg;
+        div.style.display="block";
+        }
+
+        function redirectToUpload(){
+        window.location.href="upload.html";
+        }
+
     </script>
 </body>
 </html>
