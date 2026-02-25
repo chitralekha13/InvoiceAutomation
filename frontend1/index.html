@@ -200,28 +200,28 @@
             loading.style.display = "block";
             document.getElementById("error").style.display = "none";
 
+            Object.keys(sessionStorage)
+                .filter(k => k.startsWith("msal.") || k.startsWith("msal|"))
+                .forEach(k => sessionStorage.removeItem(k));
+            Object.keys(localStorage)
+                .filter(k => k.startsWith("msal.") || k.startsWith("msal|"))
+                .forEach(k => localStorage.removeItem(k));
+
             try {
+                // Always create a FRESH instance — never reuse across logins
                 msalInstance = createMsalInstance(authority);
                 await msalInstance.initialize();
 
-                // Clear any cached accounts
-                const accounts = msalInstance.getAllAccounts();
-                for (const acc of accounts) {
-                    await msalInstance.logoutPopup({ account: acc });
-                }
-
-                // Login popup (returns loginResponse with account info)
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
 
                 sessionStorage.setItem("loginType",  type);
                 sessionStorage.setItem("userEmail",  loginResponse.account.username);
                 sessionStorage.setItem("userName",   loginResponse.account.name);
 
-                // Acquire a REAL access token (silent → popup fallback)
+                // Acquire real token with silent → popup fallback
                 const accessToken = await acquireRealToken(loginResponse.account);
                 sessionStorage.setItem("accessToken", accessToken);
 
-                // Validate user & redirect
                 const allowed = await validateUserEmail(loginResponse.account.username);
                 if (!allowed) return;
 
@@ -229,13 +229,24 @@
 
             } catch (e) {
                 console.error("Login flow error:", e);
-                showError("Login failed: " + (e.message || "Please try again."));
+
+                // FIX: Give specific error messages for the most common second-login failures
+                if (e.errorCode === "interaction_in_progress") {
+                    // Stale MSAL lock — clear it and ask user to retry
+                    Object.keys(sessionStorage)
+                        .filter(k => k.startsWith("msal"))
+                        .forEach(k => sessionStorage.removeItem(k));
+                    showError("Login conflict detected. Please click the button again.");
+                } else if (e.errorCode === "user_cancelled") {
+                    showError("Login was cancelled. Please try again.");
+                } else {
+                    showError("Login failed: " + (e.message || "Please try again."));
+                }
             } finally {
                 loading.style.display = "none";
                 loginInProgress = false;
             }
         }
-
 
         document.getElementById("loginCommon").onclick = () => {
             loginFlow(commonAuthority, "common");
