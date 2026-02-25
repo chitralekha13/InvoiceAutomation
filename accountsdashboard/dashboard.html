@@ -111,6 +111,64 @@
         }
         .metric-card.clickable.active .value,
         .metric-card.clickable.active .label { color: white; }
+        .pane-headers {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+            margin-bottom: 0;
+            background: #f8f9fa;
+            border-radius: 6px 6px 0 0;
+            overflow: hidden;
+            border: 1px solid #dee2e6;
+            border-bottom: none;
+        }
+        .pane-header {
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #495057;
+            text-align: center;
+            cursor: pointer;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            transition: background 0.2s, color 0.2s;
+        }
+        .pane-header:last-child { border-right: none; }
+        .pane-header:hover { background: #e9ecef; color: #1e3a5f; }
+        .pane-header.active {
+            background: white;
+            color: #1e3a5f;
+            border-bottom: 2px solid white;
+            margin-bottom: -1px;
+        }
+        .panes-wrapper { border: 1px solid #dee2e6; border-top: none; border-radius: 0 0 6px 6px; overflow: hidden; }
+        .pane {
+            background: white;
+            box-shadow: none;
+            border-radius: 0;
+            display: none;
+            overflow: hidden;
+        }
+        .pane.active { display: block; }
+        .pane-title {
+            padding: 16px 24px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        .pane-body { padding: 20px 24px; }
+        .btn-manage-users {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-manage-users:hover { background: #005a9e; }
+        .sow-placeholder { color: #666; font-size: 14px; }
         .table-section {
             background: white;
             border-radius: 6px;
@@ -294,35 +352,49 @@
             <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')"><div class="value" id="mNeedApproval">0</div><div class="label">NEED APPROVAL</div></div>
         </div>
 
-        <div class="table-section">
-            <div class="table-title">Invoice Management Table</div>
-            <div class="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                            <th>S.No</th>
-                            <th>ID (UUID)</th>
-                            <th>Doc Name</th>
-                            <th>Invoice No</th>
-                            <th>Consultancy Name</th>
-                            <th>Resource Name</th>
-                            <th>Pay Period Start</th>
-                            <th>Pay Period End</th>
-                            <th>Net Terms</th>
-                            <th>Vendor Hours</th>
-                            <th>Approved Hours</th>
-                            <th>Status</th>
-                            <th>Pay Rate</th>
-                            <th>Invoice Amount</th>
-                            <th>Date Inv Recd</th>
-                            <th>Due Date</th>
-                            <th>Project Name</th>
-                            <th>Payment initiated on</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
+        <div class="pane-headers">
+            <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
+            <div class="pane-header" onclick="window.open('users.html', '_blank')">Manage Users</div>
+            <div class="pane-header" data-pane="sow" onclick="switchPane('sow')">SOW Info</div>
+        </div>
+        <div class="panes-wrapper">
+            <div class="pane table-section active" id="pane-invoices">
+                <div class="table-title">Invoice Management Table</div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                <th>S.No</th>
+                                <th>ID (UUID)</th>
+                                <th>Doc Name</th>
+                                <th>Invoice No</th>
+                                <th>Consultancy Name</th>
+                                <th>Resource Name</th>
+                                <th>Pay Period Start</th>
+                                <th>Pay Period End</th>
+                                <th>Net Terms</th>
+                                <th>Vendor Hours</th>
+                                <th>Approved Hours</th>
+                                <th>Status</th>
+                                <th>Pay Rate</th>
+                                <th>Invoice Amount</th>
+                                <th>Date Inv Recd</th>
+                                <th>Due Date</th>
+                                <th>Project Name</th>
+                                <th>Payment initiated on</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="pane" id="pane-sow">
+                <div class="pane-title">SOW Info</div>
+                <div class="pane-body">
+                    <p class="sow-placeholder">SOW information will be displayed here.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -363,6 +435,15 @@
         let excelUrl = '';
 
         window.addEventListener('load', () => { loadDashboard(); });
+
+        function switchPane(paneId) {
+            document.querySelectorAll('.pane-header').forEach(h => h.classList.remove('active'));
+            document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+            const header = document.querySelector('.pane-header[data-pane="' + paneId + '"]');
+            const pane = document.getElementById('pane-' + paneId);
+            if (header) header.classList.add('active');
+            if (pane) pane.classList.add('active');
+        }
 
         function showLoading(show) {
             document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
