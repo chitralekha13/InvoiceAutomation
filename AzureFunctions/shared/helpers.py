@@ -437,6 +437,7 @@ def extract_token_from_request(req) -> Optional[str]:
         return None
     return auth_header.split(' ')[1]
 
+'''
 def decode_token(token: str) -> Dict:
     """Decode JWT token (without verification for now)"""
     try:
@@ -446,7 +447,27 @@ def decode_token(token: str) -> Dict:
     except Exception as e:
         logger.error(f"Failed to decode token: {str(e)}")
         raise
+'''
 
+def decode_token(token: str) -> Dict:
+    """Decode JWT token (without verification for now)"""
+    try:
+        # Strip "Bearer " prefix if present
+        if token.startswith("Bearer "):
+            token = token[7:]
+        
+        token = token.strip()
+
+        if not token or token.count('.') != 2:
+            raise ValueError(f"Malformed token: {token.count('.')+1} segments found")
+
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        return decoded
+
+    except Exception as e:
+        logger.error(f"Failed to decode token: {str(e)}")
+        raise
+    
 def extract_vendor_id_from_token(token: str) -> str:
     """Extract vendor_id from JWT token"""
     decoded = decode_token(token)
