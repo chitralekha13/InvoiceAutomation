@@ -302,6 +302,10 @@
       <input type="text" id="new-name" placeholder="e.g. Jane Smith"/>
     </div>
     <div class="form-group">
+      <label>Email</label>
+      <input type="text" id="new-email" placeholder="e.g. jane@acme.com"/>
+    </div>
+    <div class="form-group">
       <label>Organisation</label>
       <input type="text" id="new-org" placeholder="e.g. Acme Corp"/>
     </div>
@@ -448,14 +452,16 @@
     document.getElementById("add-modal").classList.remove("open");
     document.getElementById("new-name").value = "";
     document.getElementById("new-org").value  = "";
+    document.getElementById("new-email").value  = "";
   }
 
   async function submitAddUser() {
     const name   = document.getElementById("new-name").value.trim();
     const org    = document.getElementById("new-org").value.trim();
+    const email  = document.getElementById("new-email").value.trim();
     const status = document.getElementById("new-status").value;
     const role   = document.getElementById("new-role").value;
-    if (!name || !org) { showToast("Name and Organisation are required.", "error"); return; }
+    if (!name || !org || !email) { showToast("Name, Organisation and Email are required.", "error"); return; }
 
     const btn = document.getElementById("submit-btn");
     btn.disabled = true; btn.textContent = "Adding…";
@@ -463,7 +469,7 @@
       const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
       const res  = await fetch(API_BASE + '/api/users', {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, organisation: org, status, role,action: "adduser" }),
+        body: JSON.stringify({ name, organisation: org, email, status, role,action: "adduser" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add user");
@@ -471,7 +477,7 @@
       renderTable(filterUsers());
       updateStats(allUsers);
       closeAddModal();
-      showBanner(`User "${name}" has been added.`, "success");
+      showBanner(`User "${email}" has been added.`, "success");
     } catch (err) {
       showToast(err.message, "error");
     } finally {
