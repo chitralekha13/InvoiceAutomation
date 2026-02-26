@@ -127,27 +127,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if not safe_name.lower().endswith((".pdf", ".png", ".jpg", ".jpeg")):
             safe_name = safe_name + ".pdf"
 
-        # 1) Upload to SharePoint (library Invoices, optional subpath 2025/01_January)
-        now = __import__('datetime').datetime.now()
-        folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
-        try:
-            server_url = upload_file_to_sharepoint(file_content, safe_name, folder_path)
-        except Exception as e:
-            logger.exception("SharePoint upload failed")
-            return func.HttpResponse(
-                json.dumps({"error": f"SharePoint upload failed: {str(e)}"}),
-                status_code=500,
-                mimetype="application/json",
-            )
-
-        site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
-        #pdf_url = f"{site_url}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
-        pdf_url = f"{site_url.split('/sites/')[0]}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
-        
-        # 2) Document Intelligence (SQL insert deferred until after duplicate check)
+        # 1) Document Intelligence (extract from file only – no SharePoint yet)
         invoice_data = analyze_invoice_bytes(file_content, safe_name)
         if not invoice_data:
-            # Document Intelligence not configured or failed; upload still succeeds
             invoice_data = {
                 "full_text": "",
                 "extracted_text": [],
@@ -156,7 +138,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "status": "no_di",
             }
 
-        # 4) iGentic – userInput format: {"invoice_processing": {...}, "uploaded_file": "..."}
+        # 2) iGentic – get structured fields for duplicate check
         user_input_for_igentic = {
             "invoice_processing": {
                 "timestamp": invoice_data.get("timestamp"),
@@ -170,32 +152,23 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         }
         orchestration_response = process_with_igentic(user_input_for_igentic, invoice_id, invoice_id)
 
-        # 5) Save JSON backup to SharePoint (always – Document Intelligence + iGentic result)
-        try:
-            save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
-        except Exception as e:
-            logger.warning("Save JSON log failed: %s", e)
-
-        # 6) Extract fields and check for duplicate before adding to dashboard
+        # 3) Extract fields and check for duplicate – reject before saving anywhere
         fields = _extract_from_orchestrator(orchestration_response)
-        # Fallback: use vendor hours from Document Intelligence if iGentic didn't extract it
         if not fields.get("invoice_hours") and invoice_data.get("structured_fields", {}).get("invoice_hours") is not None:
             fields["invoice_hours"] = invoice_data["structured_fields"]["invoice_hours"]
-        # Fallback: try to parse hours from full_text
         if not fields.get("invoice_hours") and invoice_data.get("full_text"):
             _hrs = _parse_hours_from_text(invoice_data["full_text"])
             if _hrs is not None:
                 fields["invoice_hours"] = _hrs
         logger.info(f"Extracted fields from iGentic: {fields}")
 
-        # Duplicate check: if key fields match an existing row, skip DB/Excel - no new dashboard row
         if use_db and fields:
             existing_id = find_duplicate_invoice(fields)
             if existing_id:
-                logger.info(f"Duplicate invoice detected (matches {existing_id}), skipping DB and Excel")
+                logger.info(f"Duplicate invoice detected (matches {existing_id}), rejecting – not saved to SharePoint or DB")
                 return func.HttpResponse(
                     json.dumps({
-                        "message": "Duplicate invoice - file uploaded to SharePoint but not added to dashboard",
+                        "message": "Duplicate invoice - rejected, not saved anywhere",
                         "filename": safe_name,
                         "invoice_uuid": invoice_id,
                         "duplicate_of": existing_id,
@@ -205,7 +178,28 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json",
                 )
 
-        # 7) Insert into SQL and update with extracted fields (only if not duplicate)
+        # 4) Not a duplicate: upload to SharePoint and save
+        now = __import__('datetime').datetime.now()
+        folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+        try:
+            server_url = upload_file_to_sharepoint(file_content, safe_name, folder_path)
+        except Exception as e:
+            logger.exception("SharePoint upload failed")
+            return func.HttpResponse(
+                json.dumps({"error": f"SharePoint upload failed: {str(e)}"}),
+                status_code=500,
+                mimetype="application/json",
+            )
+
+        site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
+        pdf_url = f"{site_url.split('/sites/')[0]}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
+
+        try:
+            save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
+        except Exception as e:
+            logger.warning("Save JSON log failed: %s", e)
+
+        # 5) Insert into SQL and update with extracted fields
         if use_db:
             try:
                 insert_invoice(invoice_id, vendor_id, safe_name, pdf_url)
@@ -225,7 +219,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             else:
                 logger.warning(f"No CSV fields extracted from iGentic response for invoice {invoice_id}. iGentic response: {json.dumps(orchestration_response)[:500]}")
         
-        # 7) Update Excel file in SharePoint (always - uses CSV data from iGentic)
+        # 6) Update Excel file in SharePoint (always - uses CSV data from iGentic)
         if fields:  # Only update Excel if we extracted CSV fields
             try:
                 from shared.helpers import update_excel_file

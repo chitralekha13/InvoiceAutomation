@@ -385,6 +385,7 @@
             const total = selectedFiles.length;
             let done = 0;
             const errors = [];
+            let hasDuplicate = false;
 
             try {
                 for (const file of selectedFiles) {
@@ -409,6 +410,8 @@
 
                     if (!response.ok) {
                         errors.push(file.name + ': ' + (result.error || response.statusText));
+                    } else if (result.duplicate_of) {
+                        hasDuplicate = true;
                     }
                     done++;
                     progressFill.style.width = Math.round((done / total) * 100) + '%';
@@ -416,7 +419,11 @@
                 }
 
                 if (errors.length === 0) {
-                    showMessage('All files uploaded. They are saved in SharePoint and will appear on the accounts dashboard.', 'success');
+                    if (hasDuplicate) {
+                        showMessage('This invoice already exists.', 'success');
+                    } else {
+                        showMessage('All files uploaded. They are saved in SharePoint and will appear on the accounts dashboard.', 'success');
+                    }
                     selectedFiles = [];
                     renderFileList();
                     fileInput.value = '';
