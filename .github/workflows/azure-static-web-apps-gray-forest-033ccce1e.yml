@@ -38,6 +38,9 @@ jobs:
               apiBaseUrl: "$API_URL"
           };
           EOF
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }} 
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
       - name: Get Id Token
