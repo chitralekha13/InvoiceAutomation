@@ -370,32 +370,7 @@
             throw new Error('Unauthenticated');
         }
         
-        function setDisplayName(firstLast) {
-        const el = document.getElementById('userName');
-        if (el) el.textContent = firstLast || userEmail || '';
-    }
-    setDisplayName(userName && userName !== userEmail ? userName : userEmail);
-    loadDisplayNameFromUsers();
-
-    async function loadDisplayNameFromUsers() {
-        const email = sessionStorage.getItem('userEmail');
-        if (!email || !API_BASE) return;
-        try {
-            const res = await fetch(API_BASE + '/api/users', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'list' })
-            });
-            if (!res.ok) return;
-            const data = await res.json().catch(() => ({}));
-            const users = data.users || [];
-            const me = users.find(u => (u.email || '').toLowerCase() === (email || '').toLowerCase());
-            if (me && (me.firstname != null || me.lastname != null)) {
-                const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
-                if (full) setDisplayName(full);
-            }
-        } catch (e) { /* ignore */ }
-    }
+        
         
         let allDocuments = [];
         let currentDocId   = null;
@@ -513,7 +488,6 @@
                 row.innerHTML = `
                     <td>
                         <div class="file-name">
-                            <span class="file-icon">${getFileIcon(doc.name)}</span>
                             ${escapeHtml(doc.name)}
                         </div>
                     </td>
@@ -660,7 +634,32 @@
             if (e.key === 'Enter') searchDocuments();
         });
         
-        
+        function setDisplayName(firstLast) {
+            const el = document.getElementById('userName');
+            if (el) el.textContent = firstLast || userEmail || '';
+        }
+        setDisplayName(userName && userName !== userEmail ? userName : userEmail);
+        loadDisplayNameFromUsers();
+
+        async function loadDisplayNameFromUsers() {
+            const email = sessionStorage.getItem('userEmail');
+            if (!email || !API_BASE) return;
+            try {
+                const res = await fetch(API_BASE + '/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'list' })
+                });
+                if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                const users = data.users || [];
+                const me = users.find(u => (u.email || '').toLowerCase() === (email || '').toLowerCase());
+                if (me && (me.firstname != null || me.lastname != null)) {
+                    const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
+                    if (full) setDisplayName(full);
+                }
+            } catch (e) { /* ignore */ }
+        }
         
         function getFileIcon(fileName) {
             const ext = fileName.split('.').pop().toLowerCase();
