@@ -894,9 +894,7 @@
         }
 
         function logout() {
-            sessionStorage.removeItem('loggedIn');
-            sessionStorage.removeItem('userName');
-            sessionStorage.removeItem('userEmail');
+            sessionStorage.clear();
             window.location.href = 'index.html';
         }
 

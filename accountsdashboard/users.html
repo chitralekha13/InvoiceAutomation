@@ -402,7 +402,32 @@
 
   const userEmail = sessionStorage.getItem('userEmail');
   const userName = sessionStorage.getItem('userName');
-  document.getElementById('userName').textContent = userName;
+  function setDisplayName(firstLast) {
+        const el = document.getElementById('userName');
+        if (el) el.textContent = firstLast || userEmail || '';
+    }
+    setDisplayName(userName && userName !== userEmail ? userName : userEmail);
+    loadDisplayNameFromUsers();
+
+    async function loadDisplayNameFromUsers() {
+        const email = sessionStorage.getItem('userEmail');
+        if (!email || !API_BASE) return;
+        try {
+            const res = await fetch(API_BASE + '/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'list' })
+            });
+            if (!res.ok) return;
+            const data = await res.json().catch(() => ({}));
+            const users = data.users || [];
+            const me = users.find(u => (u.email || '').toLowerCase() === (email || '').toLowerCase());
+            if (me && (me.firstname != null || me.lastname != null)) {
+                const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
+                if (full) setDisplayName(full);
+            }
+        } catch (e) { /* ignore */ }
+    }
 
   // Load 
   async function loadUsers() {
@@ -584,9 +609,8 @@
   }
 
   function logout() {
-    sessionStorage.removeItem('userName');
-    sessionStorage.removeItem('userEmail');
-    window.location.href = 'index.html';
+      sessionStorage.clear();
+      window.location.href = 'index.html';
   }
 
   function toggleHeaderMenu() 
