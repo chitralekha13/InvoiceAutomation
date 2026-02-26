@@ -399,15 +399,17 @@
 
   let allUsers  = [];
   let editingId = null;
-
+  const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
   const userEmail = sessionStorage.getItem('userEmail');
   const userName = sessionStorage.getItem('userName');
+
   function setDisplayName(firstLast) {
         const el = document.getElementById('userName');
         if (el) el.textContent = firstLast || userEmail || '';
     }
-    setDisplayName(userName && userName !== userEmail ? userName : userEmail);
-    loadDisplayNameFromUsers();
+
+  setDisplayName(userName && userName !== userEmail ? userName : userEmail);
+  loadDisplayNameFromUsers();
 
     async function loadDisplayNameFromUsers() {
         const email = sessionStorage.getItem('userEmail');
@@ -427,7 +429,7 @@
                 if (full) setDisplayName(full);
             }
         } catch (e) { /* ignore */ }
-    }
+  }
 
   // Load 
   async function loadUsers() {

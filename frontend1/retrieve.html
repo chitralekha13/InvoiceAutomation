@@ -370,7 +370,7 @@
             throw new Error('Unauthenticated');
         }
         
-        
+        const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
         
         let allDocuments = [];
         let currentDocId   = null;
