@@ -428,7 +428,7 @@
                     renderFileList();
                     fileInput.value = '';
                 } else {
-                    showMessage('Some uploads failed: ' + errors.join('; '), 'error');
+                    showMessage('Upload failed: ' + errors.join('; '), 'error');
                 }
             } catch (error) {
                 console.error('Upload error:', error);
