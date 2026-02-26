@@ -214,6 +214,27 @@ def get_sql_connection():
         raise ValueError("SQL_CONNECTION_STRING not found in environment")
     return psycopg2.connect(conn_str)
 
+
+def get_org_for_user(email: str) -> Optional[str]:
+    """Return org/company for a user from users table, looked up by email."""
+    if not email:
+        return None
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT org FROM users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+            (str(email).strip(),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        # row may be tuple or dict depending on cursor type; handle both
+        return row[0] if not isinstance(row, dict) else row.get("org")
+    finally:
+        cursor.close()
+        conn.close()
+
 def insert_invoice(invoice_id: str, vendor_id: str, doc_name: str, pdf_url: str, **kwargs) -> None:
     """Insert new invoice record into PostgreSQL database"""
     conn = get_sql_connection()

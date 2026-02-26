@@ -65,8 +65,9 @@ def _extract_from_orchestrator(resp: dict) -> dict:
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logger.info("Upload function processed a request.")
     try:
-        # Optional: validate JWT and get vendor_id
+        # Optional: validate JWT and get vendor identity (email)
         vendor_id = "unknown"
+        vendor_org = None
         token = None
         auth = req.headers.get("Authorization")
         if auth and auth.startswith("Bearer "):
@@ -117,10 +118,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             process_with_igentic,
             save_complete_log,
             _parse_hours_from_text,
+            get_org_for_user,
         )
         use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
         if use_db:
             from shared.helpers import insert_invoice, update_invoice, get_invoice, save_complete_log, find_duplicate_invoice
+            try:
+                vendor_org = get_org_for_user(vendor_id)
+            except Exception as e:
+                logger.warning("Could not resolve vendor org from users table for %s: %s", vendor_id, e)
 
         invoice_id = str(uuid.uuid4())
         safe_name = (filename or "invoice.pdf").replace(" ", "_")
@@ -152,7 +158,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         }
         orchestration_response = process_with_igentic(user_input_for_igentic, invoice_id, invoice_id)
 
-        # 3) Extract fields and check for duplicate – reject before saving anywhere
+        # 3) Extract fields and check for duplicate / org – reject before saving anywhere
         fields = _extract_from_orchestrator(orchestration_response)
         if not fields.get("invoice_hours") and invoice_data.get("structured_fields", {}).get("invoice_hours") is not None:
             fields["invoice_hours"] = invoice_data["structured_fields"]["invoice_hours"]
@@ -163,6 +169,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"Extracted fields from iGentic: {fields}")
 
         if use_db and fields:
+            # 3a) Duplicate invoice check
             existing_id = find_duplicate_invoice(fields)
             if existing_id:
                 logger.info(f"Duplicate invoice detected (matches {existing_id}), rejecting – not saved to SharePoint or DB")
@@ -177,6 +184,26 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=200,
                     mimetype="application/json",
                 )
+
+            # 3b) Vendor org check: vendor can only upload invoices for their own org/company
+            inv_vendor_name = (fields.get("vendor_name") or "").strip()
+            if vendor_org and inv_vendor_name:
+                inv_vendor_lower = inv_vendor_name.lower()
+                vendor_org_lower = str(vendor_org).lower()
+                belongs_to_org = (
+                    vendor_org_lower in inv_vendor_lower or
+                    inv_vendor_lower in vendor_org_lower
+                )
+                if not belongs_to_org:
+                    logger.info(
+                        "Vendor org mismatch: token org=%s, invoice vendor_name=%s. Rejecting upload.",
+                        vendor_org, inv_vendor_name
+                    )
+                    return func.HttpResponse(
+                        json.dumps({"error": "Invoice doesn't belong to this org."}),
+                        status_code=403,
+                        mimetype="application/json",
+                    )
 
         # 4) Not a duplicate: upload to SharePoint and save
         now = __import__('datetime').datetime.now()
