@@ -633,7 +633,7 @@
         document.getElementById('searchInput').addEventListener('keypress', e => {
             if (e.key === 'Enter') searchDocuments();
         });
-        
+
         function setDisplayName(firstLast) {
             const el = document.getElementById('userName');
             if (el) el.textContent = firstLast || userEmail || '';
@@ -660,7 +660,7 @@
                 }
             } catch (e) { /* ignore */ }
         }
-        
+
         function getFileIcon(fileName) {
             const ext = fileName.split('.').pop().toLowerCase();
             const icons = {

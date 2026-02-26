@@ -68,6 +68,23 @@
         }
         .btn-login:hover    { background: #005a9e; }
         .btn-login:disabled { background: #ccc; cursor: not-allowed; }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0078d4;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
