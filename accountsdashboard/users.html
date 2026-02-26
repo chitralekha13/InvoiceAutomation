@@ -15,13 +15,56 @@
     }
 
     .header {
-        background: #1e3a5f;
-        padding: 16px 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
+            background: #1e3a5f;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
+    .header-title { color: white; font-size: 20px; font-weight: 600; }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .btn-hamburger {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.6);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            display: flex; flex-direction: column; justify-content: center; gap: 4px;
+        }
+        .btn-hamburger:hover { background: rgba(255,255,255,0.15); }
+        .btn-hamburger span { display: block; width: 22px; height: 2px; background: white; }
+        .header-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            min-width: 200px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        .header-dropdown.show { display: block; }
+        .header-dropdown a, .header-dropdown button {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            text-align: left;
+            border: none;
+            background: none;
+            color: #333;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .header-dropdown a:hover, .header-dropdown button:hover { background: #f0f4f8; }
+        .header-dropdown-wrap { position: relative; }
     
 
     .container { max-width: 1200px; margin: 50px auto; padding: 0 20px; }
@@ -222,20 +265,33 @@
 
     .user-name { color: rgba(255,255,255,0.9); font-size: 14px; }
     .header-title { color: white; font-size: 20px; font-weight: 600; }
+    .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
   </style>
 </head>
 
 <body>
 
 <div class="header">
-  <span class="header-title">User Management</span>
-  <div class="user-info">
-    <span class="user-name" id="userName"></span>
-    <button class="btn-add-user" onclick="openAddModal()">+ Add New User</button>
-    <button type="button" class="btn-acctdash" onclick="window.location.href='dashboard.html'">Accounts Dashboard</button>
-    <button type="button" class="btn-logout" onclick="logout()">Logout</button>
-  </div>
-</div>
+        <div class="header-left">
+            <div class="header-dropdown-wrap">
+                <button type="button" class="btn-hamburger" id="btnHamburger" onclick="toggleHeaderMenu()" aria-label="Menu">
+                    <span></span><span></span><span></span>
+                </button>
+                <div class="header-dropdown" id="headerDropdown">
+                    <button type="button" onclick="window.open('dashboard.html', '_blank'); closeHeaderMenu();">Accounts Dashboard</button>
+                </div>
+            </div>
+            <span class="header-title">Manage Users</span>
+        </div>
+        <div class="user-info">
+            <span class="user-name" id="userName"></span>
+            <button type="button" class="btn-logout" onclick="logout()">Logout</button>
+        </div>
+    </div>
 
 <div class="container">
 
@@ -531,6 +587,14 @@
     sessionStorage.removeItem('userName');
     sessionStorage.removeItem('userEmail');
     window.location.href = 'index.html';
+  }
+
+  function toggleHeaderMenu() 
+  {
+    document.getElementById('headerDropdown').classList.toggle('show');
+  }
+  function closeHeaderMenu() {
+    document.getElementById('headerDropdown').classList.remove('show');
   }
 
   document.getElementById("add-modal").addEventListener("click", function(e) { if (e.target === this) closeAddModal(); });
