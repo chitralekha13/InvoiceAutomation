@@ -425,7 +425,7 @@ def _write_update(cursor, conn, invoice_id, fields: dict):
     values     = list(fields.values()) + [invoice_id]
 
     cursor.execute(
-        f"UPDATE invoices SET {set_clause}, updated_at = NOW() WHERE invoice_id = %s",
+        f"UPDATE invoices SET {set_clause}, excel_updated_at = NOW() WHERE invoice_id = %s",
         values
     )
     conn.commit()
