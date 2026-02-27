@@ -1553,3 +1553,84 @@ def save_status_change_log(invoice_id: str, old_status: str, new_status: str, ch
     
     file_name = f'invoice_{invoice_id}_status_change.json'
     save_json_to_sharepoint(log_data, file_name)
+
+
+# Add Excel Timesheet Validation Helper
+def upload_excel_to_sharepoint(
+    file_content: bytes,
+    file_name: str,
+    folder_path: str = "Timesheet",
+) -> str:
+    """
+    Upload an Excel timesheet file to a SharePoint document library.
+
+    Args:
+        file_content : Raw bytes of the .xlsx file.
+        file_name    : Filename to save as in SharePoint
+                       (special chars are sanitised automatically).
+        folder_path  : Library name, optionally with sub-folders separated by
+                       '/'.  Defaults to "Timesheet".
+                       Examples:
+                         "Timesheet"
+                         "Timesheet/2025/05_May"
+    """
+    ctx = get_sharepoint_context()
+
+    # ── Resolve library name + optional sub-folder path ──────────────────────
+    parts = [p for p in folder_path.replace("\\", "/").strip("/").split("/") if p.strip()]
+    if not parts:
+        parts = ["Timesheet"]
+
+    list_name = parts[0]
+
+    # ── Sanitise filename (SharePoint rejects these characters) ──────────────
+    safe_name = re.sub(r'[\\/:*?"<>|#%]', '_', file_name)
+
+    # ── Navigate to root folder of the library ───────────────────────────────
+    root = ctx.web.lists.get_by_title(list_name).root_folder
+    root.get().execute_query()
+    target_folder = root
+
+    # ── Traverse / create sub-folders ────────────────────────────────────────
+    for part in parts[1:]:
+        try:
+            target_folder = (
+                target_folder.folders.get_by_name(part).get().execute_query()
+            )
+        except Exception:
+            # Folder does not exist yet — create it
+            target_folder = target_folder.folders.add(part).execute_query()
+
+    # ── Upload ────────────────────────────────────────────────────────────────
+    uploaded_file = target_folder.upload_file(safe_name, file_content).execute_query()
+
+    return (
+        uploaded_file.properties.get("ServerRelativeUrl")
+        or uploaded_file.properties.get("serverRelativeUrl")
+        or ""
+    )
+
+
+def upload_excel_to_sharepoint_dated(
+    file_content: bytes,
+    file_name: str,
+    base_folder: str = "Timesheet",
+) -> str:
+    """
+    Resulting path:  <base_folder>/<YYYY>/<MM_MonthName>/<file_name>
+    Example:         Timesheet/2025/05_May/timesheet_john.xlsx
+
+    Args:
+        file_content : Raw bytes of the .xlsx file.
+        file_name    : Filename to save.
+        base_folder  : Top-level library name. Defaults to "Timesheet".
+
+    Returns:
+        Server-relative URL of the uploaded file.
+    """
+    now         = datetime.now()
+    year        = now.strftime("%Y")
+    month       = now.strftime("%m_%B")          # e.g. "05_May"
+    folder_path = f"{base_folder}/{year}/{month}"
+
+    return upload_excel_to_sharepoint(file_content, file_name, folder_path)

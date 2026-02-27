@@ -68,6 +68,13 @@
         }
         .header-dropdown a:hover, .header-dropdown button:hover { background: #f0f4f8; }
         .header-dropdown-wrap { position: relative; }
+        .dropdown-divider { border: none; border-top: 1px solid #eee; margin: 4px 0; }
+
+        /* Upload option in dropdown */
+        .dropdown-upload-label { display: flex !important; align-items: center; gap: 8px; cursor: pointer; }
+        .dropdown-upload-label input[type="file"] { display: none; }
+        .upload-icon { font-size: 16px; }
+
         .btn-logout {
             background: transparent;
             color: white;
@@ -79,6 +86,7 @@
             margin-right: 12px;
         }
         .btn-logout:hover { background: rgba(255,255,255,0.1); }
+
         .filter-bar {
             background: #e8e9ec;
             padding: 14px 24px;
@@ -87,6 +95,7 @@
             align-items: center;
         }
         .filter-left { display: flex; gap: 16px; align-items: center; }
+
         .filter-left select, .filter-left input {
             padding: 8px 12px;
             border: 1px solid #ccc;
@@ -104,6 +113,8 @@
             font-size: 14px;
         }
         .btn-refresh:hover { background: #005a9e; }
+        .btn-refresh:disabled { background: #90b8d8; cursor: not-allowed; }
+
         .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
         .metrics-row {
             display: grid;
@@ -143,6 +154,8 @@
         }
         .metric-card.clickable.active .value,
         .metric-card.clickable.active .label { color: white; }
+
+
         .pane-headers {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -190,17 +203,9 @@
             border-bottom: 1px solid #eee;
         }
         .pane-body { padding: 20px 24px; }
-        .btn-manage-users {
-            background: #0078d4;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .btn-manage-users:hover { background: #005a9e; }
+
         .sow-placeholder { color: #666; font-size: 14px; }
+
         .table-section {
             background: white;
             border-radius: 6px;
@@ -240,12 +245,14 @@
             border-radius: 2px;
         }
         .editable:hover { background: #e7f3ff; }
+
         .user-info {
             display: flex;
             align-items: center;
             gap: 16px;
         }
         .user-name { color: rgba(255,255,255,0.9); font-size: 14px; }
+
         .loading-overlay {
             position: fixed;
             inset: 0;
@@ -264,6 +271,7 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
         .checkbox-col { width: 90px; text-align: left; padding-left: 8px; }
         .checkbox-col .row-delete-btn {
             margin-left: 8px;
@@ -278,16 +286,7 @@
         .checkbox-col .row-delete-btn.show { display: inline; }
         .checkbox-col .row-delete-btn:hover { text-decoration: underline; }
         .actions-col { width: 180px; text-align: center; white-space: nowrap; }
-        .btn-delete-row {
-            background: #d13438;
-            color: white;
-            border: none;
-            padding: 6px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .btn-delete-row:hover { background: #a52a2e; }
+
         .btn-view-payment {
             background: #107c10;
             color: white;
@@ -424,6 +423,26 @@
             gap: 12px;
         }
 
+        /* Excel Upload progress toast */
+        .toast { position: fixed; bottom: 24px; right: 24px; background: #1e3a5f; color: white; padding: 14px 20px; border-radius: 6px; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 3000; display: none; max-width: 360px; }
+        .toast.show { display: block; }
+        .toast-title { font-weight: 600; margin-bottom: 6px; }
+        .toast-body { opacity: 0.85; font-size: 13px; line-height: 1.5; }
+        .toast-close { float: right; cursor: pointer; font-size: 16px; line-height: 1; margin-left: 12px; opacity: 0.7; }
+        .toast-close:hover { opacity: 1; }
+        .toast.success { background: #107c10; }
+        .toast.error   { background: #d13438; }
+        .toast.warning { background: #ca5010; }
+
+        .sync-results { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px 20px; margin: 0 24px 16px; font-size: 13px; }
+        .sync-results-title { font-weight: 600; color: #1e3a5f; margin-bottom: 10px; font-size: 14px; }
+        .sync-stat { display: inline-block; margin: 0 12px 6px 0; padding: 3px 10px; border-radius: 12px; font-weight: 600; font-size: 12px; }
+        .sync-stat.green  { background: #d4edda; color: #155724; }
+        .sync-stat.amber  { background: #fff3cd; color: #856404; }
+        .sync-stat.red    { background: #f8d7da; color: #721c24; }
+        .sync-stat.blue   { background: #cce5ff; color: #004085; }
+        .sync-stat.grey   { background: #e2e3e5; color: #383d41; }
+
     </style>
 </head>
 <body>
@@ -438,6 +457,17 @@
                     <button type="button" onclick="generateDailySummary(); closeHeaderMenu();">Generate daily summary</button>
                 </div>
             </div>
+            <hr class="dropdown-divider">
+                <!-- ── Sync Excel upload ── -->
+                <label class="dropdown-upload-label" id="syncExcelLabel"
+                       title="Upload a timesheet Excel and sync approved hours">
+                    <input type="file" id="syncExcelInput" accept=".xlsx,.xls"
+                           onchange="onSyncFileChosen(this)">
+                    <span class="upload-icon">📤</span>
+                    <span>Sync Excel → Approved Hours</span>
+                </label>
+            </div>
+        </div>
             <span class="header-title">Accounts Invoice Dashboard</span>
         </div>
         <div class="user-info">
@@ -474,7 +504,7 @@
             <div class="metric-card amount"><div class="value" id="mTotalAmount">$0.00</div><div class="label">Total Amount</div></div>
             <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')"><div class="value" id="mNeedApproval">0</div><div class="label">NEED APPROVAL</div></div>
         </div>
-
+        <div class="sync-results" id="syncResultsPanel" style="display:none"></div>
         <div class="pane-headers">
             <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
             <!--<div class="pane-header" onclick="window.open('users.html', '_blank')">Manage Users</div>-->
@@ -494,6 +524,8 @@
                                 <th>Invoice No</th>
                                 <th>Consultancy Name</th>
                                 <th>Resource Name</th>
+                                <th>Division</th>
+                                <th>Client Name</th>
                                 <th>Pay Period Start</th>
                                 <th>Pay Period End</th>
                                 <th>Net Terms</th>
@@ -505,7 +537,10 @@
                                 <th>Date Inv Recd</th>
                                 <th>Due Date</th>
                                 <th>Project Name</th>
+                                <th>Project Name (Excel)</th>
                                 <th>Payment initiated on</th>
+                                <th>Actions</th>
+                                <th>Document</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody"></tbody>
@@ -524,6 +559,12 @@
 
     <div class="loading-overlay" id="loadingOverlay" style="display:none">
         <div class="spinner"></div>
+    </div>
+
+    <div class="toast" id="toast">
+        <span class="toast-close" onclick="hideToast()">✕</span>
+        <div class="toast-title" id="toastTitle"></div>
+        <div class="toast-body"  id="toastBody"></div>
     </div>
 
     <div id="paymentModal" class="payment-modal" style="display:none" onclick="if(event.target===this)closePaymentModal()">
@@ -561,6 +602,7 @@
         // Force https to avoid Mixed Content and bad configs
         if (API_BASE && !/^https?:\/\//i.test(API_BASE)) API_BASE = 'https://' + API_BASE;
         if (API_BASE && API_BASE.startsWith('http://')) API_BASE = 'https://' + API_BASE.slice(7);
+
         const userEmail = sessionStorage.getItem('userEmail');
         const userName = sessionStorage.getItem('userName');
         const loggedIn = sessionStorage.getItem('loggedIn');
@@ -573,6 +615,7 @@
             const el = document.getElementById('userName');
             if (el) el.textContent = firstLast || userEmail || '';
         }
+
         setDisplayName(userName && userName !== userEmail ? userName : userEmail);
         loadDisplayNameFromUsers();
 
@@ -593,7 +636,7 @@
                     const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
                     if (full) setDisplayName(full);
                 }
-            } catch (e) { /* ignore */ }
+            } catch (_) { }
         }
 
         function toggleHeaderMenu() {
@@ -714,13 +757,18 @@
                 const id = row.invoice_uuid || row.invoice_id || '';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="checkbox-col"><input type="checkbox" class="row-select" data-id="${id}"><button type="button" class="row-delete-btn" data-id="${id}">Delete</button></td>
+                    <td class="checkbox-col">
+                        <input type="checkbox" class="row-select" data-id="${id}">
+                        <button type="button" class="row-delete-btn" data-id="${id}">Delete</button>
+                    </td>
                     <td>${idx + 1}</td>
                     <td title="${id}">${id ? id.slice(0, 8) + '...' : ''}</td>
                     <td>${escapeHtml(row.doc_name || '')}</td>
                     <td class="editable" data-field="invoice_number" data-id="${id}">${escapeHtml(row.invoice_number || '')}</td>
                     <td class="editable" data-field="consultancy_name" data-id="${id}">${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
                     <td class="editable" data-field="resource_name" data-id="${id}">${escapeHtml(row.resource_name || '')}</td>
+                    <td class="editable" data-field="division"          data-id="${id}">${escapeHtml(row.division || '')}</td>
+                    <td class="editable" data-field="client_name"       data-id="${id}">${escapeHtml(row.client_name || '')}</td>
                     <td class="editable" data-field="pay_period_start" data-id="${id}">${formatDate(row.pay_period_start)}</td>
                     <td class="editable" data-field="pay_period_end" data-id="${id}">${formatDate(row.pay_period_end)}</td>
                     <td class="editable" data-field="net_terms" data-id="${id}">${escapeHtml(row.net_terms || '')}</td>
@@ -732,6 +780,7 @@
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
                     <td class="editable" data-field="due_date" data-id="${id}">${formatDate(row.due_date || row.dueDate)}</td>
                     <td class="editable" data-field="project_name" data-id="${id}">${escapeHtml(row.project_name || '')}</td>
+                    <td class="editable" data-field="project_name_excel" data-id="${id}">${escapeHtml(row.project_name_excel || '')}</td>
                     <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
                     <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
                         ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment">View Payment</button>' : ''}
@@ -832,14 +881,6 @@
         }
 
         function bindActionButtons() {
-            document.querySelectorAll('.btn-delete-row').forEach(btn => {
-                btn.onclick = function(e) {
-                    e.stopPropagation();
-                    const td = this.closest('.actions-col');
-                    const id = td && td.dataset.invoiceId;
-                    if (id) deleteRow(id, e);
-                };
-            });
             document.querySelectorAll('.btn-view-payment').forEach(btn => {
                 btn.onclick = function(e) {
                     e.stopPropagation();
@@ -1038,14 +1079,27 @@
                 // Fallback: export filtered rows as CSV
                 const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Status','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Payment initiated on'];
                 const rows = filteredRows.map((r, i) => [
-                    i + 1, r.invoice_uuid || r.invoice_id, r.doc_name, r.invoice_number,
-                    r.vendor_name || r.consultancy_name, r.resource_name,
-                    r.pay_period_start || '', r.pay_period_end || '', r.net_terms || '',
-                    r.vendor_hours ?? r.invoice_hours ?? '', r.approved_hours ?? '', r.approval_status || r.status || 'Pending',
+                    i + 1, 
+                    r.invoice_uuid || r.invoice_id, 
+                    r.doc_name, 
+                    r.invoice_number,
+                    r.vendor_name || r.consultancy_name, 
+                    r.resource_name,
+                    r.division||'', 
+                    r.client_name||'',
+                    r.pay_period_start || '', 
+                    r.pay_period_end || '', 
+                    r.net_terms || '',
+                    r.vendor_hours ?? r.invoice_hours ?? '', 
+                    r.approved_hours ?? '', 
+                    r.approval_status || r.status || 'Pending',
                     r.pay_rate ?? '',
                     r.invoice_amount ?? '',
                     r.invoice_received_date || r.date_inv_recd || r.created_at || '',
-                    r.due_date || r.dueDate || '', r.project_name || '', r.bill_pay_initiated_on ? (r.bill_pay_initiated_on.toString().slice(0, 19)) : ''
+                    r.due_date || r.dueDate || '',
+                    r.project_name || '', 
+                    r.project_name_excel || '',
+                    r.bill_pay_initiated_on ? (r.bill_pay_initiated_on.toString().slice(0, 19)) : ''
                 ]);
                 const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1179,6 +1233,87 @@
         function escapeAttr(str) {
         return String(str).replace(/'/g, "\\'");
     }
+        //Excel File Sync
+        async function onSyncFileChosen(input) {
+            closeHeaderMenu();
+            const file = input.files && input.files[0];
+            input.value = '';          // reset so the same file can be chosen again
+            if (!file) return;
+
+            if (!file.name.match(/\.xlsx?$/i)) {
+                showToast('Invalid file', 'Please upload an .xlsx or .xls file.', 'error');
+                return;
+            }
+
+            showToast('Uploading…', `Processing "${file.name}". This may take a few seconds.`, '');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file, file.name);
+
+                // Pass filename as query param so the Function can use it for SharePoint path
+                const url = `${API_BASE}/api/sync-excel?filename=${encodeURIComponent(file.name)}`;
+
+                const res  = await fetch(url, { method: 'POST', body: formData });
+                const data = res.ok ? await res.json().catch(() => ({})) : {};
+
+                if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+
+                renderSyncResults(data);
+                showToast('Sync complete', buildSyncSummaryText(data), 'success', 8000);
+                await loadDashboard();
+
+            } catch (err) {
+                console.error('Sync error:', err);
+                showToast('Sync failed', err.message || 'Unknown error. Check console.', 'error', 8000);
+            }
+        }
+
+        function buildSyncSummaryText(d) {
+            const parts = [];
+            if (d.matched)             parts.push(`✅ ${d.matched} updated`);
+            if (d.need_approval)       parts.push(`⚠️ ${d.need_approval} need approval`);
+            if (d.pending)             parts.push(`⏳ ${d.pending} pending`);
+            if (d.unmatched)           parts.push(`❌ ${d.unmatched} unmatched`);
+            if (d.ambiguous)           parts.push(`🔀 ${d.ambiguous} ambiguous`);
+            if (d.skipped_not_pending) parts.push(`⏭ ${d.skipped_not_pending} skipped (not Pending)`);
+            return parts.join('  ·  ') || 'No records processed.';
+        }
+
+        function renderSyncResults(d) {
+            const panel = document.getElementById('syncResultsPanel');
+            if (!d || !d.processed) { panel.style.display = 'none'; return; }
+
+            const statPill = (n, label, cls) =>
+                n ? `<span class="sync-stat ${cls}">${n} ${label}</span>` : '';
+
+            panel.innerHTML = `
+                <div class="sync-results-title">
+                    Last sync: ${new Date().toLocaleString()} — ${d.processed} person-months processed
+                </div>
+                ${statPill(d.matched,             'Updated',          'green')}
+                ${statPill(d.need_approval,       'Need Approval',    'amber')}
+                ${statPill(d.pending,             'Pending',          'blue')}
+                ${statPill(d.skipped_not_pending, 'Skipped',          'grey')}
+                ${statPill(d.unmatched,           'Unmatched',        'red')}
+                ${statPill(d.ambiguous,           'Ambiguous',        'red')}
+            `;
+            panel.style.display = 'block';
+        }
+
+        // ── Toast ─────────────────────────────────────────────────────────────────────
+        let _toastTimer = null;
+        function showToast(title, body, type = '', duration = 0) {
+            const el = document.getElementById('toast');
+            el.className = 'toast show' + (type ? ` ${type}` : '');
+            document.getElementById('toastTitle').textContent = title;
+            document.getElementById('toastBody').textContent  = body;
+            if (_toastTimer) clearTimeout(_toastTimer);
+            if (duration > 0) _toastTimer = setTimeout(hideToast, duration);
+        }
+        function hideToast() {
+            document.getElementById('toast').classList.remove('show');
+        }
 
     </script>
 </body>
