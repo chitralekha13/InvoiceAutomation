@@ -69,7 +69,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         conn   = _get_db_conn()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT invoice_uuid, resource_name, pay_period_start, pay_period_end,
+            SELECT invoice_id, resource_name, pay_period_start, pay_period_end,
                    vendor_hours, approval_status, division, client_name, project_name_excel
             FROM   invoices
             WHERE  LOWER(approval_status) = 'pending'
@@ -319,21 +319,21 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     }
 
     if match_status in ('UNMATCHED', 'AMBIGUOUS'):
-        return {**base, 'status': match_status, 'invoice_uuid': None}
+        return {**base, 'status': match_status, 'invoice_id': None}
 
     # Guard: invoice must still be Pending
     current_status = (inv.get('approval_status') or '').strip().lower()
     if current_status != 'pending':
         return {**base,
                 'status': 'SKIPPED_NOT_PENDING',
-                'invoice_uuid': str(inv['invoice_uuid']),
+                'invoice_id': str(inv['invoice_id']),
                 'db_status': inv.get('approval_status')}
 
     # Pay period check
     if not _pay_period_matches(inv, yr, mo):
         return {**base,
                 'status': 'PERIOD_MISMATCH',
-                'invoice_uuid': str(inv['invoice_uuid']),
+                'invoice_id': str(inv['invoice_id']),
                 'invoice_period_start': str(inv.get('pay_period_start', ''))}
 
     # Evaluate approval across all rows in this group
@@ -359,7 +359,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         hours_match = abs(total_hours - vendor_hrs) < 0.01
 
         new_status  = 'Complete' if hours_match else 'Need Approval'
-        _write_update(cursor, conn, inv['invoice_uuid'], {
+        _write_update(cursor, conn, inv['invoice_id'], {
             'approved_hours':  total_hours,
             'approval_status': new_status,
             'division':        division,
@@ -368,7 +368,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         })
         return {**base,
                 'status':         'MATCHED',
-                'invoice_uuid':   str(inv['invoice_uuid']),
+                'invoice_id':   str(inv['invoice_id']),
                 'approved_hours': total_hours,
                 'vendor_hours':   vendor_hrs,
                 'new_db_status':  new_status,
@@ -376,7 +376,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
 
     elif has_approved and has_non_approved:
         # Mixed → flag but still write dimension fields
-        _write_update(cursor, conn, inv['invoice_uuid'], {
+        _write_update(cursor, conn, inv['invoice_id'], {
             'approval_status': 'Need Approval',
             'division':        division,
             'client_name':     client_name,
@@ -384,20 +384,20 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         })
         return {**base,
                 'status':        'NEED_APPROVAL',
-                'invoice_uuid':  str(inv['invoice_uuid']),
+                'invoice_id':  str(inv['invoice_id']),
                 'new_db_status': 'Need Approval',
                 'matched_to':    inv.get('resource_name')}
 
     else:
         # All still Pending — update dimensions only, leave approval_status
-        _write_update(cursor, conn, inv['invoice_uuid'], {
+        _write_update(cursor, conn, inv['invoice_id'], {
             'division':    division,
             'client_name': client_name,
             'project_name_excel':project_name_excel,
         })
         return {**base,
                 'status':       'PENDING',
-                'invoice_uuid': str(inv['invoice_uuid']),
+                'invoice_id': str(inv['invoice_id']),
                 'matched_to':   inv.get('resource_name')}
 
 
@@ -411,7 +411,7 @@ def _get_db_conn():
     return psycopg2.connect(conn_str)
 
 
-def _write_update(cursor, conn, invoice_uuid, fields: dict):
+def _write_update(cursor, conn, invoice_id, fields: dict):
     """Build a dynamic UPDATE for only the provided fields."""
     # Remove None values
     fields = {k: v for k, v in fields.items() if v is not None}
@@ -419,10 +419,10 @@ def _write_update(cursor, conn, invoice_uuid, fields: dict):
         return
 
     set_clause = ', '.join(f"{col} = %s" for col in fields)
-    values     = list(fields.values()) + [invoice_uuid]
+    values     = list(fields.values()) + [invoice_id]
 
     cursor.execute(
-        f"UPDATE invoices SET {set_clause}, updated_at = NOW() WHERE invoice_uuid = %s",
+        f"UPDATE invoices SET {set_clause}, updated_at = NOW() WHERE invoice_id = %s",
         values
     )
     conn.commit()
