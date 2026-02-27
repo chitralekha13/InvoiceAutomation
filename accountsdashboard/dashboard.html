@@ -422,7 +422,7 @@
             align-items: center;
             gap: 12px;
         }
-        
+
     </style>
 </head>
 <body>
@@ -1169,6 +1169,10 @@
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') closeViewer();
         });
+
+        function escapeAttr(str) {
+        return String(str).replace(/'/g, "\\'");
+    }
 
     </script>
 </body>
