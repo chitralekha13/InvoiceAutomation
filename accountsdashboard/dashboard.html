@@ -551,6 +551,10 @@
 
     <script>
         const accessToken = sessionStorage.getItem('accessToken');
+        let currentDocId   = null;
+        let currentDocName = null;
+        let currentBlobUrl = null;
+
         let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
         API_BASE = (API_BASE || '').trim().replace(/\/+$/, '');
         // Force https to avoid Mixed Content and bad configs
