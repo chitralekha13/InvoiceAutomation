@@ -1246,7 +1246,6 @@
 
                 const res  = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + (accessToken || '') },
                     body: formData
                 });
                 const data = res.ok ? await res.json().catch(() => ({})) : {};
