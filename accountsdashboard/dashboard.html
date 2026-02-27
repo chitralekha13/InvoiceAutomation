@@ -353,6 +353,76 @@
         }
         .btn-payment-done-modal:hover { background: #0e6b0e; }
         .btn-payment-done-modal.done { background: #2e7d32; cursor: default; }
+        .btn-view {
+            background: #28a745; 
+            color: white; 
+            border: none;
+            padding: 8px 15px; 
+            border-radius: 3px; 
+            cursor: pointer; 
+            font-size: 12px;
+        }
+
+        .btn-view:hover { 
+            background: #218838; 
+        }
+
+        #viewerOverlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: flex-end;
+            align-items: stretch;
+        }
+
+        #viewerPanel {
+            width: 60%;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+        }
+
+        #viewerHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        #viewerFileName {
+            font-size: 14px; font-weight: 600;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        #viewerActions { display: flex; gap: 8px; flex-shrink: 0; }
+
+        .viewer-btn {
+            padding: 7px 16px; border-radius: 5px;
+            border: none; cursor: pointer; font-size: 13px; font-weight: 500;
+        }
+
+        .viewer-btn-download { background: #0078d4; color: #fff; }
+        .viewer-btn-download:hover { background: #006cbf; }
+        .viewer-btn-close { background: #fff; color: #333; border: 1px solid #ccc; }
+        .viewer-btn-close:hover { background: #f0f0f0; }
+
+        #pdfContainer {
+            flex: 1;
+            overflow-y: auto;
+            background: #525659;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        
     </style>
 </head>
 <body>
@@ -465,6 +535,19 @@
             </div>
         </div>
     </div>
+
+    <div id="viewerOverlay">
+    <div id="viewerPanel">
+        <div id="viewerHeader">
+            <span id="viewerFileName"></span>
+            <div id="viewerActions">
+                <button class="viewer-btn viewer-btn-download" id="btnDownload">Download</button>
+                <button class="viewer-btn viewer-btn-close"    id="btnClose">Close</button>
+            </div>
+        </div>
+        <div id="pdfContainer"></div>
+    </div>
+</div>
 
     <script>
         let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
@@ -646,6 +729,13 @@
                     <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
                     <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
                         ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment">View Payment</button>' : ''}
+                    </td>
+                    <td>
+                        <button class="btn-view"
+                            data-id="${escapeAttr(row.id)}"
+                            data-name="${escapeAttr(row.name)}">
+                            View / Download
+                        </button>
                     </td>
                 `;
                 if (row.bill_pay_initiated_on) {
@@ -963,6 +1053,123 @@
 
         document.getElementById('filterAll').addEventListener('change', () => { updateTileActiveState(); applyFilters(); renderTable(); });
         document.getElementById('dueBy').addEventListener('change', () => { applyFilters(); renderTable(); });
+
+        document.getElementById('tableBody').addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-view');
+            if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
+        
+        // View Document - fetch as blob and render with PDF.js
+        async function viewDocument(docId, fileName) {
+            currentDocId   = docId;
+            currentDocName = fileName;
+
+            document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('pdfContainer').innerHTML      = '<p style="color:#fff; padding:40px; text-align:center;">Loading...</p>';
+            document.getElementById('viewerOverlay').style.display = 'flex';
+
+            try {
+                const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+                const response = await fetch(API_BASE + '/api/getdata', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userEmail,
+                        accessToken,
+                        action:     'stream',
+                        documentId: docId,
+                    })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errText}`);
+                }
+
+                const blob     = await response.blob();
+                const pdfBlob  = new Blob([blob], { type: 'application/pdf' });
+                
+                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = URL.createObjectURL(pdfBlob);
+
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                await renderPDF(arrayBuffer);
+
+            }   catch (err) {
+            console.error('viewDocument error:', err);
+            document.getElementById('pdfContainer').innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to load: ${err.message}</p>`;
+            }
+        }
+
+        //Render PDF using PDF.js
+        async function renderPDF(arrayBuffer) {
+            const container = document.getElementById('pdfContainer');
+            container.innerHTML = '<p style="color:#fff; padding:40px; text-align:center;">Rendering pages...</p>';
+
+            try {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            container.innerHTML = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page     = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const canvas   = document.createElement('canvas');
+                canvas.width   = viewport.width;
+                canvas.height  = viewport.height;
+                canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.4); max-width:100%; display:block;';
+
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                container.appendChild(canvas);
+            }
+
+        } catch (err) {
+            console.error('renderPDF error:', err);
+            container.innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to render PDF: ${err.message}</p>`;
+        }
+    
+    }
+
+        //Download the PDF file
+        function triggerDownload() {
+            if (!currentBlobUrl) return;
+            const a    = document.createElement('a');
+            a.href     = currentBlobUrl;
+            a.download = currentDocName || 'document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        //Close Viewer and cleanup
+       function closeViewer() {
+        document.getElementById('viewerOverlay').style.display = 'none';
+        document.getElementById('pdfContainer').innerHTML      = '';
+        if (currentBlobUrl) {
+            URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = null;
+        }
+        currentDocId   = null;
+        currentDocName = null;
+    }
+
+        //Viewer button listeners
+        document.getElementById('btnDownload').addEventListener('click', triggerDownload);
+        document.getElementById('btnClose').addEventListener('click', closeViewer);
+
+        document.getElementById('viewerOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeViewer();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeViewer();
+        });
+
     </script>
 </body>
 </html>
