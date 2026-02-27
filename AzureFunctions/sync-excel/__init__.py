@@ -69,7 +69,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         conn   = _get_db_conn()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT invoice_id, resource_name, pay_period_start, pay_period_end,
+            SELECT invoice_id, resource_name, start_date, end_date,
                    vendor_hours, approval_status, division, client_name, project_name_excel
             FROM   invoices
             WHERE  LOWER(approval_status) = 'pending'
@@ -290,7 +290,7 @@ def _pay_period_matches(invoice, year: int, month: int) -> bool:
     if year == 0:
         return True     # no date in timesheet — don't block on period
 
-    for field in ('pay_period_start', 'pay_period_end'):
+    for field in ('start_date', 'end_date'):
         val = invoice.get(field)
         if val:
             dt = _parse_date(str(val))
@@ -334,7 +334,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         return {**base,
                 'status': 'PERIOD_MISMATCH',
                 'invoice_id': str(inv['invoice_id']),
-                'invoice_period_start': str(inv.get('pay_period_start', ''))}
+                'invoice_period_start': str(inv.get('start_date', ''))}
 
     # Evaluate approval across all rows in this group
     approval_vals = [
