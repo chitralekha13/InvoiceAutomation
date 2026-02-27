@@ -733,8 +733,8 @@
                     </td>
                     <td>
                         <button class="btn-view"
-                            data-id="${escapeAttr(row.id)}"
-                            data-name="${escapeAttr(row.name)}">
+                            data-id="${escapeAttr(row.invoice_uuid || row.invoice_id || row.id || '')}"
+                            data-name="${escapeAttr(row.doc_name || row.name || '')}">
                             View / Download
                         </button>
                     </td>
