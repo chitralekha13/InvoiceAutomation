@@ -64,34 +64,37 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if not rows:
         return _err(400, "Excel file contained no data rows.")
 
-    # ── 4. Load Pending invoices from DB ─────────────────────────────────────
+    # 4. Load Pending invoices from DB
     try:
         conn   = _get_db_conn()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT invoice_id, resource_name, start_date, end_date,
-                   vendor_hours, approval_status, division, client_name, project_name_excel
+                vendor_hours, approval_status, division, client_name, project_name_excel
             FROM   invoices
             WHERE  LOWER(approval_status) = 'pending'
         """)
         invoices = cursor.fetchall()
+
+    # 5. Group Excel rows by person + month
+        groups  = _group_rows(rows)
+
+    # 6. Match & update
+        results = []
+        for (first, last, yr, mo), group in groups.items():
+            result = _process_group(first, last, yr, mo, group, invoices, cursor, conn)
+            results.append(result)
+
     except Exception as e:
         logger.error("DB error: %s", e)
         return _err(500, f"Database error: {e}")
+    finally:
+        try: cursor.close()
+        except: pass
+        try: conn.close()
+        except: pass
 
-    # ── 5. Group Excel rows by person + month ─────────────────────────────────
-    groups = _group_rows(rows)
-
-    # ── 6. Match & update ─────────────────────────────────────────────────────
-    results = []
-    for (first, last, yr, mo), group in groups.items():
-        result = _process_group(first, last, yr, mo, group, invoices, cursor, conn)
-        results.append(result)
-
-    cursor.close()
-    conn.close()
-
-    # ── 7. Return summary ─────────────────────────────────────────────────────
+    # 7. Return summary 
     sp_thread.join(timeout=2)   # wait briefly; SP upload continues independently
 
     summary = {
@@ -112,7 +115,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-# ── File extraction ───────────────────────────────────────────────────────────
+# File extraction
 
 def _get_file_bytes(req: func.HttpRequest) -> bytes:
     """
@@ -140,7 +143,7 @@ def _get_file_bytes(req: func.HttpRequest) -> bytes:
     return data
 
 
-# ── Excel parsing ─────────────────────────────────────────────────────────────
+# Excel parsing 
 
 def _parse_excel(file_bytes: bytes) -> list:
     """
@@ -168,7 +171,7 @@ def _parse_excel(file_bytes: bytes) -> list:
     return rows
 
 
-# ── Grouping ──────────────────────────────────────────────────────────────────
+# Grouping 
 
 def _group_rows(rows: list) -> dict:
     """
@@ -226,7 +229,7 @@ def _parse_date(val):
     return None
 
 
-# ── Name normalisation & regex matching ──────────────────────────────────────
+# Name normalisation & regex matching
 
 def _normalise(name: str) -> str:
     s = (name or '').lower()
@@ -280,7 +283,7 @@ def _match_invoice(first: str, last: str, invoices: list):
     return None, 'UNMATCHED'
 
 
-# ── Pay period check ──────────────────────────────────────────────────────────
+# Pay period check 
 
 def _pay_period_matches(invoice, year: int, month: int) -> bool:
     """
@@ -299,7 +302,7 @@ def _pay_period_matches(invoice, year: int, month: int) -> bool:
     return False
 
 
-# ── Core processing ───────────────────────────────────────────────────────────
+# Core processing 
 
 def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     """
@@ -401,7 +404,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
                 'matched_to':   inv.get('resource_name')}
 
 
-# ── DB helpers ────────────────────────────────────────────────────────────────
+# DB helpers
 
 def _get_db_conn():
     """Get PostgreSQL database connection"""
@@ -428,7 +431,7 @@ def _write_update(cursor, conn, invoice_id, fields: dict):
     conn.commit()
 
 
-# ── SharePoint upload ─────────────────────────────────────────────────────────
+# SharePoint upload
 
 def _save_to_sharepoint(file_bytes: bytes, filename: str):
     """
@@ -447,7 +450,7 @@ def _save_to_sharepoint(file_bytes: bytes, filename: str):
         logger.error("SharePoint upload error for '%s': %s", filename, e)
 
 
-# ── Utility ───────────────────────────────────────────────────────────────────
+# Utility
 
 def _get_col(row: dict, col_name: str) -> str:
     """Case-insensitive column lookup."""
