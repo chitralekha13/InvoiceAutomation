@@ -230,7 +230,7 @@ def _parse_date(val):
     if hasattr(val, 'year'):        # date object
         return val
     s = str(val).strip()
-    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y','%Y/%m/%d', '%m/%d/%y', '%d-%b-%Y'):
+    for fmt in ('%d/%m/%Y', '%d-%m-%Y'):
         try:
             return datetime.strptime(s[:10], fmt)
         except ValueError:
