@@ -10,7 +10,7 @@ import azure.functions as func
 import openpyxl
 import psycopg2
 import psycopg2.extras
-from shared.helpers import upload_excel_to_sharepoint
+from shared.helpers import upload_excel_to_sharepoint,upload_sync_report_to_sharepoint
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         except: pass
 
     # 7. Return summary 
-    sp_thread.join(timeout=2)   # wait briefly; SP upload continues independently
+    # 7. Generate comparison report if there are unmatched/ambiguous results
+    sp_thread.join(timeout=2)
+
+    unmatched_ambiguous = [r for r in results if r['status'] in ('UNMATCHED', 'AMBIGUOUS')]
+    if unmatched_ambiguous:
+        report_thread = threading.Thread(
+            target=_upload_comparison_report,
+            args=(unmatched_ambiguous, invoices, filename),
+            daemon=True
+        )
+        report_thread.start()
 
     summary = {
         "processed":    len(results),
@@ -316,6 +326,8 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
 
     base = {
         'excel_name': f"{first} {last}",
+        'excel_first': first,   
+        'excel_last':  last,
         'year': yr,
         'month': mo,
         'row_count': len(group)
@@ -477,3 +489,133 @@ def _err(code: int, msg: str) -> func.HttpResponse:
         mimetype='application/json',
         headers={"Access-Control-Allow-Origin": "*"}
     )
+
+# Comparison report
+
+# Comparison report
+
+def _generate_comparison_report(unmatched_results: list, db_invoices: list, source_filename: str) -> bytes:
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+
+    hdr_font  = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+    thin      = Side(style='thin', color='CCCCCC')
+    border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center    = Alignment(horizontal='center', vertical='center')
+    wrap      = Alignment(wrap_text=True, vertical='top')
+
+    def fill(hex_color):
+        return PatternFill('solid', start_color=hex_color)
+
+    def write_header(ws, row_num, labels, hex_color):
+        for c, label in enumerate(labels, 1):
+            cell = ws.cell(row=row_num, column=c, value=label)
+            cell.font, cell.fill, cell.alignment, cell.border = hdr_font, fill(hex_color), center, border
+
+    def style_cell(cell, hex_color=None):
+        cell.alignment, cell.border = wrap, border
+        if hex_color:
+            cell.fill = fill(hex_color)
+
+    # ── Sheet 1: Unmatched / Ambiguous ───────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = 'Unmatched & Ambiguous'
+    ws1.freeze_panes = 'A3'
+
+    ws1.merge_cells('A1:H1')
+    t = ws1['A1']
+    t.value = f"Sync Comparison Report  |  Source: {source_filename}  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    t.font, t.fill, t.alignment = Font(name='Arial', bold=True, size=12, color='FFFFFF'), fill('2C3E50'), center
+    ws1.row_dimensions[1].height = 22
+
+    cols1 = ['Status', 'Excel Name (From Timesheet)', 'Year', 'Month', 'Row Count',
+             'Possible DB Match', 'DB Invoice ID', 'Issue / Action Required']
+    write_header(ws1, 2, cols1, 'C0392B')
+
+    status_colors = {'UNMATCHED': 'FADBD8', 'AMBIGUOUS': 'FDEBD0'}
+    status_notes  = {
+        'UNMATCHED': 'No pending invoice found — check spelling or add invoice to DB',
+        'AMBIGUOUS': 'Multiple invoices matched this name — resolve duplicates in DB',
+    }
+
+    for r_idx, result in enumerate(unmatched_results, start=3):
+        status = result.get('status', '')
+        fc     = status_colors.get(status, 'FFFFFF')
+
+        first_toks = _tokenise(result.get('excel_first', ''))
+        last_toks  = _tokenise(result.get('excel_last', ''))
+        possible = [
+            inv['resource_name'] for inv in db_invoices
+            if (db := _normalise(inv['resource_name'] or ''))
+            and (_any_token_in(first_toks, db) or _any_token_in(last_toks, db))
+        ]
+
+        row_data = [
+            status,
+            result.get('excel_name', ''),
+            result.get('year') or '',
+            result.get('month') or '',
+            result.get('row_count', ''),
+            ', '.join(possible) if possible else '— no partial match —',
+            result.get('invoice_id') or 'N/A',
+            status_notes.get(status, ''),
+        ]
+        for c_idx, val in enumerate(row_data, 1):
+            style_cell(ws1.cell(row=r_idx, column=c_idx, value=val), fc)
+
+    for col, width in zip('ABCDEFGH', [14, 30, 8, 8, 10, 30, 14, 50]):
+        ws1.column_dimensions[get_column_letter(ord(col) - 64)].width = width
+
+    # ── Sheet 2: All Pending DB Invoices ─────────────────────────────────────
+    ws2 = wb.create_sheet('Pending DB Invoices')
+    ws2.freeze_panes = 'A3'
+
+    ws2.merge_cells('A1:H1')
+    t2 = ws2['A1']
+    t2.value = f"All Pending Invoices in DB  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    t2.font, t2.fill, t2.alignment = Font(name='Arial', bold=True, size=12, color='FFFFFF'), fill('2C3E50'), center
+    ws2.row_dimensions[1].height = 22
+
+    cols2 = ['Invoice ID', 'Resource Name', 'Start Date', 'End Date',
+             'Vendor Hours', 'Approval Status', 'Division', 'Client Name']
+    write_header(ws2, 2, cols2, '2980B9')
+
+    for r_idx, inv in enumerate(db_invoices, start=3):
+        row_data = [
+            str(inv.get('invoice_id', '')),
+            inv.get('resource_name', ''),
+            str(inv.get('start_date') or ''),
+            str(inv.get('end_date') or ''),
+            inv.get('vendor_hours', ''),
+            inv.get('approval_status', ''),
+            inv.get('division', ''),
+            inv.get('client_name', ''),
+        ]
+        for c_idx, val in enumerate(row_data, 1):
+            style_cell(ws2.cell(row=r_idx, column=c_idx, value=val))
+
+    for col, width in zip('ABCDEFGH', [14, 30, 13, 13, 13, 16, 18, 26]):
+        ws2.column_dimensions[get_column_letter(ord(col) - 64)].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+def _upload_comparison_report(unmatched_results: list, db_invoices: list, source_filename: str):
+    try:
+        report_bytes = _generate_comparison_report(unmatched_results, db_invoices, source_filename)
+        ts           = datetime.now().strftime('%Y%m%d_%H%M')
+        report_name  = f"sync_report_{ts}.xlsx"
+
+        url = upload_sync_report_to_sharepoint(report_bytes, report_name)
+
+        if url:
+            logger.info("Comparison report uploaded: %s → %s", report_name, url)
+        else:
+            logger.warning("Comparison report upload returned no URL for: %s", report_name)
+    except Exception as e:
+        logger.error("Comparison report upload failed: %s", e)

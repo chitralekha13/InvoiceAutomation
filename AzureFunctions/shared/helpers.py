@@ -1634,3 +1634,24 @@ def upload_excel_to_sharepoint_dated(
     folder_path = f"{base_folder}/{year}/{month}"
 
     return upload_excel_to_sharepoint(file_content, file_name, folder_path)
+
+def upload_sync_report_to_sharepoint(
+    file_content: bytes,
+    file_name: str,
+    base_folder: str = "Timesheet",
+) -> str:
+    """
+    Resulting path:  <base_folder>/SyncReports/<file_name>
+    Example:         Timesheet/SyncReports/sync_report_20250501_1430.xlsx
+
+    Args:
+        file_content : Raw bytes of the .xlsx file.
+        file_name    : Filename to save.
+        base_folder  : Top-level library name. Defaults to "Timesheet".
+
+    Returns:
+        Server-relative URL of the uploaded file.
+    """
+    folder_path = f"{base_folder}/SyncReports"
+
+    return upload_excel_to_sharepoint(file_content, file_name, folder_path)
