@@ -365,11 +365,8 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     project_name_excel = _first_val(group, COL_PROJECT)
 
     if all_approved:
-        total_hours = sum(
-            float(_get_col(r, COL_HOURS) or _get_col(r, 'hours') or 0)
-            for r in group
-        )
-        vendor_hrs  = float(inv.get('vendor_hours') or 0)
+        total_hours = sum(_to_float(_get_col(r, COL_HOURS) or _get_col(r, 'hours')) for r in group)
+        vendor_hrs = _to_float(inv.get('vendor_hours'))
         hours_match = abs(total_hours - vendor_hrs) < 0.01
 
         new_status  = 'Complete' if hours_match else 'Need Approval'
@@ -652,3 +649,16 @@ def _upload_comparison_report(unmatched_results: list, all_results: list, db_inv
             logger.warning("Comparison report upload returned no URL for: %s", report_name)
     except Exception as e:
         logger.error("Comparison report upload failed: %s", e)
+
+from decimal import Decimal
+
+def _to_float(val) -> float:
+    """Safely convert DB numeric/Decimal/string to float."""
+    if val is None:
+        return 0.0
+    if isinstance(val, Decimal):
+        return float(val)
+    try:
+        return float(str(val).strip())
+    except (ValueError, TypeError):
+        return 0.0
