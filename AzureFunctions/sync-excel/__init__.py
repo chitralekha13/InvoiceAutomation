@@ -365,9 +365,9 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     project_name_excel = _first_val(group, COL_PROJECT)
 
     if all_approved:
-        total_hours = sum(_to_float(_get_col(r, COL_HOURS) or _get_col(r, 'hours')) for r in group)
-        vendor_hrs = _to_float(inv.get('vendor_hours'))
-        hours_match = abs(total_hours - vendor_hrs) < 0.01
+        total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
+        vendor_hrs = _to_float(str(inv.get('vendor_hours') or '0').strip())
+        hours_match = abs(total_hours - vendor_hrs) < 0.5
 
         new_status  = 'Complete' if hours_match else 'Need Approval'
         _write_update(cursor, conn, inv['invoice_id'], {
