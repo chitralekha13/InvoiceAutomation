@@ -102,7 +102,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if unmatched_ambiguous:
         report_thread = threading.Thread(
             target=_upload_comparison_report,
-            args=(unmatched_ambiguous, invoices, filename),
+            args=(unmatched_ambiguous, results, invoices, filename),
             daemon=True
         )
         report_thread.start()
@@ -230,8 +230,7 @@ def _parse_date(val):
     if hasattr(val, 'year'):        # date object
         return val
     s = str(val).strip()
-    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y',
-                '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%y', '%d-%b-%Y'):
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y','%Y/%m/%d', '%m/%d/%y', '%d-%b-%Y'):
         try:
             return datetime.strptime(s[:10], fmt)
         except ValueError:
@@ -494,7 +493,7 @@ def _err(code: int, msg: str) -> func.HttpResponse:
 
 # Comparison report
 
-def _generate_comparison_report(unmatched_results: list, db_invoices: list, source_filename: str) -> bytes:
+def _generate_comparison_report(unmatched_results: list, all_results: list, db_invoices: list, source_filename: str) -> bytes:
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
@@ -599,15 +598,49 @@ def _generate_comparison_report(unmatched_results: list, db_invoices: list, sour
     for col, width in zip('ABCDEFGH', [14, 30, 13, 13, 13, 16, 18, 26]):
         ws2.column_dimensions[get_column_letter(ord(col) - 64)].width = width
 
+    # Sheet 3: Matched 
+    matched_results = [r for r in all_results if r['status'] == 'MATCHED']
+
+    ws3 = wb.create_sheet('Matched')
+    ws3.freeze_panes = 'A3'
+
+    ws3.merge_cells('A1:I1')
+    t3 = ws3['A1']
+    t3.value = f"Matched Invoices  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    t3.font, t3.fill, t3.alignment = Font(name='Arial', bold=True, size=12, color='FFFFFF'), fill('2C3E50'), center
+    ws3.row_dimensions[1].height = 22
+
+    cols3 = ['Excel Name', 'Matched To (DB)', 'Invoice ID', 'Year', 'Month',
+             'Approved Hours', 'Vendor Hours', 'New DB Status', 'Row Count']
+    write_header(ws3, 2, cols3, '27AE60')
+
+    for r_idx, result in enumerate(matched_results, start=3):
+        row_data = [
+            result.get('excel_name', ''),
+            result.get('matched_to', ''),
+            result.get('invoice_id') or 'N/A',
+            result.get('year') or '',
+            result.get('month') or '',
+            result.get('approved_hours', ''),
+            result.get('vendor_hours', ''),
+            result.get('new_db_status', ''),
+            result.get('row_count', ''),
+        ]
+        for c_idx, val in enumerate(row_data, 1):
+            style_cell(ws3.cell(row=r_idx, column=c_idx, value=val), 'EAFAF1')
+
+    for col, width in zip('ABCDEFGHI', [28, 28, 14, 8, 8, 15, 13, 16, 10]):
+        ws3.column_dimensions[get_column_letter(ord(col) - 64)].width = width
+    
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf.read()
 
 
-def _upload_comparison_report(unmatched_results: list, db_invoices: list, source_filename: str):
+def _upload_comparison_report(unmatched_results: list, all_results: list, db_invoices: list, source_filename: str):
     try:
-        report_bytes = _generate_comparison_report(unmatched_results, db_invoices, source_filename)
+        report_bytes = _generate_comparison_report(unmatched_results, all_results, db_invoices, source_filename)
         ts           = datetime.now().strftime('%Y%m%d_%H%M')
         report_name  = f"sync_report_{ts}.xlsx"
 
