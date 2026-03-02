@@ -38,7 +38,7 @@ COL_PROJECT    = 'project name'
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logger.info("sync-excel triggered")
 
-    # ── 1. Get uploaded file ─────────────────────────────────────────────────
+    # 1. Get uploaded file
     try:
         file_bytes = _get_file_bytes(req)
     except ValueError as e:
@@ -46,7 +46,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     filename = req.params.get('filename') or 'timesheet.xlsx'
 
-    # ── 2. Save to SharePoint in background thread ───────────────────────────
+    # 2. Save to SharePoint in background thread
     sp_thread = threading.Thread(
         target=_save_to_sharepoint,
         args=(file_bytes, filename),
@@ -58,7 +58,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         rows = _parse_excel(file_bytes)
     except Exception as e:
-        logger.error("Excel parse error: %s", e)
+        #logger.error("Excel parse error: %s", e)
         return _err(400, f"Could not parse Excel file: {e}")
 
     if not rows:
@@ -73,6 +73,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 invoice_hours, approval_status, division, client_name, project_name_excel
             FROM   invoices
             WHERE  LOWER(approval_status) = 'pending'
+            AND  invoice_hours IS NOT NULL
         """)
         invoices = cursor.fetchall()
 
@@ -128,11 +129,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 # File extraction
 
 def _get_file_bytes(req: func.HttpRequest) -> bytes:
-    """
-    Accept the file either as:
-      - multipart/form-data  (standard browser upload)
-      - raw binary body      (direct POST with Content-Type: application/octet-stream)
-    """
+
     content_type = req.headers.get('Content-Type', '')
 
     if 'multipart/form-data' in content_type:
@@ -156,10 +153,7 @@ def _get_file_bytes(req: func.HttpRequest) -> bytes:
 # Excel parsing 
 
 def _parse_excel(file_bytes: bytes) -> list:
-    """
-    Parse the Excel file and return a list of row dicts with normalised keys.
-    Handles any column ordering by matching headers case-insensitively.
-    """
+
     wb  = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     ws  = wb.active
 
@@ -184,11 +178,7 @@ def _parse_excel(file_bytes: bytes) -> list:
 # Grouping 
 
 def _group_rows(rows: list) -> dict:
-    """
-    Group timesheet rows by (normalised_first, normalised_last, year, month).
-    Derives year+month from 'From time' or 'Date' column (whichever is present).
-    Returns dict keyed by (first, last, year, month) → list of row dicts.
-    """
+
     groups = {}
 
     for row in rows:
@@ -197,7 +187,6 @@ def _group_rows(rows: list) -> dict:
         if not first and not last:
             continue
 
-        # Derive pay period month/year
         yr, mo = _extract_month_year(row)
         if yr is None:
             yr, mo = 0, 0   # group together rows with no date
@@ -215,7 +204,8 @@ def _group_rows(rows: list) -> dict:
 
 def _extract_month_year(row: dict):
     """Try several column names to get a month+year from the row."""
-    for col in (COL_FROM, COL_DATE, 'to time', 'pay period start', 'period'):
+    #for col in (COL_FROM, COL_DATE, 'to time', 'pay period start', 'period'):
+    for col in (COL_DATE,'date'):
         val = _get_col(row, col)
         if val:
             dt = _parse_date(val)
@@ -230,7 +220,7 @@ def _parse_date(val):
     if hasattr(val, 'year'):        # date object
         return val
     s = str(val).strip()
-    for fmt in ('%d/%m/%Y', '%d-%m-%Y'):
+    for fmt in ('%d/%m/%Y','%d-%m-%Y','%Y-%m-%d','%Y/%m/%d','%m/%d/%Y','%d/%m/%Y',):
         try:
             return datetime.strptime(s[:10], fmt)
         except ValueError:
@@ -261,7 +251,10 @@ def _match_invoice(first: str, last: str, invoices: list):
     """
     Regex token matching.
     Returns (invoice, status) where status is one of:
-      MATCHED | NEED_APPROVAL | AMBIGUOUS | UNMATCHED
+    MATCHED       — both first and last name found in DB resource_name
+    NEED_APPROVAL — only first OR last name found
+    AMBIGUOUS     — multiple invoices matched
+    UNMATCHED     — no match found
     """
     first_toks = _tokenise(first)
     last_toks  = _tokenise(last)
@@ -295,12 +288,9 @@ def _match_invoice(first: str, last: str, invoices: list):
 # Pay period check 
 
 def _pay_period_matches(invoice, year: int, month: int) -> bool:
-    """
-    Returns True if the invoice's pay_period_start falls in the same month+year
-    as the timesheet rows.  year=0/month=0 means the timesheet had no date → skip check.
-    """
-    if year == 0:
-        return True     # no date in timesheet — don't block on period
+
+    #if year == 0:
+    #   return True     # no date in timesheet — don't block on period
 
     for field in ('start_date', 'end_date'):
         val = invoice.get(field)
@@ -314,13 +304,7 @@ def _pay_period_matches(invoice, year: int, month: int) -> bool:
 # Core processing 
 
 def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
-    """
-    For one person+month group:
-      1. Match to a Pending invoice
-      2. Check pay period
-      3. Evaluate approval statuses across all rows
-      4. Write update if warranted
-    """
+
     inv, match_status = _match_invoice(first, last, invoices)
 
     base = {
@@ -364,19 +348,12 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     client_name  = _first_val(group, COL_CLIENT)
     project_name_excel = _first_val(group, COL_PROJECT)
 
-    if all_approved:
+    if all_approved and match_status == 'MATCHED':
         total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
         vendor_hrs = _to_float(str(inv.get('invoice_hours') or '0').strip())
         hours_match = abs(total_hours - vendor_hrs) < 0.5
 
-
-        logger.info("=== HOURS CHECK === Person: %s %s | Excel Hours: %s | DB Vendor Hours: %s | Diff: %s | Match: %s",
-                first, last, total_hours, vendor_hrs, abs(total_hours - vendor_hrs), hours_match)
-
-        new_status  = 'Complete' if hours_match else 'Need Approval'
-
-        logger.info("=== WRITING TO DB === Invoice ID: %s | New Status: %s | Approved Hours: %s",
-                    inv['invoice_id'], new_status, total_hours)
+        new_status  = 'Approved' if hours_match else 'Need Approval'
 
         _write_update(cursor, conn, inv['invoice_id'], {
             'approved_hours':  total_hours,
@@ -392,7 +369,32 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
                 'invoice_hours':   vendor_hrs,
                 'new_db_status':  new_status,
                 'matched_to':     inv.get('resource_name')}
+    
+    # Case 2: Partial name match (first OR last only)
+    # Update hours and flag for manual review
+    elif match_status == 'NEED_APPROVAL':
+        total_hours = sum(
+            _to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip())
+            for r in group
+        )
+        logger.info("=== NEED APPROVAL (PARTIAL NAME) === Person: %s %s | Hours: %s | Invoice: %s",
+                    first, last, total_hours, inv['invoice_id'])
 
+        _write_update(cursor, conn, inv['invoice_id'], {
+            'approval_status':    'Need Approval',
+            'approved_hours':     total_hours,
+            'division':           division,
+            'client_name':        client_name,
+            'project_name_excel': project_name_excel,
+        })
+        return {**base,
+                'status':         'NEED_APPROVAL',
+                'invoice_id':     str(inv['invoice_id']),
+                'approved_hours': total_hours,
+                'new_db_status':  'Need Approval',
+                'matched_to':     inv.get('resource_name')}
+    
+    #Case 3: Both names matched + mixed approval (some approved, some not)
     elif has_approved and has_non_approved:
         # Mixed → flag but still write dimension fields
         _write_update(cursor, conn, inv['invoice_id'], {
@@ -465,8 +467,6 @@ def _save_to_sharepoint(file_bytes: bytes, filename: str):
     except Exception as e:
         logger.error("SharePoint upload error for '%s': %s", filename, e)
 
-
-# Utility
 
 def _get_col(row: dict, col_name: str) -> str:
     """Case-insensitive column lookup."""
@@ -583,7 +583,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
     ws2.row_dimensions[1].height = 22
 
     cols2 = ['Invoice ID', 'Resource Name', 'Start Date', 'End Date',
-             'Vendor Hours', 'Approval Status', 'Division', 'Client Name']
+             'Invoice Hours', 'Approval Status', 'Division', 'Client Name']
     write_header(ws2, 2, cols2, '2980B9')
 
     for r_idx, inv in enumerate(db_invoices, start=3):
@@ -616,7 +616,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
     ws3.row_dimensions[1].height = 22
 
     cols3 = ['Excel Name', 'Matched To (DB)', 'Invoice ID', 'Year', 'Month',
-             'Approved Hours', 'Vendor Hours', 'New DB Status', 'Row Count']
+             'Approved Hours', 'Invoice Hours', 'New DB Status', 'Row Count']
     write_header(ws3, 2, cols3, '27AE60')
 
     for r_idx, result in enumerate(matched_results, start=3):
