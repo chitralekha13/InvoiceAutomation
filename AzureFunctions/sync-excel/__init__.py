@@ -70,7 +70,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT invoice_id, resource_name, start_date, end_date,
-                vendor_hours, approval_status, division, client_name, project_name_excel
+                invoice_hours, approval_status, division, client_name, project_name_excel
             FROM   invoices
             WHERE  LOWER(approval_status) = 'pending'
         """)
@@ -366,7 +366,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
 
     if all_approved:
         total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
-        vendor_hrs = _to_float(str(inv.get('vendor_hours') or '0').strip())
+        vendor_hrs = _to_float(str(inv.get('invoice_hours') or '0').strip())
         hours_match = abs(total_hours - vendor_hrs) < 0.5
 
 
@@ -389,7 +389,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
                 'status':         'MATCHED',
                 'invoice_id':   str(inv['invoice_id']),
                 'approved_hours': total_hours,
-                'vendor_hours':   vendor_hrs,
+                'invoice_hours':   vendor_hrs,
                 'new_db_status':  new_status,
                 'matched_to':     inv.get('resource_name')}
 
@@ -592,7 +592,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
             inv.get('resource_name', ''),
             str(inv.get('start_date') or ''),
             str(inv.get('end_date') or ''),
-            inv.get('vendor_hours', ''),
+            inv.get('invoice_hours', ''),
             inv.get('approval_status', ''),
             inv.get('division', ''),
             inv.get('client_name', ''),
@@ -627,7 +627,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
             result.get('year') or '',
             result.get('month') or '',
             result.get('approved_hours', ''),
-            result.get('vendor_hours', ''),
+            result.get('invoice_hours', ''),
             result.get('new_db_status', ''),
             result.get('row_count', ''),
         ]
