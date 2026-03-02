@@ -369,7 +369,15 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         vendor_hrs = _to_float(str(inv.get('vendor_hours') or '0').strip())
         hours_match = abs(total_hours - vendor_hrs) < 0.5
 
+
+        logger.info("=== HOURS CHECK === Person: %s %s | Excel Hours: %s | DB Vendor Hours: %s | Diff: %s | Match: %s",
+                first, last, total_hours, vendor_hrs, abs(total_hours - vendor_hrs), hours_match)
+
         new_status  = 'Complete' if hours_match else 'Need Approval'
+
+        logger.info("=== WRITING TO DB === Invoice ID: %s | New Status: %s | Approved Hours: %s",
+                    inv['invoice_id'], new_status, total_hours)
+
         _write_update(cursor, conn, inv['invoice_id'], {
             'approved_hours':  total_hours,
             'approval_status': new_status,
