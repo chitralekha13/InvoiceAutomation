@@ -60,6 +60,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             continue_igentic_session,
             _parse_continuation_response_for_approval,
             _extract_payment_details_from_igentic_response,
+            save_complete_log,
         )
 
         existing = get_invoice(invoice_id)
@@ -72,6 +73,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # Build update kwargs: only fields that are in body and map to SQL columns
         kwargs = {}
+        updated_fields = {}
         for dash_key, sql_col in FIELD_MAP.items():
             if dash_key in body:
                 val = body[dash_key]
@@ -124,13 +126,32 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)
-            allowed = {"invoice_number", "vendor_name", "resource_name", "start_date", "end_date",
-                       "payment_terms", "invoice_hours", "approved_hours", "hourly_rate",
-                       "invoice_amount", "invoice_date", "due_date", "project_name", "business_unit",
-                       "notes", "template", "addl_comments", "approval_status", "status", "payment_details",
-                       "bill_pay_initiated_on"}
+            allowed = {
+                "invoice_number",
+                "vendor_name",
+                "resource_name",
+                "start_date",
+                "end_date",
+                "payment_terms",
+                "invoice_hours",
+                "approved_hours",
+                "hourly_rate",
+                "invoice_amount",
+                "invoice_date",
+                "due_date",
+                "project_name",
+                "business_unit",
+                "notes",
+                "template",
+                "addl_comments",
+                "approval_status",
+                "status",
+                "payment_details",
+                "bill_pay_initiated_on",
+            }
             kwargs_clean = {k: v for k, v in kwargs.items() if k in allowed}
             if kwargs_clean:
+                updated_fields = kwargs_clean
                 update_invoice(invoice_id, **kwargs_clean)
                 # Sync to Excel
                 try:
@@ -142,6 +163,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         logger.info("Synced Excel after dashboard edit for %s", invoice_id)
                 except Exception as e:
                     logger.warning("Excel sync after dashboard edit failed: %s", e)
+
+        # Persist a JSON log of dashboard-driven updates (if anything actually changed)
+        if updated_fields:
+            try:
+                save_complete_log(
+                    invoice_id,
+                    extracted_data={"updated_fields": updated_fields, "request_body": body},
+                    orchestration_result={"source": "fcfigures_update"},
+                    event_type="dashboard_update",
+                )
+            except Exception as e:
+                logger.warning("Dashboard JSON log failed: %s", e)
 
         # Return updated invoice so dashboard can show new approval_status, status, payment_details
         payload = {"status": "ok"}

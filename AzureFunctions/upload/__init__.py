@@ -221,11 +221,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
         pdf_url = f"{site_url.split('/sites/')[0]}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
 
-        try:
-            save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
-        except Exception as e:
-            logger.warning("Save JSON log failed: %s", e)
-
         # 5) Insert into SQL and update with extracted fields
         if use_db:
             try:
@@ -245,6 +240,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     logger.warning("SQL update after iGentic failed: %s", e)
             else:
                 logger.warning(f"No CSV fields extracted from iGentic response for invoice {invoice_id}. iGentic response: {json.dumps(orchestration_response)[:500]}")
+            # Save JSON log to PostgreSQL (invoice row must exist first)
+            try:
+                save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
+            except Exception as e:
+                logger.warning("Save JSON log failed: %s", e)
         
         # 6) Update Excel file in SharePoint (always - uses CSV data from iGentic)
         if fields:  # Only update Excel if we extracted CSV fields

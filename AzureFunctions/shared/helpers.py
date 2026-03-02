@@ -1514,14 +1514,18 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
 # ============================================================================
 
 def save_complete_log(invoice_id: str, extracted_data: Dict, orchestration_result: Dict, event_type: str = 'upload') -> None:
-    """Save complete audit trail (Document Intelligence + iGentic JSON) to SharePoint JSON_Logs for backup."""
+    """Save complete audit trail (Document Intelligence + iGentic JSON) into a separate invoice_logs table."""
     try:
+        if not os.environ.get('SQL_CONNECTION_STRING'):
+            logger.warning("SQL_CONNECTION_STRING not set; skipping JSON log persistence")
+            return
+
         sql_record = None
-        if os.environ.get('SQL_CONNECTION_STRING'):
-            try:
-                sql_record = get_invoice(invoice_id)
-            except Exception:
-                pass
+        try:
+            sql_record = get_invoice(invoice_id)
+        except Exception:
+            # If the invoice row isn't found, we still persist the rest of the log
+            pass
 
         log_data = {
             'invoice_id': invoice_id,
@@ -1529,30 +1533,71 @@ def save_complete_log(invoice_id: str, extracted_data: Dict, orchestration_resul
             'event_type': event_type,
             'extracted_data': extracted_data,
             'orchestration_result': orchestration_result,
-            'database_record': sql_record
+            'database_record': sql_record,
         }
 
-        file_name = f'invoice_{invoice_id}_{event_type}.json'
-        save_json_to_sharepoint(log_data, file_name)
+        json_str = json.dumps(log_data, indent=2)
 
-        logger.info(f"Saved JSON log for invoice {invoice_id}")
+        conn = get_sql_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO invoice_logs (invoice_id, event_type, payload_json)
+                VALUES (%s, %s, %s)
+                """,
+                (invoice_id, event_type, json_str),
+            )
+            conn.commit()
+            logger.info(f"Saved JSON log for invoice {invoice_id} to invoice_logs table")
+        finally:
+            cursor.close()
+            conn.close()
     except Exception as e:
         logger.error(f"Failed to save JSON log: {str(e)}")
 
 def save_status_change_log(invoice_id: str, old_status: str, new_status: str, changed_by: str) -> None:
-    """Save status change log"""
-    log_data = {
-        'invoice_id': invoice_id,
-        'timestamp': datetime.utcnow().isoformat(),
-        'event_type': 'status_change',
-        'old_status': old_status,
-        'new_status': new_status,
-        'changed_by': changed_by,
-        'database_record': get_invoice(invoice_id)
-    }
-    
-    file_name = f'invoice_{invoice_id}_status_change.json'
-    save_json_to_sharepoint(log_data, file_name)
+    """Save status change log into invoice_logs table."""
+    try:
+        if not os.environ.get('SQL_CONNECTION_STRING'):
+            logger.warning("SQL_CONNECTION_STRING not set; skipping status change log persistence")
+            return
+
+        sql_record = None
+        try:
+            sql_record = get_invoice(invoice_id)
+        except Exception:
+            pass
+
+        log_data = {
+            'invoice_id': invoice_id,
+            'timestamp': datetime.utcnow().isoformat(),
+            'event_type': 'status_change',
+            'old_status': old_status,
+            'new_status': new_status,
+            'changed_by': changed_by,
+            'database_record': sql_record,
+        }
+
+        json_str = json.dumps(log_data, indent=2)
+
+        conn = get_sql_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO invoice_logs (invoice_id, event_type, payload_json)
+                VALUES (%s, %s, %s)
+                """,
+                (invoice_id, 'status_change', json_str),
+            )
+            conn.commit()
+            logger.info(f"Saved status change log for invoice {invoice_id} to invoice_logs table")
+        finally:
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        logger.error(f"Failed to save status change log: {str(e)}")
 
 
 # Add Excel Timesheet Validation Helper

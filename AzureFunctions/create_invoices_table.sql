@@ -31,10 +31,23 @@ CREATE TABLE IF NOT EXISTS invoices (
     last_agent_text TEXT,
     bill_pay_initiated_on TIMESTAMP,
     payment_details TEXT,
+    complete_log_json TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     invoice_received_date TIMESTAMP DEFAULT NOW(),
     last_updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Table to store JSON audit logs per invoice (kept even if invoice row is deleted)
+CREATE TABLE IF NOT EXISTS invoice_logs (
+    id SERIAL PRIMARY KEY,
+    invoice_id VARCHAR(255),
+    event_type VARCHAR(50),
+    payload_json TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Migration: add complete_log_json to existing tables (safe to run multiple times)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS complete_log_json TEXT;
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_invoices_vendor_id ON invoices(vendor_id);
@@ -42,3 +55,6 @@ CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_approval_status ON invoices(approval_status);
 CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number);
+
+CREATE INDEX IF NOT EXISTS idx_invoice_logs_invoice_id ON invoice_logs(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_logs_created_at ON invoice_logs(created_at DESC);
