@@ -1138,8 +1138,10 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
     if isinstance(agent_responses, list):
         logger.info("Inside If - Type List")
         for item in agent_responses:
+            logger.info(f"Inside List If - Item: {item}")
             content = item.get("Content") or item.get("content") or ""
             if isinstance(content, str):
+                logger.info(f"Inside List If - Content data: {content}")
                 match = re.search(csv_pattern, content, re.DOTALL | re.IGNORECASE)
                 if match:
                     csv_data = match.group(0)
