@@ -879,7 +879,7 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.exception("iGentic call failed")
+        logger.exception(f"iGentic call failed{endpoint}")
         return {"status": "error", "error": str(e)}
 
 
