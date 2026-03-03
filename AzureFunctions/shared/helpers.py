@@ -1124,7 +1124,7 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
         return csv_data.strip()
     '''
     # Check agentResponses
-    csv_pattern = r'Invoice_Number[,:]?\s*Vendor_Name[^\n]*\n[^\n]+(?:\n[^\n]+)*'
+    csv_pattern = r'Invoice_Number[,:]?\s*consultancy_name[^\n]*\n[^\n]+(?:\n[^\n]+)*'
     agent_responses = data.get("agentResponses") or data.get("agent_responses")
     
     logger.info(f"agent_responses type: {type(agent_responses)}")
@@ -1136,17 +1136,17 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
         except Exception:
             pass
             
-    logger.info(f"agent_responses type: {type(agent_responses)}")
+    #logger.info(f"agent_responses type: {type(agent_responses)}")
     if isinstance(agent_responses, list):
-        logger.info("Inside If - Type List")
+        #logger.info("Inside If - Type List")
         for item in agent_responses:
-            logger.info(f"Inside List If - Item: {item}")
+            #logger.info(f"Inside List If - Item: {item}")
 
             content = item.get("Content") or item.get("content") or ""
             authorname= item.get("AuthorName") or item.get("authorName") or ""
-            logger.info(f"Inside List If - Authorname : {authorname}")
+            #logger.info(f"Inside List If - Authorname : {authorname}")
             if authorname == 'Invoice_Parser_Agent':
-                logger.info("Inside List If - Invoice ParserAgent Data")
+                #logger.info("Inside List If - Invoice ParserAgent Data")
                 if isinstance(content, str):
                     logger.info(f"Inside List If - Content data: {content}")
                     match = re.search(csv_pattern, content, re.DOTALL | re.IGNORECASE)
