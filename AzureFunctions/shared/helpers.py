@@ -1124,6 +1124,8 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
     
     # Check agentResponses
     agent_responses = data.get("agentResponses") or data.get("agent_responses")
+    logger.info(f"agent_responses type: {type(agent_responses)}")
+
     if isinstance(agent_responses, str):
         try:
             agent_responses = json.loads(agent_responses)
