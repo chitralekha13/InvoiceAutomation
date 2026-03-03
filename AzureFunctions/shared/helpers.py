@@ -1105,6 +1105,7 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
     import re
     data = _get_igentic_searchable(orchestration_response)
     
+    '''
     # Check result field
     result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
     if isinstance(result, dict):
@@ -1121,8 +1122,9 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
         csv_data = re.sub(r'```', '', csv_data)
         logger.info(f"Found CSV in result field: {csv_data[:200]}")
         return csv_data.strip()
-    
+    '''
     # Check agentResponses
+    csv_pattern = r'Invoice_Number[,:]?\s*Vendor_Name[^\n]*\n[^\n]+(?:\n[^\n]+)*'
     agent_responses = data.get("agentResponses") or data.get("agent_responses")
     
     logger.info(f"agent_responses type: {type(agent_responses)}")
@@ -1155,7 +1157,8 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
                         logger.info(f"Found CSV in agentResponses: {csv_data[:200]}")
                         return csv_data.strip()
     
-    logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(result)[:500]}")
+    #logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(result)[:500]}")
+    logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(agent_responses)[:500]}")
     return None
 
 
