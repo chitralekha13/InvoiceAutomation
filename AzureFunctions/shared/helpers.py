@@ -1472,6 +1472,62 @@ def extract_fields_from_igentic(orchestration_response: Dict) -> Dict:
                 out.update(direct)
                 logger.info("Extracted %d fields from iGentic result dict", len(direct))
                 break
+
+    # Add New Agentresponse:
+    if not out.get("invoice_number"):
+        try:
+            data = _get_igentic_searchable(orchestration_response)
+            agent_responses = (
+                data.get("agentResponses")
+                or data.get("agent_responses")
+                or orchestration_response.get("agentResponses")
+                or orchestration_response.get("agent_responses")
+                or []
+            )
+
+            if isinstance(agent_responses, str):
+                try:
+                    agent_responses = json.loads(agent_responses)
+                except Exception:
+                    agent_responses = []
+
+            if isinstance(agent_responses, list):
+                for item in agent_responses:
+                    authorname = (
+                        item.get("AuthorName")
+                        or item.get("authorName")
+                        or ""
+                    )
+                    if authorname != "Invoice_Parser_Agent":
+                        continue
+
+                    content = item.get("Content") or item.get("content") or ""
+                    if not isinstance(content, str):
+                        continue
+
+                    logger.info("Found Invoice_Parser_Agent content: %s", content[:300])
+
+                    # Try JSON inside content
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        try:
+                            raw_json = json.loads(json_match.group(0))
+                            mapped = _parsed_igentic_to_db(raw_json)
+                            if mapped.get("invoice_number"):
+                                out.update(mapped)
+                                logger.info(
+                                    "Extracted %d fields from Invoice_Parser_Agent JSON",
+                                    len(mapped)
+                                )
+                                break
+                        except json.JSONDecodeError as e:
+                            logger.warning("JSON parse failed in agent content: %s", e)
+
+        except Exception as e:
+            logger.warning("agent_responses extraction failed: %s", e)
+
+
+
     # 1) Try CSV
     if not out.get("invoice_number"):
         try:
