@@ -1318,6 +1318,22 @@ _IGENTIC_JSON_FIELD_MAP = {
     'Invoice_Date': 'invoice_date',
     'Business_Unit': 'business_unit',
     'Project_Name': 'project_name',
+
+
+    'invoice_number':   'invoice_number',
+    'consultancy_name': 'vendor_name',      # <-- key mismatch was silent bug
+    'resource_name':    'resource_name',
+    'pay_period_start': 'start_date',
+    'pay_period_end':   'end_date',
+    'vendor_hours':     'invoice_hours',
+    'approved_hours':   'invoice_hours',
+    'pay_rate':         'hourly_rate',
+    'invoice_amount':   'invoice_amount',
+    'net_terms':        'payment_terms',
+    'invoice_date':     'invoice_date',
+    'due_date':         'due_date',
+    'business_unit':    'business_unit',
+    'project_name':     'project_name',
 }
 
 
