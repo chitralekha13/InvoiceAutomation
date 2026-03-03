@@ -1180,6 +1180,62 @@ def parse_csv_to_dict(csv_string: str) -> Dict:
     csv_string = re.sub(r'```[^\n]*\n', '', csv_string)
     csv_string = re.sub(r'```', '', csv_string)
     
+    # Try JSON
+    json_match = re.search(r'\{.*\}', csv_string, re.DOTALL)
+    if json_match:
+        try:
+            raw = json.loads(json_match.group(0))
+
+            # Map JSON keys (from agent) -> DB field names
+            json_field_map = {
+                'invoice_number':    'invoice_number',
+                'consultancy_name':  'vendor_name',
+                'resource_name':     'resource_name',
+                'pay_period_start':  'start_date',
+                'pay_period_end':    'end_date',
+                'vendor_hours':      'invoice_hours',
+                'approved_hours':    'invoice_hours',   # fallback if vendor_hours missing
+                'pay_rate':          'hourly_rate',
+                'invoice_amount':    'invoice_amount',
+                'net_terms':         'payment_terms',
+                'invoice_date':      'invoice_date',
+                'due_date':          'due_date',
+                'business_unit':     'business_unit',
+                'project_name':      'project_name',
+                'approval_status':   'approval_status',
+            }
+
+            numeric_fields = {'invoice_hours', 'hourly_rate', 'invoice_amount',
+                              'business_unit', 'approved_hours'}
+
+            out = {}
+            for json_key, db_key in json_field_map.items():
+                val = raw.get(json_key)
+
+                # Skip nulls, empty strings, already-set keys (first mapping wins)
+                if val is None or str(val).strip().lower() in ('', 'null', 'none'):
+                    continue
+                if db_key in out:          # e.g. vendor_hours already set, skip approved_hours
+                    continue
+
+                val = str(val).strip()
+
+                if db_key in numeric_fields:
+                    try:
+                        val = float(str(val).replace(',', ''))
+                    except (ValueError, AttributeError):
+                        pass
+
+                out[db_key] = val
+
+            if out:
+                logger.info(f"Parsed invoice data from JSON: {out}")
+                return out
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parse failed, falling back to CSV: {e}")
+
+
     lines = csv_string.split('\n')
     if len(lines) < 2:
         return {}
