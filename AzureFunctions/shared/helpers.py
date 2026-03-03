@@ -1124,41 +1124,41 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
         return csv_data.strip()
     '''
     # Check agentResponses
-    csv_pattern = r'Invoice_Number[,:]?\s*consultancy_name[^\n]*\n[^\n]+(?:\n[^\n]+)*'
     agent_responses = data.get("agentResponses") or data.get("agent_responses")
-    
     logger.info(f"agent_responses type: {type(agent_responses)}")
 
     if isinstance(agent_responses, str):
-        logger.info("Inside If - Line 1136 - Type Str")
         try:
             agent_responses = json.loads(agent_responses)
         except Exception:
             pass
-            
-    #logger.info(f"agent_responses type: {type(agent_responses)}")
-    if isinstance(agent_responses, list):
-        #logger.info("Inside If - Type List")
-        for item in agent_responses:
-            #logger.info(f"Inside List If - Item: {item}")
 
+    if isinstance(agent_responses, list):
+        for item in agent_responses:
             content = item.get("Content") or item.get("content") or ""
-            authorname= item.get("AuthorName") or item.get("authorName") or ""
-            #logger.info(f"Inside List If - Authorname : {authorname}")
+            authorname = item.get("AuthorName") or item.get("authorName") or ""
+
             if authorname == 'Invoice_Parser_Agent':
-                #logger.info("Inside List If - Invoice ParserAgent Data")
                 if isinstance(content, str):
                     logger.info(f"Inside List If - Content data: {content}")
-                    match = re.search(csv_pattern, content, re.DOTALL | re.IGNORECASE)
-                    if match:
-                        csv_data = match.group(0)
-                        csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
-                        csv_data = re.sub(r'```', '', csv_data)
-                        logger.info(f"Found CSV in agentResponses: {csv_data[:200]}")
-                        return csv_data.strip()
-    
-    #logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(result)[:500]}")
-    logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(agent_responses)[:500]}")
+                    
+                    # Extract JSON from content (handles code fences or raw JSON)
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        try:
+                            invoice_data = json.loads(json_match.group(0))
+                            
+                            # Convert JSON to CSV string
+                            headers = list(invoice_data.keys())
+                            values = [str(invoice_data[h]) if invoice_data[h] is not None else "" for h in headers]
+                            
+                            csv_data = ",".join(headers) + "\n" + ",".join(values)
+                            logger.info(f"Found JSON, converted to CSV: {csv_data[:200]}")
+                            return csv_data.strip()
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Failed to parse JSON from content: {e}")
+
+    logger.warning(f"No invoice data found in agent response. Preview: {str(agent_responses)[:500]}")
     return None
 
 
