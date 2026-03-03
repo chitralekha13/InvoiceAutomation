@@ -1139,16 +1139,21 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
         logger.info("Inside If - Type List")
         for item in agent_responses:
             logger.info(f"Inside List If - Item: {item}")
+
             content = item.get("Content") or item.get("content") or ""
-            if isinstance(content, str):
-                logger.info(f"Inside List If - Content data: {content}")
-                match = re.search(csv_pattern, content, re.DOTALL | re.IGNORECASE)
-                if match:
-                    csv_data = match.group(0)
-                    csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
-                    csv_data = re.sub(r'```', '', csv_data)
-                    logger.info(f"Found CSV in agentResponses: {csv_data[:200]}")
-                    return csv_data.strip()
+            authorname= item.get("AuthorName") or item.get("authorName") or ""
+            logger.info(f"Inside List If - Authorname : {authorname}")
+            if authorname == 'Invoice_Parser_Agent':
+                logger.info("Inside List If - Invoice ParserAgent Data")
+                if isinstance(content, str):
+                    logger.info(f"Inside List If - Content data: {content}")
+                    match = re.search(csv_pattern, content, re.DOTALL | re.IGNORECASE)
+                    if match:
+                        csv_data = match.group(0)
+                        csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
+                        csv_data = re.sub(r'```', '', csv_data)
+                        logger.info(f"Found CSV in agentResponses: {csv_data[:200]}")
+                        return csv_data.strip()
     
     logger.warning(f"No CSV pattern found in iGentic response. Result preview: {str(result)[:500]}")
     return None
