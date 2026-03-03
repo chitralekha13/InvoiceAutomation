@@ -1124,15 +1124,19 @@ def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[
     
     # Check agentResponses
     agent_responses = data.get("agentResponses") or data.get("agent_responses")
+    
     logger.info(f"agent_responses type: {type(agent_responses)}")
 
     if isinstance(agent_responses, str):
+        logger.info("Inside If - Line 1136 - Type Str")
         try:
             agent_responses = json.loads(agent_responses)
         except Exception:
             pass
-    
+            
+    logger.info(f"agent_responses type: {type(agent_responses)}")
     if isinstance(agent_responses, list):
+        logger.info("Inside If - Type List")
         for item in agent_responses:
             content = item.get("Content") or item.get("content") or ""
             if isinstance(content, str):
