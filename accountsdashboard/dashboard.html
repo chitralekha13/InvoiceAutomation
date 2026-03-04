@@ -957,7 +957,7 @@
                         }
                     }
                     cell.textContent = value || '';
-                    cell.removeChild(cell.querySelector('input'));
+                    //cell.removeChild(cell.querySelector('input'));
                     bindEditableCells();
                     // Re-render table so status column and View Payment button update
                     if (data.invoice) {
@@ -968,7 +968,7 @@
             } catch (e) {
                 console.error(e);
                 cell.textContent = cell.querySelector('input')?.value || '';
-                if (cell.querySelector('input')) cell.removeChild(cell.querySelector('input'));
+                //if (cell.querySelector('input')) cell.removeChild(cell.querySelector('input'));
                 bindEditableCells();
             }
         }
