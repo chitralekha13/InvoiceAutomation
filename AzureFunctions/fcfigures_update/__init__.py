@@ -104,25 +104,36 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     )
                     cmp_result = _parse_continuation_response_for_approval(result)
                     if cmp_result:
-                        kwargs["approval_status"] = cmp_result.get("approval_status")
-                        kwargs["status"] = cmp_result.get("approval_status")
-                        if cmp_result.get("payment_details") is not None:
-                            kwargs["payment_details"] = cmp_result.get("payment_details")
-                        elif cmp_result.get("approval_status") in ("Approved", "Complete", "Ready for Payment", "ready for payment"):
-                            ok_result = continue_igentic_session(
-                                invoice_id,
-                                "payment details",
-                                request_label="Get payment details",
-                            )
-                            payment_details = _extract_payment_details_from_igentic_response(ok_result)
-                            if payment_details:
-                                kwargs["payment_details"] = payment_details
+                        hours_match = cmp_result.get("hours_match")
+                        # Business rules for status after timesheet validation:
+                        # - If hours match: status = Approved
+                        # - If hours do NOT match: status = Need Approval
+                        if hours_match:
+                            kwargs["approval_status"] = "Approved"
+                            kwargs["status"] = "Approved"
+                            # Prefer any payment details already returned; otherwise, ask explicitly.
+                            if cmp_result.get("payment_details") is not None:
+                                kwargs["payment_details"] = cmp_result.get("payment_details")
+                            else:
+                                ok_result = continue_igentic_session(
+                                    invoice_id,
+                                    "payment details",
+                                    request_label="Get payment details",
+                                )
+                                payment_details = _extract_payment_details_from_igentic_response(ok_result)
+                                if payment_details:
+                                    kwargs["payment_details"] = payment_details
+                        else:
+                            kwargs["approval_status"] = "Need Approval"
+                            kwargs["status"] = "Need Approval"
                 except Exception as igentic_err:
                     logger.warning("iGentic approved-hours validation failed; saving approved_hours only: %s", igentic_err)
 
         # Payment Done from View Payment modal: persist so row stays green forever
         if body.get("payment_done"):
             kwargs["bill_pay_initiated_on"] = datetime.now(timezone.utc)
+            # Once payment is initiated, reflect this in status
+            kwargs["status"] = "Payment Initiated"
 
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)

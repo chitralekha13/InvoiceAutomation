@@ -166,6 +166,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             _hrs = _parse_hours_from_text(invoice_data["full_text"])
             if _hrs is not None:
                 fields["invoice_hours"] = _hrs
+        # Business rule: as soon as an invoice is uploaded, status should start as Pending.
+        # Later steps (timesheet validation / dashboard edits) will move it to Approved / Need Approval / Payment Initiated.
+        if use_db:
+            fields.setdefault("approval_status", "Pending")
+            fields["status"] = "Pending"
         logger.info(f"Extracted fields from iGentic: {fields}")
 
         if use_db and fields:
