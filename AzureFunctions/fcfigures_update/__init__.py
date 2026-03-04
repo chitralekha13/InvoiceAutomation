@@ -104,13 +104,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     )
                     cmp_result = _parse_continuation_response_for_approval(result)
                     if cmp_result:
+                        approval_status = cmp_result.get("approval_status") or "Pending"
                         hours_match = cmp_result.get("hours_match")
-                        # Business rules for status after timesheet validation:
-                        # - If hours match: status = Approved
-                        # - If hours do NOT match: status = Need Approval
-                        if hours_match:
-                            kwargs["approval_status"] = "Approved"
-                            kwargs["status"] = "Approved"
+                        # Treat orchestrator \"success\" statuses or a positive hours_match as Approved/Ready.
+                        if approval_status in ("Approved", "Complete", "Ready for Payment", "ready for payment") or hours_match:
+                            kwargs["approval_status"] = approval_status
+                            kwargs["status"] = approval_status
                             # Prefer any payment details already returned; otherwise, ask explicitly.
                             if cmp_result.get("payment_details") is not None:
                                 kwargs["payment_details"] = cmp_result.get("payment_details")
@@ -124,6 +123,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 if payment_details:
                                     kwargs["payment_details"] = payment_details
                         else:
+                            # Any non-successful status becomes Need Approval
                             kwargs["approval_status"] = "Need Approval"
                             kwargs["status"] = "Need Approval"
                 except Exception as igentic_err:
