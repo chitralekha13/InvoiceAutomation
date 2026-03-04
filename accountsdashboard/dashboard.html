@@ -144,6 +144,23 @@
         }
         .metric-card.clickable.active .value,
         .metric-card.clickable.active .label { color: white; }
+        .edit-mode-indicator {
+            position: fixed;
+            top: 70px;
+            right: 24px;
+            background: #d13438;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 999;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .edit-mode-indicator.show {
+            display: block;
+        }
 
 
         .pane-headers {
@@ -229,12 +246,26 @@
             color: #444;
         }
         tr:hover { background: #f8f9fa; }
+
+        @keyframes cellSaved {
+            0% { background: #d4edda; }
+            100% { background: transparent; }
+        }
+        .cell-saved {
+            animation: cellSaved 1.5s ease-out;
+        }
+
         .editable {
-            cursor: pointer;
             padding: 2px 4px;
             border-radius: 2px;
         }
-        .editable:hover { background: #e7f3ff; }
+        .editable.edit-enabled {
+            cursor: pointer;
+        }
+        .editable.edit-enabled:hover { 
+            background: #e7f3ff; 
+            outline: 1px dashed #0078d4;
+        }
 
         .user-info {
             display: flex;
@@ -486,6 +517,10 @@
         </div>
     </div>
 
+    <div class="edit-mode-indicator" id="editModeIndicator">
+        ✏️ EDIT MODE ACTIVE
+    </div>
+
     <div class="main">
         <div class="metrics-row">
             <div class="metric-card clickable" id="tileTotal" data-filter="all" onclick="filterByTile('all')">
@@ -553,7 +588,15 @@
                                 <th>Project Name (Excel)</th>
                                 <th>Payment initiated on</th>
                                 <th>Actions</th>
-                                <th>Document</th>
+                                <th style="min-width: 180px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                                        <button type="button" id="btnToggleEdit" onclick="toggleEditMode()" 
+                                                style="background: #0078d4; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                            Enable Edit
+                                        </button>
+                                        <span style="font-size: 11px; font-weight: normal;">View / Download</span>
+                                    </div>
+                                </th>
                             </tr>
                         </thead>
                         <tbody id="tableBody"></tbody>
@@ -665,6 +708,7 @@
         let allRows = [];
         let filteredRows = [];
         let excelUrl = '';
+        let isEditMode = false;
 
         window.addEventListener('load', () => { loadDashboard(); });
 
@@ -813,6 +857,11 @@
                 tbody.appendChild(tr);
             });
             bindEditableCells();
+            // Apply current edit mode state to newly rendered cells
+            if (isEditMode) {
+                document.querySelectorAll('.editable').forEach(cell => cell.classList.add('edit-enabled'));
+            }
+
             bindActionButtons();
             bindRowSelectDelete();
         }
@@ -933,30 +982,68 @@
             }
         }
 
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('btnToggleEdit');
+            const editableCells = document.querySelectorAll('.editable');
+            const indicator = document.getElementById('editModeIndicator');
+            
+            if (isEditMode) {
+                btn.textContent = 'Disable Edit';
+                btn.style.background = '#d13438';
+                editableCells.forEach(cell => cell.classList.add('edit-enabled'));
+                if (indicator) indicator.classList.add('show');
+                updateToastArea('Edit Mode', 'Click any cell to edit. Press Enter to save, Escape to cancel.', 'warning');
+            } else {
+                btn.textContent = 'Enable Edit';
+                btn.style.background = '#0078d4';
+                editableCells.forEach(cell => cell.classList.remove('edit-enabled'));
+                if (indicator) indicator.classList.remove('show');
+                updateToastArea('View Mode', 'Editing disabled. Click "Enable Edit" to make changes.', '');
+            }
+        }
+
         function bindEditableCells() {
             document.querySelectorAll('.editable').forEach(cell => {
                 cell.addEventListener('click', function() {
+                    // Only allow editing if edit mode is enabled
+                    if (!isEditMode) return;
+                    
                     const field = this.dataset.field;
                     const id = this.dataset.id;
                     const current = this.textContent.trim();
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.value = current;
-                    input.style.cssText = 'width:100%;padding:4px;font-size:inherit;';
+                    input.style.cssText = 'width:100%;padding:4px;font-size:inherit;border:2px solid #0078d4;';
                     this.textContent = '';
                     this.appendChild(input);
                     input.focus();
                     input.addEventListener('blur', () => saveEdit(id, field, input.value, this));
                     input.addEventListener('keydown', e => {
                         if (e.key === 'Enter') { input.blur(); }
+                        if (e.key === 'Escape') { 
+                            cell.textContent = current;
+                            if (isEditMode) {
+                                cell.classList.add('edit-enabled');
+                            }
+                            e.stopPropagation();
+                        }
+
                     });
                 });
             });
         }
 
+
         async function saveEdit(invoiceId, field, value, cell) {
+            const originalValue = cell.textContent.trim();
             const body = {};
             body[field] = value;
+            
+            // Show saving indicator
+            cell.innerHTML = '<span style="color: #0078d4;">Saving...</span>';
+            
             try {
                 const res = await fetch(API_BASE + '/api/fcfigures/' + encodeURIComponent(invoiceId) + '/update', {
                     method: 'POST',
@@ -964,9 +1051,11 @@
                     body: JSON.stringify(body)
                 });
                 const data = res.ok ? await res.json().catch(() => ({})) : {};
+                
                 if (res.ok) {
                     const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId);
                     if (row) {
+                        // Update the row data
                         row[field] = value;
                         if (field === 'current_comments') row.notes = value;
                         if (field === 'consultancy_name') row.vendor_name = value;
@@ -974,28 +1063,54 @@
                         if (field === 'pay_period_end') row.end_date = value;
                         if (field === 'net_terms') row.payment_terms = value;
                         if (field === 'pay_rate') row.hourly_rate = value;
+                        
                         // After approved_hours save, backend returns updated invoice with approval_status, payment_details
                         if (data.invoice) {
                             Object.assign(row, data.invoice);
                             if (data.invoice.invoice_id) row.invoice_uuid = data.invoice.invoice_id;
                         }
                     }
-                    cell.textContent = value || '';
-                    //cell.removeChild(cell.querySelector('input'));
-                    bindEditableCells();
-                    // Re-render table so status column and View Payment button update
-                    if (data.invoice) {
-                        applyFilters();
-                        renderTable();
+                    
+                    // Show success briefly
+                    cell.innerHTML = '<span style="color: #107c10;">✓ Saved</span>';
+                    setTimeout(() => {
+                        cell.textContent = value || '';
+                        // Reapply edit mode if still active
+                        if (isEditMode) {
+                            cell.classList.add('edit-enabled');
+                        }
+                        // Add saved animation
+                        cell.classList.add('cell-saved');
+                        setTimeout(() => cell.classList.remove('cell-saved'), 1500);
+                    }, 800);
+
+                    
+                    // If status or payment details changed, re-render the entire table
+                    if (data.invoice && (data.invoice.approval_status || data.invoice.payment_details)) {
+                        setTimeout(() => {
+                            applyFilters();
+                            renderTable();
+                            updateToastArea('Saved', `${field} updated successfully`, 'success');
+                        }, 1000);
+                    } else {
+                        updateToastArea('Saved', `${field} updated`, 'success');
                     }
+                } else {
+                    throw new Error(data.error || 'Save failed');
                 }
             } catch (e) {
-                console.error(e);
-                cell.textContent = cell.querySelector('input')?.value || '';
-                //if (cell.querySelector('input')) cell.removeChild(cell.querySelector('input'));
-                bindEditableCells();
+                console.error('Save error:', e);
+                cell.innerHTML = '<span style="color: #d13438;">✗ Failed</span>';
+                setTimeout(() => {
+                    cell.textContent = originalValue;
+                    if (isEditMode) {
+                        cell.classList.add('edit-enabled');
+                    }
+                }, 1500);
+                updateToastArea('Error', `Failed to save ${field}`, 'error');
             }
         }
+
 
         function escapeHtml(s) {
             if (s == null) return '';
@@ -1259,7 +1374,9 @@
                 return;
             }
 
-            showToast('Uploading…', `Processing "${file.name}". This may take a few seconds.`, '');
+            // showToast('Uploading…', `Processing "${file.name}". This may take a few seconds.`, '');
+            updateToastArea('Uploading…', `Processing "${file.name}"`, '');
+
 
             try {
                 const formData = new FormData();
@@ -1277,13 +1394,15 @@
                 if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
 
                 renderSyncResults(data);
-                showToast('Sync complete', buildSyncSummaryText(data), 'success', 8000);
+                // showToast('Sync complete', buildSyncSummaryText(data), 'success', 8000);
                 updateToastArea('Sync complete', buildSyncSummaryText(data), 'success');
                 await loadDashboard();
 
             } catch (err) {
                 console.error('Sync error:', err);
-                showToast('Sync failed', err.message || 'Unknown error. Check console.', 'error', 8000);
+                // showToast('Sync failed', err.message || 'Unknown error. Check console.', 'error', 8000);
+                updateToastArea('Sync failed', err.message || 'Unknown error', 'error');
+
             }
         }
 
