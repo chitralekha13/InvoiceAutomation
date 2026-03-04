@@ -99,7 +99,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 try:
                     result = continue_igentic_session(
                         invoice_id,
-                        f"approved hours is {int(timesheet) if timesheet == int(timesheet) else timesheet}",
+                        f"Timesheet hours = {int(timesheet) if timesheet == int(timesheet) else timesheet}",
                         request_label="Validate approved hours",
                     )
                     cmp_result = _parse_continuation_response_for_approval(result)
