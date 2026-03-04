@@ -103,7 +103,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if unmatched_ambiguous:
         report_thread = threading.Thread(
             target=_upload_comparison_report,
-            args=(unmatched_ambiguous, results, invoices, filename),
+            args=(unmatched_ambiguous, results, invoices, filename, groups),
             daemon=True
         )
         report_thread.start()
@@ -496,7 +496,7 @@ def _err(code: int, msg: str) -> func.HttpResponse:
 
 # Comparison report
 
-def _generate_comparison_report(unmatched_results: list, all_results: list, db_invoices: list, source_filename: str) -> bytes:
+def _generate_comparison_report(unmatched_results: list, all_results: list, db_invoices: list, source_filename: str, groups: dict) -> bytes:
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
@@ -521,57 +521,79 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
         if hex_color:
             cell.fill = fill(hex_color)
 
-    # ── Sheet 1: Unmatched / Ambiguous ───────────────────────────────────────
-    ws1 = wb.active
-    ws1.title = 'Unmatched & Ambiguous'
-    ws1.freeze_panes = 'A3'
+    # Calculate total hours for each category
+    matched_results = [r for r in all_results if r['status'] == 'MATCHED']
+    
+    total_hours_matched = sum(_to_float(r.get('approved_hours', 0)) for r in matched_results)
+    
+    # Calculate unmatched hours from the groups
+    total_hours_unmatched = 0
+    for result in unmatched_results:
+        key = (result.get('excel_first', ''), result.get('excel_last', ''), 
+               result.get('year', 0), result.get('month', 0))
+        group = groups.get(key, [])
+        for row in group:
+            hours = _to_float((_get_col(row, COL_HOURS) or _get_col(row, 'hours') or '0').strip())
+            total_hours_unmatched += hours
+    
+    total_hours_pending = sum(_to_float(inv.get('invoice_hours', 0) or 0) for inv in db_invoices)
 
-    ws1.merge_cells('A1:H1')
-    t = ws1['A1']
-    t.value = f"Sync Comparison Report  |  Source: {source_filename}  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    t.font, t.fill, t.alignment = Font(name='Arial', bold=True, size=12, color='FFFFFF'), fill('2C3E50'), center
-    ws1.row_dimensions[1].height = 22
+    # ── Sheet 1: Summary (Quality Check) ─────────────────────────────────────
+    ws_summary = wb.active
+    ws_summary.title = 'Summary'
+    
+    ws_summary.merge_cells('A1:C1')
+    t_sum = ws_summary['A1']
+    t_sum.value = f"Excel Sync Status - Quality Check Summary  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    t_sum.font = Font(name='Arial', bold=True, size=14, color='FFFFFF')
+    t_sum.fill = fill('34495E')
+    t_sum.alignment = center
+    ws_summary.row_dimensions[1].height = 25
 
-    cols1 = ['Status', 'Excel Name (From Timesheet)', 'Year', 'Month', 'Row Count',
-             'Possible DB Match', 'DB Invoice ID', 'Issue / Action Required']
-    write_header(ws1, 2, cols1, 'C0392B')
+    # Summary data
+    summary_data = [
+        ('Source File', source_filename, ''),
+        ('', '', ''),
+        ('Category', 'Total Hours', 'Description'),
+        ('Pending DB Invoices', f'{total_hours_pending:.2f}', 'All pending invoices in database'),
+        ('Matched Data', f'{total_hours_matched:.2f}', 'Successfully matched and approved from Excel'),
+        ('Unmatched Data', f'{total_hours_unmatched:.2f}', 'Excel entries with no DB match'),
+        ('', '', ''),
+        ('Total Matched Hours', f'{total_hours_matched:.2f}', 'Hours processed from timesheet'),
+        ('Total Unmatched Hours', f'{total_hours_unmatched:.2f}', 'Hours not matched to DB'),
+        ('Total Pending Hours', f'{total_hours_pending:.2f}', 'Hours awaiting approval in DB'),
+    ]
 
-    status_colors = {'UNMATCHED': 'FADBD8', 'AMBIGUOUS': 'FDEBD0'}
-    status_notes  = {
-        'UNMATCHED': 'No pending invoice found — check spelling or add invoice to DB',
-        'AMBIGUOUS': 'Multiple invoices matched this name — resolve duplicates in DB',
-    }
+    for r_idx, (label, value, desc) in enumerate(summary_data, start=2):
+        if r_idx == 2 or r_idx == 8:  # Empty rows
+            continue
+        
+        cell_a = ws_summary.cell(row=r_idx, column=1, value=label)
+        cell_b = ws_summary.cell(row=r_idx, column=2, value=value)
+        cell_c = ws_summary.cell(row=r_idx, column=3, value=desc)
+        
+        if r_idx == 4:  # Header row
+            cell_a.font = cell_b.font = cell_c.font = hdr_font
+            cell_a.fill = cell_b.fill = cell_c.fill = fill('5DADE2')
+            cell_a.alignment = cell_b.alignment = cell_c.alignment = center
+        elif r_idx in [9, 10, 11]:  # Total rows
+            cell_a.font = Font(name='Arial', bold=True, size=11)
+            cell_b.font = Font(name='Arial', bold=True, size=11)
+            cell_a.fill = cell_b.fill = cell_c.fill = fill('D5F4E6')
+        elif r_idx == 3:  # Source file row
+            cell_a.font = Font(name='Arial', bold=True, size=10)
+            cell_b.font = Font(name='Arial', size=10)
+        else:
+            cell_a.alignment = cell_c.alignment = wrap
+        
+        cell_a.border = cell_b.border = cell_c.border = border
 
-    for r_idx, result in enumerate(unmatched_results, start=3):
-        status = result.get('status', '')
-        fc     = status_colors.get(status, 'FFFFFF')
+    ws_summary.column_dimensions['A'].width = 25
+    ws_summary.column_dimensions['B'].width = 18
+    ws_summary.column_dimensions['C'].width = 45
 
-        first_toks = _tokenise(result.get('excel_first', ''))
-        last_toks  = _tokenise(result.get('excel_last', ''))
-        possible = [
-            inv['resource_name'] for inv in db_invoices
-            if (db := _normalise(inv['resource_name'] or ''))
-            and (_any_token_in(first_toks, db) or _any_token_in(last_toks, db))
-        ]
-
-        row_data = [
-            status,
-            result.get('excel_name', ''),
-            result.get('year') or '',
-            result.get('month') or '',
-            result.get('row_count', ''),
-            ', '.join(possible) if possible else '— no partial match —',
-            result.get('invoice_id') or 'N/A',
-            status_notes.get(status, ''),
-        ]
-        for c_idx, val in enumerate(row_data, 1):
-            style_cell(ws1.cell(row=r_idx, column=c_idx, value=val), fc)
-
-    for col, width in zip('ABCDEFGH', [14, 30, 8, 8, 10, 30, 14, 50]):
-        ws1.column_dimensions[get_column_letter(ord(col) - 64)].width = width
-
-    # ── Sheet 2: All Pending DB Invoices ─────────────────────────────────────
-    ws2 = wb.create_sheet('Pending DB Invoices')
+    # ── Sheet 2: Pending DB Invoices ─────────────────────────────────────────
+    ws2 = wb.create_sheet('Pending DB')
     ws2.freeze_panes = 'A3'
 
     ws2.merge_cells('A1:H1')
@@ -601,9 +623,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
     for col, width in zip('ABCDEFGH', [14, 30, 13, 13, 13, 16, 18, 26]):
         ws2.column_dimensions[get_column_letter(ord(col) - 64)].width = width
 
-    # Sheet 3: Matched 
-    matched_results = [r for r in all_results if r['status'] == 'MATCHED']
-
+    # ── Sheet 3: Matched ─────────────────────────────────────────────────────
     ws3 = wb.create_sheet('Matched')
     ws3.freeze_panes = 'A3'
 
@@ -634,6 +654,77 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
 
     for col, width in zip('ABCDEFGHI', [28, 28, 14, 8, 8, 15, 13, 16, 10]):
         ws3.column_dimensions[get_column_letter(ord(col) - 64)].width = width
+
+    # ── Sheet 4: Unmatched / Ambiguous ───────────────────────────────────────
+    # ── Sheet 4: Unmatched / Ambiguous ───────────────────────────────────────
+    ws1 = wb.create_sheet('Unmatched')
+    ws1.freeze_panes = 'A3'
+
+    ws1.merge_cells('A1:J1')
+    t = ws1['A1']
+    t.value = f"Sync Comparison Report  |  Source: {source_filename}  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    t.font, t.fill, t.alignment = Font(name='Arial', bold=True, size=12, color='FFFFFF'), fill('2C3E50'), center
+    ws1.row_dimensions[1].height = 22
+
+    cols1 = ['Status', 'Excel Name (From Timesheet)', 'Year', 'Month', 'Row Count',
+             'Hours (Approved)', 'Hours (Pending)', 'Hours (Other)', 'Total Hours', 'Possible DB Match']
+    write_header(ws1, 2, cols1, 'C0392B')
+
+    status_colors = {'UNMATCHED': 'FADBD8', 'AMBIGUOUS': 'FDEBD0'}
+
+    for r_idx, result in enumerate(unmatched_results, start=3):
+        status = result.get('status', '')
+        fc     = status_colors.get(status, 'FFFFFF')
+
+        # Get the group of rows for this person
+        key = (result.get('excel_first', ''), result.get('excel_last', ''), 
+               result.get('year', 0), result.get('month', 0))
+        group = groups.get(key, [])
+        
+        # Calculate hours by approval status
+        hours_by_status = {}
+        for row in group:
+            approval = (_get_col(row, COL_APPROVAL) or 'Other').strip().lower()
+            if approval == 'approved':
+                approval_key = 'Approved'
+            elif approval == 'pending':
+                approval_key = 'Pending'
+            else:
+                approval_key = 'Other'
+            
+            hours = _to_float((_get_col(row, COL_HOURS) or _get_col(row, 'hours') or '0').strip())
+            hours_by_status[approval_key] = hours_by_status.get(approval_key, 0) + hours
+        
+        hours_approved = hours_by_status.get('Approved', 0)
+        hours_pending = hours_by_status.get('Pending', 0)
+        hours_other = hours_by_status.get('Other', 0)
+        total_hours = hours_approved + hours_pending + hours_other
+
+        first_toks = _tokenise(result.get('excel_first', ''))
+        last_toks  = _tokenise(result.get('excel_last', ''))
+        possible = [
+            inv['resource_name'] for inv in db_invoices
+            if (db := _normalise(inv['resource_name'] or ''))
+            and (_any_token_in(first_toks, db) or _any_token_in(last_toks, db))
+        ]
+
+        row_data = [
+            status,
+            result.get('excel_name', ''),
+            result.get('year') or '',
+            result.get('month') or '',
+            result.get('row_count', ''),
+            f'{hours_approved:.2f}' if hours_approved > 0 else '',
+            f'{hours_pending:.2f}' if hours_pending > 0 else '',
+            f'{hours_other:.2f}' if hours_other > 0 else '',
+            f'{total_hours:.2f}',
+            ', '.join(possible) if possible else '— no db match —',
+        ]
+        for c_idx, val in enumerate(row_data, 1):
+            style_cell(ws1.cell(row=r_idx, column=c_idx, value=val), fc)
+
+    for col, width in zip('ABCDEFGHIJ', [14, 30, 8, 8, 10, 15, 15, 13, 12, 35]):
+        ws1.column_dimensions[get_column_letter(ord(col) - 64)].width = width
     
     buf = io.BytesIO()
     wb.save(buf)
@@ -641,9 +732,9 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
     return buf.read()
 
 
-def _upload_comparison_report(unmatched_results: list, all_results: list, db_invoices: list, source_filename: str):
+def _upload_comparison_report(unmatched_results: list, all_results: list, db_invoices: list, source_filename: str, groups: dict):
     try:
-        report_bytes = _generate_comparison_report(unmatched_results, all_results, db_invoices, source_filename)
+        report_bytes = _generate_comparison_report(unmatched_results, all_results, db_invoices, source_filename, groups)
         ts           = datetime.now().strftime('%Y%m%d_%H%M')
         report_name  = f"sync_report_{ts}.xlsx"
 
