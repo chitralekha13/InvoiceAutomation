@@ -111,7 +111,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     summary = {
         "processed":    len(results),
         "matched":      sum(1 for r in results if r['status'] == 'MATCHED'),
-        "need_approval":sum(1 for r in results if r['status'] == 'NEED_APPROVAL'),
+        "need_approval":sum(1 for r in results if r['status'] == 'Need Approval'),
         "pending":      sum(1 for r in results if r['status'] == 'PENDING'),
         "unmatched":    sum(1 for r in results if r['status'] == 'UNMATCHED'),
         "ambiguous":    sum(1 for r in results if r['status'] == 'AMBIGUOUS'),
@@ -203,8 +203,7 @@ def _group_rows(rows: list) -> dict:
 
 
 def _extract_month_year(row: dict):
-    """Try several column names to get a month+year from the row."""
-    #for col in (COL_FROM, COL_DATE, 'to time', 'pay period start', 'period'):
+
     for col in (COL_DATE,'date'):
         val = _get_col(row, col)
         if val:
@@ -246,14 +245,28 @@ def _tokenise(name: str) -> list:
 def _any_token_in(tokens: list, normed_db: str) -> bool:
     return any(re.search(r'\b' + re.escape(t) + r'\b', normed_db) for t in tokens)
 
+# Pay period check 
 
-def _match_invoice(first: str, last: str, invoices: list):
+def _pay_period_matches(invoice, year: int, month: int) -> bool:
+
+    #if year == 0:
+    #   return True     # no date in timesheet — don't block on period
+
+    for field in ('start_date', 'end_date'):
+        val = invoice.get(field)
+        if val:
+            dt = _parse_date(str(val))
+            if dt and dt.year == year and dt.month == month:
+                return True
+    return False
+
+def _match_invoice(first: str, last: str, yr: int, mo: int, invoices: list):
     """
-    Regex token matching.
     Returns (invoice, status) where status is one of:
     MATCHED       — both first and last name found in DB resource_name
-    NEED_APPROVAL — only first OR last name found
+    Need Approval — only first OR last name found
     AMBIGUOUS     — multiple invoices matched
+    PERIOD_MISMATCH — name found in DB but under a different month
     UNMATCHED     — no match found
     """
     first_toks = _tokenise(first)
@@ -278,27 +291,12 @@ def _match_invoice(first: str, last: str, invoices: list):
         and (_any_token_in(first_toks, db) or _any_token_in(last_toks, db))
     ]
     if len(partial) == 1:
-        return partial[0], 'NEED_APPROVAL'
+        return partial[0], 'Need Approval'
     if len(partial) > 1:
         return None, 'AMBIGUOUS'
 
     return None, 'UNMATCHED'
 
-
-# Pay period check 
-
-def _pay_period_matches(invoice, year: int, month: int) -> bool:
-
-    #if year == 0:
-    #   return True     # no date in timesheet — don't block on period
-
-    for field in ('start_date', 'end_date'):
-        val = invoice.get(field)
-        if val:
-            dt = _parse_date(str(val))
-            if dt and dt.year == year and dt.month == month:
-                return True
-    return False
 
 
 # Core processing 
@@ -372,7 +370,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     
     # Case 2: Partial name match (first OR last only)
     # Update hours and flag for manual review
-    elif match_status == 'NEED_APPROVAL':
+    elif match_status == 'Need Approval':
         total_hours = sum(
             _to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip())
             for r in group
@@ -388,7 +386,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
             'project_name_excel': project_name_excel,
         })
         return {**base,
-                'status':         'NEED_APPROVAL',
+                'status':         'Need Approval',
                 'invoice_id':     str(inv['invoice_id']),
                 'approved_hours': total_hours,
                 'new_db_status':  'Need Approval',
@@ -404,7 +402,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
             'project_name_excel':    project_name_excel,
         })
         return {**base,
-                'status':        'NEED_APPROVAL',
+                'status':        'Need Approval',
                 'invoice_id':  str(inv['invoice_id']),
                 'new_db_status': 'Need Approval',
                 'matched_to':    inv.get('resource_name')}
