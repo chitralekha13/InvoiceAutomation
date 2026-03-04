@@ -260,7 +260,7 @@ def _pay_period_matches(invoice, year: int, month: int) -> bool:
                 return True
     return False
 
-def _match_invoice(first: str, last: str, yr: int, mo: int, invoices: list):
+def _match_invoice(first: str, last: str, invoices: list):
     """
     Returns (invoice, status) where status is one of:
     MATCHED       — both first and last name found in DB resource_name
