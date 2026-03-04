@@ -571,7 +571,7 @@ def _dashboard_metrics(rows: list) -> Dict:
     """Compute dashboard metrics from rows."""
     total = len(rows)
     pending = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "Pending")
-    complete = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "Complete")
+    approved = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "Approved")
     need_approval = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "NEED APPROVAL")
     payment_initiated = sum(1 for r in rows if r.get("bill_pay_initiated_on"))
     total_amount = 0.0
@@ -585,7 +585,7 @@ def _dashboard_metrics(rows: list) -> Dict:
     return {
         "total": total,
         "pending": pending,
-        "complete": complete,
+        "approved": approved,
         "need_approval": need_approval,
         "payment_initiated": payment_initiated,
         "total_amount": round(total_amount, 2),

@@ -108,7 +108,7 @@
         .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
         .metrics-row {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(7, 1fr);
             gap: 16px;
             margin-bottom: 24px;
         }
@@ -472,10 +472,11 @@
             <select id="filterAll">
                 <option value="all">All</option>
                 <option value="pending">Pending</option>
-                <option value="complete">Complete</option>
+                <option value="approved">Approved</option>
                 <option value="need_approval">Need Approval</option>
                 <option value="payment_initiated">Payment Initiated</option>
             </select>
+
             <label for="dueBy">Due by</label>
             <input type="date" id="dueBy" placeholder="mm/dd/yyyy">
         </div>
@@ -487,13 +488,35 @@
 
     <div class="main">
         <div class="metrics-row">
-            <div class="metric-card clickable" id="tileTotal" data-filter="all" onclick="filterByTile('all')"><div class="value" id="mTotal">0</div><div class="label">Total</div></div>
-            <div class="metric-card clickable" id="tilePending" data-filter="pending" onclick="filterByTile('pending')"><div class="value" id="mPending">0</div><div class="label">Pending</div></div>
-            <div class="metric-card clickable" id="tilePaymentInitiated" data-filter="payment_initiated" onclick="filterByTile('payment_initiated')"><div class="value" id="mPaymentInitiated">0</div><div class="label">Payment Initiated</div></div>
-            <div class="metric-card clickable" id="tileComplete" data-filter="complete" onclick="filterByTile('complete')"><div class="value" id="mComplete">0</div><div class="label">Complete</div></div>
-            <div class="metric-card amount"><div class="value" id="mTotalAmount">$0.00</div><div class="label">Total Amount</div></div>
-            <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')"><div class="value" id="mNeedApproval">0</div><div class="label">NEED APPROVAL</div></div>
+            <div class="metric-card clickable" id="tileTotal" data-filter="all" onclick="filterByTile('all')">
+                <div class="value" id="mTotal">0</div>
+                <div class="label">Total</div>
+            </div>
+            <div class="metric-card clickable" id="tilePending" data-filter="pending" onclick="filterByTile('pending')">
+                <div class="value" id="mPending">0</div>
+                <div class="label">Pending</div>
+            </div>
+            <div class="metric-card clickable" id="tileApproved" data-filter="approved" onclick="filterByTile('approved')">
+                <div class="value" id="mApproved">0</div>
+                <div class="label">Approved</div>
+            </div>
+            <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')">
+                <div class="value" id="mNeedApproval">0</div>
+                <div class="label">Need Approval</div>
+            </div>
+            <div class="metric-card clickable" id="tilePaymentInitiated" data-filter="payment_initiated" onclick="filterByTile('payment_initiated')">
+                <div class="value" id="mPaymentInitiated">0</div>
+                <div class="label">Payment Initiated</div>
+            </div>
+            <div class="metric-card amount">
+                <div class="value" id="mTotalAmount">$0.00</div>
+                <div class="label">Total Amount</div>
+            </div>
+            <div class="metric-card" id="toastArea" style="cursor: default; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div class="value" id="toastAreaContent" style="font-size: 14px; color: #666; text-align: center; line-height: 1.4; padding: 8px;">No recent activity</div>
+            </div>
         </div>
+
         <div class="sync-results" id="syncResultsPanel" style="display:none"></div>
         <div class="pane-headers">
             <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
@@ -694,11 +717,12 @@
         function renderMetrics(m) {
             document.getElementById('mTotal').textContent = m.total ?? 0;
             document.getElementById('mPending').textContent = m.pending ?? 0;
-            document.getElementById('mPaymentInitiated').textContent = m.payment_initiated ?? 0;
-            document.getElementById('mComplete').textContent = m.complete ?? 0;
-            document.getElementById('mTotalAmount').textContent = '$' + ((m.total_amount ?? 0) / 1).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            document.getElementById('mApproved').textContent = m.approved ?? 0;
             document.getElementById('mNeedApproval').textContent = m.need_approval ?? 0;
+            document.getElementById('mPaymentInitiated').textContent = m.payment_initiated ?? 0;
+            document.getElementById('mTotalAmount').textContent = '$' + ((m.total_amount ?? 0) / 1).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
+
 
         function filterByTile(filterValue) {
             document.getElementById('filterAll').value = filterValue;
@@ -1254,6 +1278,7 @@
 
                 renderSyncResults(data);
                 showToast('Sync complete', buildSyncSummaryText(data), 'success', 8000);
+                updateToastArea('Sync complete', buildSyncSummaryText(data), 'success');
                 await loadDashboard();
 
             } catch (err) {
@@ -1306,6 +1331,28 @@
         }
         function hideToast() {
             document.getElementById('toast').classList.remove('show');
+        }
+
+        function updateToastArea(title, message, type = '') {
+        const toastArea = document.getElementById('toastAreaContent');
+            if (!toastArea) return;
+            
+            const colors = {
+                'success': '#107c10',
+                'error': '#d13438',
+                'warning': '#ca5010',
+                '': '#666'
+            };
+            
+            const color = colors[type] || colors[''];
+            toastArea.style.color = color;
+            toastArea.innerHTML = `<strong>${title}</strong><br><span style="font-size: 12px;">${message}</span>`;
+            
+            // Clear after 10 seconds
+            setTimeout(() => {
+                toastArea.style.color = '#666';
+                toastArea.textContent = 'No recent activity';
+            }, 10000);
         }
 
     </script>

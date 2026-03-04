@@ -45,11 +45,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return _err(400, str(e))
 
     filename = req.params.get('filename') or 'timesheet.xlsx'
+    
+    # Add timestamp to filename to prevent replacement
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    name_parts = filename.rsplit('.', 1)
+    if len(name_parts) == 2:
+        timestamped_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+    else:
+        timestamped_filename = f"{filename}_{timestamp}"
 
     # 2. Save to SharePoint in background thread
     sp_thread = threading.Thread(
         target=_save_to_sharepoint,
-        args=(file_bytes, filename),
+        args=(file_bytes, timestamped_filename),
         daemon=True
     )
     sp_thread.start()
@@ -103,7 +111,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if unmatched_ambiguous:
         report_thread = threading.Thread(
             target=_upload_comparison_report,
-            args=(unmatched_ambiguous, results, invoices, filename, groups),
+            args=(unmatched_ambiguous, results, invoices, timestamped_filename, groups),
             daemon=True
         )
         report_thread.start()
@@ -553,6 +561,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
     # Summary data
     summary_data = [
         ('Source File', source_filename, ''),
+        ('Upload Time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), ''),
         ('', '', ''),
         ('Category', 'Total Hours', 'Description'),
         ('Pending DB Invoices', f'{total_hours_pending:.2f}', 'All pending invoices in database'),
@@ -565,22 +574,22 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
     ]
 
     for r_idx, (label, value, desc) in enumerate(summary_data, start=2):
-        if r_idx == 2 or r_idx == 8:  # Empty rows
+        if r_idx == 2 or r_idx == 9:  # Empty rows (adjusted for new upload time row)
             continue
         
         cell_a = ws_summary.cell(row=r_idx, column=1, value=label)
         cell_b = ws_summary.cell(row=r_idx, column=2, value=value)
         cell_c = ws_summary.cell(row=r_idx, column=3, value=desc)
         
-        if r_idx == 4:  # Header row
+        if r_idx == 5:  # Header row (adjusted for new row)
             cell_a.font = cell_b.font = cell_c.font = hdr_font
             cell_a.fill = cell_b.fill = cell_c.fill = fill('5DADE2')
             cell_a.alignment = cell_b.alignment = cell_c.alignment = center
-        elif r_idx in [9, 10, 11]:  # Total rows
+        elif r_idx in [10, 11, 12]:  # Total rows (adjusted for new row)
             cell_a.font = Font(name='Arial', bold=True, size=11)
             cell_b.font = Font(name='Arial', bold=True, size=11)
             cell_a.fill = cell_b.fill = cell_c.fill = fill('D5F4E6')
-        elif r_idx == 3:  # Source file row
+        elif r_idx in [3, 4]:  # Source file and upload time rows
             cell_a.font = Font(name='Arial', bold=True, size=10)
             cell_b.font = Font(name='Arial', size=10)
         else:
