@@ -332,6 +332,7 @@
         .btn-payment-done.done {
             background: #0078d4;
         }
+
         tr.row-payment-done {
             background-color: #e0f5e0 !important;
         }
@@ -387,6 +388,11 @@
         .btn-view:hover { 
             background: #218838; 
         }
+
+        #currentTimeDisplay {
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.5px;
+}
 
         #viewerOverlay {
             display: none;
@@ -490,6 +496,9 @@
                     <button type="button" onclick="openSyncReportsFolder(); closeHeaderMenu();">
                         View Sync Status Reports
                     </button>
+                    <button type="button" onclick="openTimeConverter(); closeHeaderMenu();">
+                        UTC/Local Time Converter
+                    </button>
 
 
                 </div>
@@ -500,6 +509,19 @@
             <span class="user-name" id="userName"></span>
             <button type="button" class="btn-logout" onclick="logout()">Logout</button>
         </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; margin-right: 12px;">
+            <div style="color: rgba(255,255,255,0.9); font-size: 13px; text-align: right;">
+                <div id="currentTimeDisplay" style="font-weight: 600;"></div>
+                <div style="font-size: 11px; opacity: 0.8;">
+                    <label style="cursor: pointer;">
+                        <input type="checkbox" id="toggleLocalTime" onchange="updateTimeDisplay()" style="margin-right: 4px;">
+                        Show Local Time
+                    </label>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <div class="filter-bar">
@@ -715,7 +737,10 @@
         let excelUrl = '';
         let isEditMode = false;
 
-        window.addEventListener('load', () => { loadDashboard(); });
+        window.addEventListener('load', () => { 
+            loadDashboard();
+            displayCurrentTime();
+        });
 
         function switchPane(paneId) {
             document.querySelectorAll('.pane-header').forEach(h => h.classList.remove('active'));
@@ -1490,6 +1515,82 @@
             }, 10000);
         }
 
+        // Time Display and Converter
+        let showLocalTime = false;
+
+        function updateTimeDisplay() {
+            showLocalTime = document.getElementById('toggleLocalTime').checked;
+            displayCurrentTime();
+        }
+
+        function displayCurrentTime() {
+            const now = new Date();
+            const display = document.getElementById('currentTimeDisplay');
+            
+            if (showLocalTime) {
+                display.textContent = now.toLocaleString('en-US', { 
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hour12: false 
+                }) + ' (Local)';
+            } else {
+                display.textContent = now.toISOString().replace('T', ' ').substring(0, 19) + ' (UTC)';
+            }
+        }
+
+        function openTimeConverter() {
+            document.getElementById('timeConverterModal').style.display = 'flex';
+            // Set current UTC time as default
+            const now = new Date();
+            const utcString = now.toISOString().substring(0, 16);
+            document.getElementById('utcInput').value = utcString;
+        }
+
+        function closeTimeConverter() {
+            document.getElementById('timeConverterModal').style.display = 'none';
+            document.getElementById('convertedResult').style.display = 'none';
+        }
+
+        function convertUTCtoLocal() {
+            const utcInput = document.getElementById('utcInput').value;
+            if (!utcInput) {
+                alert('Please enter a UTC time');
+                return;
+            }
+            
+            const utcDate = new Date(utcInput + 'Z'); // Add Z to indicate UTC
+            const localString = utcDate.toLocaleString('en-US', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            });
+            
+            document.getElementById('localTimeResult').textContent = localString;
+            document.getElementById('convertedResult').style.display = 'block';
+        }
+
+        // Update time every second
+        setInterval(displayCurrentTime, 1000);
+        displayCurrentTime(); // Initial call
+
+
     </script>
+
+    <div id="timeConverterModal" class="payment-modal" style="display:none" onclick="if(event.target===this)closeTimeConverter()">
+    <div class="payment-modal-content" style="max-width: 500px;">
+        <button type="button" class="payment-modal-close" onclick="closeTimeConverter()">Close</button>
+        <h3>UTC ↔ Local Time Converter</h3>
+        <div style="margin-top: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">Enter UTC Time:</label>
+            <input type="datetime-local" id="utcInput" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <button type="button" onclick="convertUTCtoLocal()" style="margin-top: 12px; background: #0078d4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Convert to Local</button>
+            <div id="convertedResult" style="margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 4px; display: none;">
+                <strong>Local Time:</strong>
+                <div id="localTimeResult" style="font-size: 16px; margin-top: 8px; color: #0078d4;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
