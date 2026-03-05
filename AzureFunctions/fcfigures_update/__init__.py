@@ -134,6 +134,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             kwargs["bill_pay_initiated_on"] = datetime.now(timezone.utc)
             # Once payment is initiated, reflect this in status
             kwargs["status"] = "Payment Initiated"
+            kwargs["approval_status"] = "Payment Initiated"
 
         if kwargs:
             # Skip columns that may not exist (template, addl_comments)
