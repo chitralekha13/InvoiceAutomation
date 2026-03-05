@@ -814,14 +814,14 @@
                                 <th>Project Name</th>
                                 <th>Project Name (Excel)</th>
                                 <th>Payment initiated on</th>
-                                <th>Actions</th>
+                                <th>Payment Details</th>
                                 <th style="min-width: 180px;">
                                     <div style="display: flex; flex-direction: column; gap: 4px;">
                                         <button type="button" id="btnToggleEdit" onclick="toggleEditMode()" 
                                                 style="background: #0078d4; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
                                             Enable Edit
                                         </button>
-                                        <span style="font-size: 11px; font-weight: normal;">View / Download</span>
+                                        <!-- <span style="font-size: 11px; font-weight: normal;">View / Download</span> -->
                                     </div>
                                 </th>
                             </tr>
@@ -848,8 +848,8 @@
                                 <th><input type="text" id="filterProject" placeholder="Filter..." class="column-filter"></th>
                                 <th><!-- Project Name Excel - no filter --></th>
                                 <th><!-- Payment initiated - no filter --></th>
-                                <th><!-- Actions - no filter --></th>
-                                <th><!-- View/Download - no filter --></th>
+                                <th><!-- Payment Details - no filter --></th>
+                                <th><!-- Enable Edit - no filter --></th>
                             </tr>
 
                         </thead>
@@ -1153,7 +1153,7 @@
                         <button class="btn-view"
                             data-id="${escapeAttr(row.invoice_uuid || row.invoice_id || row.id || '')}"
                             data-name="${escapeAttr(row.doc_name || row.name || '')}">
-                            View / Download
+                            View Document
                         </button>
                     </td>
                 `;
