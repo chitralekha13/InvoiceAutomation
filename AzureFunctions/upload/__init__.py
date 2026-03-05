@@ -220,7 +220,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             if pay_period_start:
                 try:
                     # Parse the date string to get year and month
-                    from datetime import datetime
                     if isinstance(pay_period_start, str):
                         # Try multiple date formats
                         for fmt in ('%m/%d/%Y', '%m-%d-%Y'):
