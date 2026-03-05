@@ -108,8 +108,8 @@
         .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
         .metrics-row {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 16px;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 14px;
             margin-bottom: 24px;
         }
         .metric-card {
@@ -161,6 +161,40 @@
         .edit-mode-indicator.show {
             display: block;
         }
+        .metric-card.daily-summary {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8f 100%);
+            color: white;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card.daily-summary:hover {
+            background: linear-gradient(135deg, #152a45 0%, #1e3a5f 100%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .metric-card.daily-summary .value {
+            color: white;
+            font-size: 24px;
+        }
+        .metric-card.daily-summary .label {
+            color: rgba(255,255,255,0.9);
+        }
+        .metric-card.daily-summary .date-display {
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 4px;
+        }
+        .metric-card.daily-summary .time-toggle {
+            font-size: 10px;
+            color: rgba(255,255,255,0.7);
+            margin-top: 2px;
+            cursor: pointer;
+        }
+        .metric-card.daily-summary .time-toggle:hover {
+            color: white;
+            text-decoration: underline;
+        }
+
 
 
         .pane-headers {
@@ -461,6 +495,140 @@
         .toast.error   { background: #d13438; }
         .toast.warning { background: #ca5010; }
 
+        /* Column filters in table header */
+        .filter-row th {
+            padding: 8px;
+            background: #e9ecef;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .column-filter {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+        .column-filter:focus {
+            border-color: #0078d4;
+            outline: none;
+        }
+
+        /* Daily Summary Modal */
+        .daily-summary-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .daily-summary-modal.show {
+            display: flex;
+        }
+        .daily-summary-content {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 85vh;
+            overflow: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            width: 800px;
+        }
+        .daily-summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .daily-summary-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1e3a5f;
+        }
+        .daily-summary-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .daily-stat-box {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 6px;
+            text-align: center;
+            border-left: 4px solid #0078d4;
+        }
+        .daily-stat-box.pending {
+            border-left-color: #ca5010;
+        }
+        .daily-stat-box.payment-done {
+            border-left-color: #107c10;
+        }
+        .daily-stat-value {
+            font-size: 32px;
+            font-weight: 600;
+            color: #333;
+        }
+        .daily-stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+        .daily-summary-table-wrapper {
+            max-height: 400px;
+            overflow: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+        .daily-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .daily-summary-table th {
+            background: #1e3a5f;
+            color: white;
+            padding: 10px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+        .daily-summary-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .daily-summary-table tr:hover {
+            background: #f8f9fa;
+        }
+        .daily-summary-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        .btn-download-excel {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-download-excel:hover {
+            background: #0e6b0e;
+        }
+
+
     </style>
 </head>
 <body>
@@ -516,19 +684,14 @@
 
             <label for="dueBy">Due by</label>
             <input type="date" id="dueBy" placeholder="mm/dd/yyyy">
+            <button type="button" class="btn-refresh" onclick="clearAllFilters()" style="background: #6c757d;">Clear Filters</button>
+
+        </div>
+        <div style="display:flex;gap:16px;align-items:center;">
+            <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
+            <!-- <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button> -->
         </div>
 
-        <div style="display:flex;gap:16px;align-items:center;">
-            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                <div id="currentTimeDisplay" style="font-size: 13px; font-weight: 600; color: #333; font-family: 'Courier New', monospace;"></div>
-                <label style="font-size: 11px; color: #666; cursor: pointer;">
-                    <input type="checkbox" id="toggleLocalTime" onchange="updateTimeDisplay()" style="margin-right: 4px;">
-                    Show Local Time
-                </label>
-            </div>
-                <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
-                <!-- <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button> -->
-        </div>
     </div>
 
     <div class="edit-mode-indicator" id="editModeIndicator">
@@ -560,6 +723,14 @@
             <div class="metric-card amount">
                 <div class="value" id="mTotalAmount">$0.00</div>
                 <div class="label">Total Amount</div>
+            </div>
+            <div class="metric-card daily-summary" id="dailySummaryCard" onclick="openDailySummary()">
+                <div class="value" id="dailySummaryCount">0</div>
+                <div class="label">Due Today</div>
+                <div class="date-display" id="dailySummaryDate">--/--/----</div>
+                <div class="time-toggle" id="dailySummaryTimeToggle" onclick="event.stopPropagation(); toggleDailySummaryTimeFormat()">
+                    Show Local Time
+                </div>
             </div>
             <div class="metric-card" id="toastArea" style="cursor: default; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                 <div class="value" id="toastAreaContent" style="font-size: 14px; color: #666; text-align: center; line-height: 1.4; padding: 8px;">No recent activity</div>
@@ -612,6 +783,33 @@
                                     </div>
                                 </th>
                             </tr>
+                            <tr class="filter-row">
+                                <th><!-- Checkbox column - no filter --></th>
+                                <th><!-- S.No - no filter --></th>
+                                <th><!-- ID - no filter --></th>
+                                <th><input type="text" id="filterDocName" placeholder="Filter..." class="column-filter"></th>
+                                <th><input type="text" id="filterInvoiceNo" placeholder="Filter..." class="column-filter"></th>
+                                <th><input type="text" id="filterConsultancy" placeholder="Filter..." class="column-filter"></th>
+                                <th><input type="text" id="filterResource" placeholder="Filter..." class="column-filter"></th>
+                                <th><input type="text" id="filterDivision" placeholder="Filter..." class="column-filter"></th>
+                                <th><input type="text" id="filterClient" placeholder="Filter..." class="column-filter"></th>
+                                <th><!-- Pay Period Start - date range if needed --></th>
+                                <th><!-- Pay Period End - date range if needed --></th>
+                                <th><!-- Net Terms - no filter --></th>
+                                <th><!-- Vendor Hours - no filter --></th>
+                                <th><!-- Approved Hours - no filter --></th>
+                                <th><!-- Status - already filtered by dropdown --></th>
+                                <th><!-- Pay Rate - no filter --></th>
+                                <th><!-- Invoice Amount - no filter --></th>
+                                <th><!-- Date Inv Recd - no filter --></th>
+                                <th><!-- Due Date - already filtered --></th>
+                                <th><input type="text" id="filterProject" placeholder="Filter..." class="column-filter"></th>
+                                <th><!-- Project Name Excel - no filter --></th>
+                                <th><!-- Payment initiated - no filter --></th>
+                                <th><!-- Actions - no filter --></th>
+                                <th><!-- View/Download - no filter --></th>
+                            </tr>
+
                         </thead>
                         <tbody id="tableBody"></tbody>
                     </table>
@@ -767,6 +965,7 @@
                 renderMetrics(data.metrics || {});
                 renderTable();
                 updateTileActiveState();
+                updateDailySummaryCard()
             } catch (err) {
                 console.error('Dashboard load error:', err);
                 alert('Dashboard failed: ' + (err.message || 'Check API URL and network.'));
@@ -783,6 +982,16 @@
             document.getElementById('mPaymentInitiated').textContent = m.payment_initiated ?? 0;
             document.getElementById('mTotalAmount').textContent = '$' + ((m.total_amount ?? 0) / 1).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
+
+        function clearAllFilters() {
+            document.getElementById('filterAll').value = 'all';
+            document.getElementById('dueBy').value = '';
+            document.querySelectorAll('.column-filter').forEach(input => input.value = '');
+            updateTileActiveState();
+            applyFilters();
+            renderTable();
+        }
+
 
 
         function filterByTile(filterValue) {
@@ -817,7 +1026,45 @@
                     return d && d.toString().slice(0, 10) <= dueBy;
                 });
             }
+            // Apply column filters
+            applyColumnFilters();
         }
+
+
+        // Column filter state
+        const columnFilters = {
+            docName: '',
+            invoiceNo: '',
+            consultancy: '',
+            resource: '',
+            division: '',
+            client: '',
+            project: ''
+        };
+
+        function applyColumnFilters() {
+            const docNameFilter = document.getElementById('filterDocName')?.value.toLowerCase() || '';
+            const invoiceNoFilter = document.getElementById('filterInvoiceNo')?.value.toLowerCase() || '';
+            const consultancyFilter = document.getElementById('filterConsultancy')?.value.toLowerCase() || '';
+            const resourceFilter = document.getElementById('filterResource')?.value.toLowerCase() || '';
+            const divisionFilter = document.getElementById('filterDivision')?.value.toLowerCase() || '';
+            const clientFilter = document.getElementById('filterClient')?.value.toLowerCase() || '';
+            const projectFilter = document.getElementById('filterProject')?.value.toLowerCase() || '';
+            
+            filteredRows = filteredRows.filter(r => {
+                const matchesDocName = !docNameFilter || (r.doc_name || '').toLowerCase().includes(docNameFilter);
+                const matchesInvoiceNo = !invoiceNoFilter || (r.invoice_number || '').toLowerCase().includes(invoiceNoFilter);
+                const matchesConsultancy = !consultancyFilter || ((r.vendor_name || r.consultancy_name || '').toLowerCase().includes(consultancyFilter));
+                const matchesResource = !resourceFilter || (r.resource_name || '').toLowerCase().includes(resourceFilter);
+                const matchesDivision = !divisionFilter || (r.division || '').toLowerCase().includes(divisionFilter);
+                const matchesClient = !clientFilter || (r.client_name || '').toLowerCase().includes(clientFilter);
+                const matchesProject = !projectFilter || ((r.project_name || '').toLowerCase().includes(projectFilter));
+                
+                return matchesDocName && matchesInvoiceNo && matchesConsultancy && 
+                    matchesResource && matchesDivision && matchesClient && matchesProject;
+            });
+        }
+
 
         function renderTable() {
             const tbody = document.getElementById('tableBody');
@@ -1225,9 +1472,158 @@
             if (deleted > 0) loadDashboard();
         }
 
-        function generateDailySummary() {
-            alert('Generate Daily Summary is a placeholder. Implement based on your requirements.');
+        // Column filter listeners
+        ['filterDocName', 'filterInvoiceNo', 'filterConsultancy', 'filterResource', 
+        'filterDivision', 'filterClient', 'filterProject'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', debounce(() => {
+                    applyFilters();
+                    renderTable();
+                }, 300));
+            }
+        });
+
+        // Debounce helper function
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
+
+        // Daily Summary State
+        let dailySummaryUseLocalTime = false;
+        let dailySummaryData = [];
+
+        function generateDailySummary() {
+            openDailySummary();
+        }
+
+        function openDailySummary() {
+            const today = new Date();
+            const dateStr = today.toISOString().slice(0, 10);
+            
+            // Filter rows with due date = today
+            dailySummaryData = allRows.filter(r => {
+                const dueDate = r.due_date || r.dueDate || '';
+                return dueDate && dueDate.toString().slice(0, 10) === dateStr;
+            });
+            
+            // Update modal stats
+            document.getElementById('modalSummaryDate').textContent = formatDate(dateStr);
+            document.getElementById('modalTotalCount').textContent = dailySummaryData.length;
+            
+            const pendingCount = dailySummaryData.filter(r => {
+                const status = (r.approval_status || r.status || '').toLowerCase();
+                return status === 'pending' || status === 'need_approval';
+            }).length;
+            document.getElementById('modalPendingCount').textContent = pendingCount;
+            
+            const paymentDoneCount = dailySummaryData.filter(r => r.bill_pay_initiated_on).length;
+            document.getElementById('modalPaymentDoneCount').textContent = paymentDoneCount;
+            
+            // Populate table
+            const tbody = document.getElementById('dailySummaryTableBody');
+            tbody.innerHTML = '';
+            
+            if (dailySummaryData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#666;">No invoices due today.</td></tr>';
+            } else {
+                dailySummaryData.forEach((row, idx) => {
+                    const tr = document.createElement('tr');
+                    const status = row.approval_status || row.status || 'Pending';
+                    const statusClass = row.bill_pay_initiated_on ? 'payment-done' : 
+                                    (status.toLowerCase() === 'pending' ? 'pending' : '');
+                    tr.innerHTML = `
+                        <td>${idx + 1}</td>
+                        <td>${escapeHtml(row.invoice_number || '')}</td>
+                        <td>${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
+                        <td>${escapeHtml(row.resource_name || '')}</td>
+                        <td>${escapeHtml(row.client_name || '')}</td>
+                        <td>${formatDate(row.due_date || row.dueDate)}</td>
+                        <td>${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                        <td style="color: ${statusClass === 'payment-done' ? '#107c10' : statusClass === 'pending' ? '#ca5010' : '#333'}">${escapeHtml(status)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+            
+            document.getElementById('dailySummaryModal').classList.add('show');
+        }
+
+        function closeDailySummary() {
+            document.getElementById('dailySummaryModal').classList.remove('show');
+        }
+
+        function toggleDailySummaryTimeFormat() {
+            dailySummaryUseLocalTime = !dailySummaryUseLocalTime;
+            updateDailySummaryTimeDisplay();
+        }
+
+        function updateDailySummaryTimeDisplay() {
+            const now = new Date();
+            const dateEl = document.getElementById('dailySummaryDate');
+            const toggleEl = document.getElementById('dailySummaryTimeToggle');
+            
+            if (dailySummaryUseLocalTime) {
+                dateEl.textContent = now.toLocaleDateString('en-US', { 
+                    year: 'numeric', month: '2-digit', day: '2-digit' 
+                });
+                toggleEl.textContent = 'Show UTC Time';
+            } else {
+                dateEl.textContent = now.toISOString().slice(0, 10) + ' (UTC)';
+                toggleEl.textContent = 'Show Local Time';
+            }
+        }
+
+        function downloadDailySummaryExcel() {
+            if (dailySummaryData.length === 0) {
+                alert('No data to download.');
+                return;
+            }
+            
+            const today = new Date().toISOString().slice(0, 10);
+            const headers = ['S.No', 'Invoice No', 'Consultancy Name', 'Resource Name', 'Client Name', 'Due Date', 'Invoice Amount', 'Status', 'Payment Initiated'];
+            
+            const rows = dailySummaryData.map((r, i) => [
+                i + 1,
+                r.invoice_number || '',
+                r.vendor_name || r.consultancy_name || '',
+                r.resource_name || '',
+                r.client_name || '',
+                formatDate(r.due_date || r.dueDate),
+                r.invoice_amount || '',
+                r.approval_status || r.status || 'Pending',
+                r.bill_pay_initiated_on ? 'Yes' : 'No'
+            ]);
+            
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'daily_summary_' + today + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        // Update daily summary card count
+        function updateDailySummaryCard() {
+            const today = new Date().toISOString().slice(0, 10);
+            const dueTodayCount = allRows.filter(r => {
+                const dueDate = r.due_date || r.dueDate || '';
+                return dueDate && dueDate.toString().slice(0, 10) === today;
+            }).length;
+            
+            document.getElementById('dailySummaryCount').textContent = dueTodayCount;
+            updateDailySummaryTimeDisplay();
+        }
+
 
         function downloadExcel() {
             if (excelUrl) {
@@ -1478,27 +1874,12 @@
             }, 10000);
         }
 
-        // Time Display and Converter
-        let showLocalTime = false;
-
         function updateTimeDisplay() {
-            showLocalTime = document.getElementById('toggleLocalTime').checked;
-            displayCurrentTime();
+            updateDailySummaryCard();
         }
 
         function displayCurrentTime() {
-            const now = new Date();
-            const display = document.getElementById('currentTimeDisplay');
-            
-            if (showLocalTime) {
-                display.textContent = now.toLocaleString('en-US', { 
-                    year: 'numeric', month: '2-digit', day: '2-digit',
-                    hour: '2-digit', minute: '2-digit', second: '2-digit',
-                    hour12: false 
-                }) + ' (Local)';
-            } else {
-                display.textContent = now.toISOString().replace('T', ' ').substring(0, 19) + ' (UTC)';
-            }
+            updateDailySummaryCard();
         }
 
         function openTimeConverter() {
@@ -1553,7 +1934,57 @@
             </div>
         </div>
     </div>
-</div>
+    </div>
+
+    <!-- Daily Summary Modal -->
+    <div id="dailySummaryModal" class="daily-summary-modal" onclick="if(event.target===this)closeDailySummary()">
+        <div class="daily-summary-content">
+            <div class="daily-summary-header">
+                <div class="daily-summary-title">📅 Daily Summary - <span id="modalSummaryDate">--/--/----</span></div>
+                <button type="button" class="payment-modal-close" onclick="closeDailySummary()">Close</button>
+            </div>
+            
+            <div class="daily-summary-stats">
+                <div class="daily-stat-box">
+                    <div class="daily-stat-value" id="modalTotalCount">0</div>
+                    <div class="daily-stat-label">Total Invoices</div>
+                </div>
+                <div class="daily-stat-box pending">
+                    <div class="daily-stat-value" id="modalPendingCount">0</div>
+                    <div class="daily-stat-label">Pending</div>
+                </div>
+                <div class="daily-stat-box payment-done">
+                    <div class="daily-stat-value" id="modalPaymentDoneCount">0</div>
+                    <div class="daily-stat-label">Payment Initiated</div>
+                </div>
+            </div>
+            
+            <div class="daily-summary-table-wrapper">
+                <table class="daily-summary-table">
+                    <thead>
+                        <tr>
+                            <th>S.No</th>
+                            <th>Invoice No</th>
+                            <th>Consultancy</th>
+                            <th>Resource</th>
+                            <th>Client</th>
+                            <th>Due Date</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailySummaryTableBody"></tbody>
+                </table>
+            </div>
+            
+            <div class="daily-summary-actions">
+                <button type="button" class="btn-download-excel" onclick="downloadDailySummaryExcel()">
+                    📊 Download Excel
+                </button>
+            </div>
+        </div>
+    </div>
+
 
 </body>
 </html>
