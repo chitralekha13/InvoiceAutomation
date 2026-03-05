@@ -217,6 +217,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         #folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
         # Use pay period from agent response if available, otherwise use current date
             pay_period_start = fields.get("pay_period_start")
+            logger.info(f"Determining folder path for SharePoint upload. pay_period_start={pay_period_start}")
             if pay_period_start:
                 try:
                     # Parse the date string to get year and month
@@ -238,6 +239,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         pay_date = datetime.now()
                     
                     folder_path = f"Invoices/{pay_date.year}/{pay_date.month:02d}_{pay_date.strftime('%B')}"
+                    logger.info(f"Using folder path based on pay_period_start: {folder_path}")
                 except Exception as e:
                     logger.warning(f"Failed to parse pay_period_start: {e}, using current date")
                     now = datetime.now()
