@@ -485,7 +485,7 @@
                     <input type="file" id="syncExcelInput" accept=".xlsx,.xls"
                         style="display:none" onchange="onSyncFileChosen(this)">
                     <button type="button" onclick="document.getElementById('syncExcelInput').click();">
-                        Add Excel Sync for Approved Hours
+                        Monthly TimeSheet Upload
                     </button>
                 </div>
             </div>
@@ -513,7 +513,7 @@
         </div>
         <div style="display:flex;gap:12px;align-items:center;">
             <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
-            <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button>
+            <!-- <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button> -->
         </div>
     </div>
 
@@ -807,7 +807,7 @@
             tbody.innerHTML = '';
             if (filteredRows.length === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="19" style="text-align:center;padding:24px;color:#666;">No invoices to display. Upload invoices via the Vendor Portal or check that the API and database are connected.</td>';
+                tr.innerHTML = '<td colspan="19" style="text-align:center;padding:24px;color:#666;">No invoices to display.</td>';
                 tbody.appendChild(tr);
                 return;
             }
@@ -833,8 +833,8 @@
                     <td class="editable" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
                     <td class="editable" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
                     <td>${escapeHtml(row.approval_status || row.status || 'Pending')}</td>
-                    <td class="editable" data-field="pay_rate" data-id="${id}">${row.pay_rate ?? ''}</td>
-                    <td class="editable" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? formatNumber(row.invoice_amount) : ''}</td>
+                    <td class="editable" data-field="pay_rate" data-id="${id}">${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : ''}</td>
+                    <td class="editable" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
                     <td class="editable" data-field="due_date" data-id="${id}">${formatDate(row.due_date || row.dueDate)}</td>
                     <td class="editable" data-field="project_name" data-id="${id}">${escapeHtml(row.project_name || '')}</td>
@@ -1011,7 +1011,7 @@
                     
                     const field = this.dataset.field;
                     const id = this.dataset.id;
-                    const current = this.textContent.trim();
+                    const current = this.textContent.trim().replace(/[$,]/g, '');
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.value = current;
@@ -1074,7 +1074,12 @@
                     // Show success briefly
                     cell.innerHTML = '<span style="color: #107c10;">✓ Saved</span>';
                     setTimeout(() => {
-                        cell.textContent = value || '';
+                        if ((field === 'invoice_amount' || field === 'pay_rate') && value) {
+                            cell.textContent = '$' + formatNumber(value);
+                        } else {
+                            cell.textContent = value || '';
+                        }
+
                         // Reapply edit mode if still active
                         if (isEditMode) {
                             cell.classList.add('edit-enabled');
@@ -1133,8 +1138,9 @@
 
         function formatNumber(n) {
             const num = parseFloat(n);
-            return isNaN(num) ? '' : num.toLocaleString();
+            return isNaN(num) ? '' : num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
+
 
         function toggleSelectAll() {
             const checked = document.getElementById('selectAll').checked;
