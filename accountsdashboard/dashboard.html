@@ -1622,6 +1622,7 @@
         function toggleDailySummaryTimeFormat() {
             dailySummaryUseLocalTime = !dailySummaryUseLocalTime;
             updateDailySummaryTimeDisplay();
+            setInterval(updateDailySummaryTimeDisplay, 1000);
         }
 
         function updateDailySummaryTimeDisplay() {
@@ -1631,11 +1632,13 @@
             
             if (dailySummaryUseLocalTime) {
                 dateEl.textContent = now.toLocaleDateString('en-US', { 
-                    year: 'numeric', month: '2-digit', day: '2-digit' 
+                    year: 'numeric', month: '2-digit', day: '2-digit'
+                }) + ' ' + now.toLocaleTimeString('en-US', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
                 });
                 toggleEl.textContent = 'Show UTC Time';
             } else {
-                dateEl.textContent = now.toISOString().slice(0, 10) + ' (UTC)';
+                dateEl.textContent = now.toISOString().slice(0, 19).replace('T', ' ') + ' (UTC)';
                 toggleEl.textContent = 'Show Local Time';
             }
         }
@@ -1680,6 +1683,7 @@
             
             document.getElementById('dailySummaryCount').textContent = dueTodayCount;
             updateDailySummaryTimeDisplay();
+            setInterval(updateDailySummaryTimeDisplay, 1000);
         }
 
 
