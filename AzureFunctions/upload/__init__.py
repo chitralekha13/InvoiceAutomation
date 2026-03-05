@@ -216,7 +216,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         #now = __import__('datetime').datetime.now()
         #folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
         # Use pay period from agent response if available, otherwise use current date
-            pay_period_start = fields.get("pay_period_start")
+            pay_period_start = fields.get("pay_period_start") or fields.get("start_date")
             logger.info(f"Determining folder path for SharePoint upload. pay_period_start={pay_period_start}")
             if pay_period_start:
                 try:
