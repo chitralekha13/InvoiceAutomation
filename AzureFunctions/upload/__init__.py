@@ -211,8 +211,41 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     )
 
         # 4) Not a duplicate: upload to SharePoint and save
-        now = __import__('datetime').datetime.now()
-        folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+        #now = __import__('datetime').datetime.now()
+        #folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+        # Use pay period from agent response if available, otherwise use current date
+            pay_period_start = fields.get("pay_period_start")
+            if pay_period_start:
+                try:
+                    # Parse the date string to get year and month
+                    from datetime import datetime
+                    if isinstance(pay_period_start, str):
+                        # Try multiple date formats
+                        for fmt in ('%m/%d/%Y', '%m-%d-%Y'):
+                            try:
+                                pay_date = datetime.strptime(pay_period_start[:10], fmt)
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            # If no format worked, use current date
+                            pay_date = datetime.now()
+                    elif hasattr(pay_period_start, 'year'):
+                        # Already a date/datetime object
+                        pay_date = pay_period_start
+                    else:
+                        pay_date = datetime.now()
+                    
+                    folder_path = f"Invoices/{pay_date.year}/{pay_date.month:02d}_{pay_date.strftime('%B')}"
+                except Exception as e:
+                    logger.warning(f"Failed to parse pay_period_start: {e}, using current date")
+                    now = datetime.now()
+                    folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+            else:
+                # No pay period in agent response, use current date
+                now = datetime.now()
+                folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+
         try:
             server_url = upload_file_to_sharepoint(file_content, safe_name, folder_path)
         except Exception as e:
