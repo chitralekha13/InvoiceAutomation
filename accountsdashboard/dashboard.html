@@ -510,18 +510,6 @@
             <button type="button" class="btn-logout" onclick="logout()">Logout</button>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 16px; margin-right: 12px;">
-            <div style="color: rgba(255,255,255,0.9); font-size: 13px; text-align: right;">
-                <div id="currentTimeDisplay" style="font-weight: 600;"></div>
-                <div style="font-size: 11px; opacity: 0.8;">
-                    <label style="cursor: pointer;">
-                        <input type="checkbox" id="toggleLocalTime" onchange="updateTimeDisplay()" style="margin-right: 4px;">
-                        Show Local Time
-                    </label>
-                </div>
-            </div>
-        </div>
-
     </div>
 
     <div class="filter-bar">
@@ -538,9 +526,17 @@
             <label for="dueBy">Due by</label>
             <input type="date" id="dueBy" placeholder="mm/dd/yyyy">
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
-            <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
-            <!-- <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button> -->
+
+        <div style="display:flex;gap:16px;align-items:center;">
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                <div id="currentTimeDisplay" style="font-size: 13px; font-weight: 600; color: #333; font-family: 'Courier New', monospace;"></div>
+                <label style="font-size: 11px; color: #666; cursor: pointer;">
+                    <input type="checkbox" id="toggleLocalTime" onchange="updateTimeDisplay()" style="margin-right: 4px;">
+                    Show Local Time
+                </label>
+            </div>
+                <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
+                <!-- <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button> -->
         </div>
     </div>
 
