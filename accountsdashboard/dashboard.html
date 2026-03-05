@@ -660,14 +660,15 @@
             color: #999;
         }
 
-        .editable.cell-disabled {
+        .editable.cell-disabled.edit-enabled {
             cursor: not-allowed !important;
             background-color: #e0e0e0 !important;
             color: #999 !important;
         }
-        .editable.cell-disabled:hover {
+        .editable.cell-disabled.edit-enabled:hover {
             background: #e0e0e0 !important;
         }
+
 
 
     </style>
@@ -1328,11 +1329,10 @@
                 btn.textContent = 'Disable Edit';
                 btn.style.background = '#d13438';
                 editableCells.forEach(cell => {
-                    if (!cell.classList.contains('cell-disabled')) {
-                        cell.classList.add('edit-enabled');
-                    }
+                    cell.classList.add('edit-enabled');
                 });
                 if (indicator) indicator.classList.add('show');
+
                 updateToastArea('Edit Mode', 'Click any cell to edit. Press Enter to save, Escape to cancel.', 'warning');
             } else {
                 btn.textContent = 'Enable Edit';
