@@ -78,7 +78,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     "name": r.get("doc_name") or "document",
                     "uploadDate": r.get("created_at") or r.get("invoice_received_date") or "",
                     "OrganisationName": r.get("vendor_name") or "",
-                    "Status": "Completed" if bill_pay else "Pending",
+                    "Status": r.get("approval_status") or r.get("status") or "Pending",
                     "bill_pay_initiated_on": bill_pay,
                 })
             return func.HttpResponse(

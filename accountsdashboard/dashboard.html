@@ -487,6 +487,11 @@
                     <button type="button" onclick="document.getElementById('syncExcelInput').click();">
                         Monthly TimeSheet Upload
                     </button>
+                    <button type="button" onclick="openSyncReportsFolder(); closeHeaderMenu();">
+                        View Sync Status Reports
+                    </button>
+
+
                 </div>
             </div>
             <span class="header-title">Accounts Invoice Dashboard</span>
@@ -1033,6 +1038,11 @@
                     });
                 });
             });
+        }
+
+        function openSyncReportsFolder() {
+            const sharePointUrl = window.APP_CONFIG.sharePointSiteUrl;
+            window.open(sharePointUrl + '/Timesheet/SyncReports', '_blank');
         }
 
 
