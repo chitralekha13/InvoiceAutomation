@@ -1433,10 +1433,12 @@
                             cell.textContent = value || '';
                         }
 
-                        // Reapply edit mode if still active
                         if (isEditMode) {
                             cell.classList.add('edit-enabled');
+                        } else {
+                            cell.classList.remove('edit-enabled');
                         }
+
                         // Add saved animation
                         cell.classList.add('cell-saved');
                         setTimeout(() => cell.classList.remove('cell-saved'), 1500);
