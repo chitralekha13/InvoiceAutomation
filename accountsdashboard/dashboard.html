@@ -1333,12 +1333,6 @@
                     }
                 });
                 if (indicator) indicator.classList.add('show');
-
-                // When disabling edit mode
-                btn.style.background = '#0078d4';
-                editableCells.forEach(cell => cell.classList.remove('edit-enabled'));
-                if (indicator) indicator.classList.remove('show');
-
                 updateToastArea('Edit Mode', 'Click any cell to edit. Press Enter to save, Escape to cancel.', 'warning');
             } else {
                 btn.textContent = 'Enable Edit';
@@ -1348,6 +1342,7 @@
                 updateToastArea('View Mode', 'Editing disabled. Click "Enable Edit" to make changes.', '');
             }
         }
+
 
         function bindEditableCells() {
             document.querySelectorAll('.editable').forEach(cell => {
