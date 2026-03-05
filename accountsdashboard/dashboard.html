@@ -654,6 +654,11 @@
             color: #666;
         }
 
+        .editable.edit-disabled {
+            cursor: not-allowed;
+            background-color: #f0f0f0;
+            color: #999;
+        }
 
     </style>
 </head>
@@ -1158,8 +1163,20 @@
                     </td>
                 `;
                 if (row.bill_pay_initiated_on) {
-                    tr.classList.add('row-payment-done');
-                }
+                tr.classList.add('row-payment-done');
+            }
+            // Apply current edit mode state to newly rendered cells
+            if (isEditMode) {
+                document.querySelectorAll('.editable').forEach(cell => {
+                    const row = cell.closest('tr');
+                    if (row && row.classList.contains('row-payment-done')) {
+                        cell.classList.add('edit-disabled');
+                    } else {
+                        cell.classList.add('edit-enabled');
+                    }
+                });
+            }
+
                 tbody.appendChild(tr);
             });
             bindEditableCells();
@@ -1315,6 +1332,14 @@
                     // Only allow editing if edit mode is enabled
                     if (!isEditMode) return;
                     
+                    // Check if the row has payment initiated - prevent editing
+                    const row = this.closest('tr');
+                    if (row && row.classList.contains('row-payment-done')) {
+                        // Optionally show a tooltip or visual feedback
+                        this.title = "Cannot edit - Payment Initiated";
+                        return; // Don't allow editing for Payment Initiated rows
+                    }
+                    
                     const field = this.dataset.field;
                     const id = this.dataset.id;
                     const current = this.textContent.trim().replace(/[$,]/g, '');
@@ -1331,7 +1356,10 @@
                         if (e.key === 'Escape') { 
                             cell.textContent = current;
                             if (isEditMode) {
-                                cell.classList.add('edit-enabled');
+                                const row = cell.closest('tr');
+                                if (row && !row.classList.contains('row-payment-done')) {
+                                    cell.classList.add('edit-enabled');
+                                }
                             }
                             e.stopPropagation();
                         }
@@ -1340,6 +1368,7 @@
                 });
             });
         }
+
 
         function openSyncReportsFolder() {
             const sharePointUrl = window.APP_CONFIG.sharePointSiteUrl;
