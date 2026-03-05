@@ -1175,7 +1175,7 @@
         /** View Payment only when iGentic has confirmed approved hours match vendor hours (status from iGentic). */
         function isCompleteRow(row) {
             const s = (row.approval_status || row.status || '').toLowerCase();
-            return s === 'complete' || s === 'ready for payment' || s === 'approved';
+            return s === 'complete' || s === 'ready for payment' || s === 'approved' || s == 'payment initiated' ;
         }
 
         function formatPaymentLabel(key) {
