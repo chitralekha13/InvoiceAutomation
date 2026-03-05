@@ -461,15 +461,6 @@
         .toast.error   { background: #d13438; }
         .toast.warning { background: #ca5010; }
 
-        .sync-results { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px 20px; margin: 0 24px 16px; font-size: 13px; }
-        .sync-results-title { font-weight: 600; color: #1e3a5f; margin-bottom: 10px; font-size: 14px; }
-        .sync-stat { display: inline-block; margin: 0 12px 6px 0; padding: 3px 10px; border-radius: 12px; font-weight: 600; font-size: 12px; }
-        .sync-stat.green  { background: #d4edda; color: #155724; }
-        .sync-stat.amber  { background: #fff3cd; color: #856404; }
-        .sync-stat.red    { background: #f8d7da; color: #721c24; }
-        .sync-stat.blue   { background: #cce5ff; color: #004085; }
-        .sync-stat.grey   { background: #e2e3e5; color: #383d41; }
-
     </style>
 </head>
 <body>
@@ -1430,14 +1421,11 @@
 
                 if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
 
-                renderSyncResults(data);
-                // showToast('Sync complete', buildSyncSummaryText(data), 'success', 8000);
                 updateToastArea('Sync complete', buildSyncSummaryText(data), 'success');
                 await loadDashboard();
 
             } catch (err) {
                 console.error('Sync error:', err);
-                // showToast('Sync failed', err.message || 'Unknown error. Check console.', 'error', 8000);
                 updateToastArea('Sync failed', err.message || 'Unknown error', 'error');
 
             }
@@ -1452,27 +1440,6 @@
             if (d.ambiguous)           parts.push(`🔀 ${d.ambiguous} ambiguous`);
             if (d.skipped_not_pending) parts.push(`⏭ ${d.skipped_not_pending} skipped (not Pending)`);
             return parts.join('  ·  ') || 'No records processed.';
-        }
-
-        function renderSyncResults(d) {
-            const panel = document.getElementById('syncResultsPanel');
-            if (!d || !d.processed) { panel.style.display = 'none'; return; }
-
-            const statPill = (n, label, cls) =>
-                n ? `<span class="sync-stat ${cls}">${n} ${label}</span>` : '';
-
-            panel.innerHTML = `
-                <div class="sync-results-title">
-                    Last sync: ${new Date().toLocaleString()} — ${d.processed} person-months processed
-                </div>
-                ${statPill(d.matched,             'Updated',          'green')}
-                ${statPill(d.need_approval,       'Need Approval',    'amber')}
-                ${statPill(d.pending,             'Pending',          'blue')}
-                ${statPill(d.skipped_not_pending, 'Skipped',          'grey')}
-                ${statPill(d.unmatched,           'Unmatched',        'red')}
-                ${statPill(d.ambiguous,           'Ambiguous',        'red')}
-            `;
-            panel.style.display = 'block';
         }
 
         // ── Toast ─────────────────────────────────────────────────────────────────────
