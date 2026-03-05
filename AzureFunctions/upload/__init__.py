@@ -223,7 +223,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     # Parse the date string to get year and month
                     if isinstance(pay_period_start, str):
                         # Try multiple date formats
-                        for fmt in ('%m/%d/%Y', '%m-%d-%Y'):
+                        for fmt in ('%Y/%m/%d', '%Y-%m-%d'):
                             try:
                                 pay_date = datetime.strptime(pay_period_start[:10], fmt)
                                 break
