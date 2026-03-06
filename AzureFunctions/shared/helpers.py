@@ -1929,7 +1929,7 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     
     # Download Excel from SharePoint
     #os.environ.get("SHAREPOINT_EXCEL_PATH") or 
-    excel_path = "/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"  # Server-relative URL
+    excel_path = "Invoices/Invoice_Register_Master.xlsx"  # Server-relative URL
     server_relative_excel_url = _normalize_server_relative_url(excel_path)
 
     #excel_path ="https://invoiveautomation.sharepoint.com/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"
