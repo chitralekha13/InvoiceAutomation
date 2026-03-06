@@ -744,8 +744,7 @@
 
             <label for="dueBy">Due by</label>
             <input type="date" id="dueBy" placeholder="mm/dd/yyyy">
-            <button type="button" class="btn-refresh" onclick="clearAllFilters()" style="background: #6c757d;">Clear Filters</button>
-
+            <button type="button" id="clearFilterBtn" class="btn-refresh" onclick="clearAllFilters()" style="background: #f32a0b; display: none;">Clear Filters</button>
         </div>
         <div style="display:flex;gap:16px;align-items:center;">
             <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
@@ -1064,13 +1063,14 @@
         function clearAllFilters() {
             document.getElementById('filterAll').value = 'all';
             document.getElementById('dueBy').value = '';
+            document.getElementById('clearFilterBtn').style.display = 'none';
+            document.getElementById('dailySummaryCard').style.opacity = '1';
+            document.getElementById('dailySummaryCard').style.pointerEvents = 'auto';
             document.querySelectorAll('.column-filter').forEach(input => input.value = '');
             updateTileActiveState();
             applyFilters();
             renderTable();
         }
-
-
 
         function filterByTile(filterValue) {
             document.getElementById('filterAll').value = filterValue;
@@ -1089,6 +1089,8 @@
         function applyFilters() {
             filteredRows = [...allRows];
             const statusFilter = document.getElementById('filterAll').value;
+            const dueBy = document.getElementById('dueBy').value;
+            
             if (statusFilter === 'payment_initiated') {
                 filteredRows = filteredRows.filter(r => r.bill_pay_initiated_on);
             } else if (statusFilter !== 'all') {
@@ -1097,16 +1099,45 @@
                     return s === statusFilter;
                 });
             }
-            const dueBy = document.getElementById('dueBy').value;
+            
             if (dueBy) {
                 filteredRows = filteredRows.filter(r => {
                     const d = r.due_date || r.dueDate || '';
                     return d && d.toString().slice(0, 10) <= dueBy;
                 });
             }
+            
+            // Update metrics to show filtered counts
+            updateMetricsForFilter(statusFilter, dueBy);
+            
             // Apply column filters
             applyColumnFilters();
         }
+
+        function updateMetricsForFilter(statusFilter, dueBy) {
+            let filtered = [...allRows];
+            
+            if (dueBy) {
+                filtered = filtered.filter(r => {
+                    const d = r.due_date || r.dueDate || '';
+                    return d && d.toString().slice(0, 10) <= dueBy;
+                });
+            }
+            
+            // Calculate counts based on filtered data
+            const total = filtered.length;
+            const pending = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'pending').length;
+            const approved = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'approved').length;
+            const needApproval = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'need approval').length;
+            const paymentInitiated = filtered.filter(r => r.bill_pay_initiated_on).length;
+            
+            document.getElementById('mTotal').textContent = total;
+            document.getElementById('mPending').textContent = pending;
+            document.getElementById('mApproved').textContent = approved;
+            document.getElementById('mNeedApproval').textContent = needApproval;
+            document.getElementById('mPaymentInitiated').textContent = paymentInitiated;
+        }
+
 
 
         // Column filter state
@@ -1827,7 +1858,20 @@
 
 
         document.getElementById('filterAll').addEventListener('change', () => { updateTileActiveState(); applyFilters(); renderTable(); });
-        document.getElementById('dueBy').addEventListener('change', () => { applyFilters(); renderTable(); });
+        //document.getElementById('dueBy').addEventListener('change', () => { applyFilters(); renderTable(); });
+        document.getElementById('dueBy').addEventListener('change', () => { 
+            const dueBy = document.getElementById('dueBy').value;
+            const clearBtn = document.getElementById('clearFilterBtn');
+            clearBtn.style.display = dueBy ? 'inline-block' : 'none';
+            
+            // Disable daily summary when dueBy is active
+            const dailyCard = document.getElementById('dailySummaryCard');
+            dailyCard.style.opacity = dueBy ? '0.5' : '1';
+            dailyCard.style.pointerEvents = dueBy ? 'none' : 'auto';
+            
+            applyFilters(); 
+            renderTable(); 
+        });
 
         document.getElementById('tableBody').addEventListener('click', function(e) {
             const btn = e.target.closest('.btn-view');
