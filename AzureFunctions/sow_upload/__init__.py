@@ -129,10 +129,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         sow_fields = _extract_sow_fields_from_igentic_response(orchestration_response)
         logger.info("Extracted SOW fields from iGentic: %s", sow_fields)
 
-        # 4) Optional: upload file to SharePoint (SOWs folder)
+        # 4) Optional: upload file to SharePoint (Invoices/SOWs subfolder; SOWs list may not exist)
         pdf_url = None
         try:
-            folder_path = "SOWs"
+            folder_path = "Invoices/SOWs"
             server_url = upload_file_to_sharepoint(file_content, safe_name, folder_path)
             site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
             if site_url and server_url and not server_url.startswith("http"):

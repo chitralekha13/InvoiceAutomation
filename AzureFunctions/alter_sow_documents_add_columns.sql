@@ -2,6 +2,7 @@
 -- Run this if you get "column resource_name does not exist" (table was created with an older schema).
 -- In psql, run the whole file with: \i alter_sow_documents_add_columns.sql
 
+ALTER TABLE sow_documents ADD COLUMN IF NOT EXISTS sow_id VARCHAR(255);
 ALTER TABLE sow_documents ADD COLUMN IF NOT EXISTS doc_name VARCHAR(500);
 ALTER TABLE sow_documents ADD COLUMN IF NOT EXISTS pdf_url TEXT;
 ALTER TABLE sow_documents ADD COLUMN IF NOT EXISTS resource_name VARCHAR(255);
