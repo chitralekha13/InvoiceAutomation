@@ -1616,7 +1616,7 @@
             // Need Approval count 
             const needApprovalCount = dailySummaryData.filter(r => {
                 const status = (r.approval_status || r.status || '').toLowerCase();
-                return status === 'need_approval';
+                return status === 'NEED APPROVAL' || status === 'Need Approval';
             }).length;
             document.getElementById('modalNeedApprovalCount').textContent = needApprovalCount;
 
