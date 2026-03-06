@@ -1920,27 +1920,24 @@ def extract_fields_from_igentic(orchestration_response: Dict) -> Dict:
 # ============================================================================
 
 def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
+    def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     """
-    Update SharePoint Excel file with invoice data from CSV (iGentic output).
-    Maps CSV fields: Invoice_Number, Vendor_Name, Invoice_Hours, Hourly_Rate, Total_Amount, etc.
+    Update SharePoint Excel file with invoice data.
     """
     from openpyxl import load_workbook
     import io
     
-    # Download Excel from SharePoint
-    #os.environ.get("SHAREPOINT_EXCEL_PATH") or 
-    excel_path = "Invoices/Invoice_Register_Master.xlsx"  # Server-relative URL
+    # Get Excel path from environment variable
+    excel_path = os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx"
+    
+    # Convert to server-relative URL
     server_relative_excel_url = _normalize_server_relative_url(excel_path)
-
-    #excel_path ="https://invoiveautomation.sharepoint.com/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"
-    #server_relative_excel_url = _normalize_server_relative_url(excel_path)
-    #server_relative_excel_url = excel_path
+    
     try:
         excel_content = download_file_from_sharepoint(server_relative_excel_url)
     except Exception as e:
-        # Bubble up to caller so we don't log false success.
         raise FileNotFoundError(f"Excel file not found at {server_relative_excel_url}") from e
-    
+
     # Load workbook
     wb = load_workbook(io.BytesIO(excel_content))
     ws = wb.active
