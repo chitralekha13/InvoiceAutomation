@@ -1920,7 +1920,6 @@ def extract_fields_from_igentic(orchestration_response: Dict) -> Dict:
 # ============================================================================
 
 def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
-    def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     """
     Update SharePoint Excel file with invoice data.
     """
