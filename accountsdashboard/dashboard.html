@@ -109,27 +109,33 @@
         .metrics-row {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
-            gap: 14px;
-            margin-bottom: 24px;
+            gap: 8px;
+            margin-bottom: 16px;
         }
+
         .metric-card {
             background: white;
-            padding: 20px;
-            border-radius: 6px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            padding: 10px 6px;
+            border-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
             text-align: center;
         }
+
         .metric-card .value {
-            font-size: 28px;
+            font-size: 18px;
             font-weight: 600;
             color: #333;
         }
-        .metric-card.amount .value { color: #0078d4; }
+
         .metric-card .label {
-            font-size: 13px;
-            color: #666;
-            margin-top: 6px;
+            font-size: 10px;
+            color: #888;
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
+
+        .metric-card.amount .value { color: #0078d4; }
         .metric-card.clickable {
             cursor: pointer;
             transition: background 0.2s, box-shadow 0.2s;
@@ -199,7 +205,7 @@
 
         .pane-headers {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(1, 1fr);
             gap: 0;
             margin-bottom: 0;
             background: #f8f9fa;
@@ -685,6 +691,10 @@
                     <button type="button" onclick="window.open('users.html','_blank'); closeHeaderMenu();">
                         Manage users
                     </button>
+                    <button type="button" onclick="downloadExcel(); closeHeaderMenu();">
+                        Download Current Summary
+                    </button>
+
                     <button type="button" onclick="generateDailySummary(); closeHeaderMenu();">
                         Generate daily summary
                     </button>
@@ -784,7 +794,7 @@
         <div class="pane-headers">
             <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
             <!--<div class="pane-header" onclick="window.open('users.html', '_blank')">Manage Users</div>-->
-            <div class="pane-header" data-pane="sow" onclick="switchPane('sow')">SOW Info</div>
+            <!-- <div class="pane-header" data-pane="sow" onclick="switchPane('sow')">SOW Info</div> -->
         </div>
         <div class="panes-wrapper">
             <div class="pane table-section active" id="pane-invoices">
@@ -1298,7 +1308,7 @@
             const btn = document.getElementById('btnModalPaymentDone');
             if (btn && btn.disabled) return;
             try {
-                const res = await fetch(API_BASE + '/api/fcfigures/' + encodeURIComponent(id) + '/update', {
+                const res = await fetch(API_BASE + '/api/fcfigures_new/' + encodeURIComponent(id) + '/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ payment_done: true })
@@ -1399,7 +1409,7 @@
             cell.innerHTML = '<span style="color: #0078d4;">Saving...</span>';
             
             try {
-                const res = await fetch(API_BASE + '/api/fcfigures/' + encodeURIComponent(invoiceId) + '/update', {
+                const res = await fetch(API_BASE + '/api/fcfigures_new/' + encodeURIComponent(invoiceId) + '/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -1733,43 +1743,47 @@
 
 
         function downloadExcel() {
-            if (excelUrl) {
-                window.open(excelUrl, '_blank');
-            } else {
-                // Fallback: export filtered rows as CSV
-                const headers = ['S.No','ID','Doc Name','Invoice No','Consultancy Name','Resource Name','Pay Period Start','Pay Period End','Net Terms','Vendor Hours','Approved Hours','Status','Pay Rate','Invoice Amount','Date Inv Recd','Due Date','Project Name','Payment initiated on'];
-                const rows = filteredRows.map((r, i) => [
-                    i + 1, 
-                    r.invoice_uuid || r.invoice_id, 
-                    r.doc_name, 
-                    r.invoice_number,
-                    r.vendor_name || r.consultancy_name, 
-                    r.resource_name,
-                    r.division||'', 
-                    r.client_name||'',
-                    r.pay_period_start || '', 
-                    r.pay_period_end || '', 
-                    r.net_terms || '',
-                    r.vendor_hours ?? r.invoice_hours ?? '', 
-                    r.approved_hours ?? '', 
-                    r.approval_status || r.status || 'Pending',
-                    r.pay_rate ?? '',
-                    r.invoice_amount ?? '',
-                    r.invoice_received_date || r.date_inv_recd || r.created_at || '',
-                    r.due_date || r.dueDate || '',
-                    r.project_name || '', 
-                    r.project_name_excel || '',
-                    r.bill_pay_initiated_on ? (r.bill_pay_initiated_on.toString().slice(0, 19)) : ''
-                ]);
-                const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = 'invoices_' + new Date().toISOString().slice(0, 10) + '.csv';
-                a.click();
-                URL.revokeObjectURL(a.href);
-            }
+            // Read headers
+            const headerRow = document.querySelector('#tableBody').previousElementSibling;
+            const headers = [];
+            headerRow.querySelectorAll('th').forEach((th, index) => {
+                // Skip checkbox column (index 0)
+                if (index > 0) {
+                    headers.push(th.textContent.trim());
+                }
+            });
+
+            // Read data from tbody
+            const rows = [];
+            document.querySelectorAll('#tableBody tr').forEach(tr => {
+                const rowData = [];
+                tr.querySelectorAll('td').forEach((td, index) => {
+                    // Skip checkbox column (index 0)
+                    if (index > 0) {
+                        // Get text content, clean it up
+                        let text = td.textContent.trim();
+                        // Remove action buttons text if present
+                        text = text.replace(/View Payment Done/gi, '').trim();
+                        rowData.push(text);
+                    }
+                });
+                if (rowData.length > 0) {
+                    rows.push(rowData);
+                }
+            });
+
+            // Create CSV
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'invoices_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
         }
+
 
         document.getElementById('filterAll').addEventListener('change', () => { updateTileActiveState(); applyFilters(); renderTable(); });
         document.getElementById('dueBy').addEventListener('change', () => { applyFilters(); renderTable(); });
