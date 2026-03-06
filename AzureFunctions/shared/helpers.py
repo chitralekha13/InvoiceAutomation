@@ -1929,9 +1929,12 @@ def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
     
     # Download Excel from SharePoint
     #os.environ.get("SHAREPOINT_EXCEL_PATH") or 
-    excel_path ="https://invoiveautomation.sharepoint.com/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"
+    excel_path = "/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"  # Server-relative URL
+    server_relative_excel_url = _normalize_server_relative_url(excel_path)
+
+    #excel_path ="https://invoiveautomation.sharepoint.com/sites/Accounts/Invoices/Invoice_Register_Master.xlsx"
     #server_relative_excel_url = _normalize_server_relative_url(excel_path)
-    server_relative_excel_url = excel_path
+    #server_relative_excel_url = excel_path
     try:
         excel_content = download_file_from_sharepoint(server_relative_excel_url)
     except Exception as e:
@@ -2037,7 +2040,8 @@ def save_complete_log(invoice_id: str, extracted_data: Dict, orchestration_resul
             'database_record': sql_record,
         }
 
-        json_str = json.dumps(log_data, indent=2)
+        #json_str = json.dumps(log_data, indent=2)
+        json_str = json.dumps(log_data, indent=2, default=str)
 
         conn = get_sql_connection()
         cursor = conn.cursor()
