@@ -93,6 +93,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if "approved_hours" in body:
             try:
                 timesheet = float(body["approved_hours"]) if body["approved_hours"] not in ("", None) else None
+                logger.info("Parsed approved_hours for iGentic validation: %s", timesheet)
             except (TypeError, ValueError):
                 timesheet = None
             if timesheet is not None:
@@ -102,6 +103,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         f"Timesheet hours = {int(timesheet) if timesheet == int(timesheet) else timesheet}",
                         request_label="Validate approved hours",
                     )
+                    logger.info("iGentic response for approved hours validation: %s", result)
                     cmp_result = _parse_continuation_response_for_approval(result)
                     logger.info("iGentic comparison result for approved hours validation: %s", cmp_result)
                     if cmp_result:
