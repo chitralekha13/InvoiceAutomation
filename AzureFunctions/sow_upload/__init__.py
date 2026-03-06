@@ -100,20 +100,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "status": "no_di",
             }
 
-        full_text = (doc_data.get("full_text") or "")[:15000]
-        extracted_text = (doc_data.get("extracted_text") or [])[:500]
-        user_input_for_igentic = {
-            "sow_processing": {
-                "timestamp": doc_data.get("timestamp"),
-                "file_path": safe_name,
-                "extracted_text": extracted_text,
-                "full_text": full_text,
-                "status": doc_data.get("status", "success"),
-            },
-            "uploaded_file": safe_name,
-        }
+        # Send the full Document Intelligence JSON to the SOW orchestrator so it can run on DI output
+        doc_data["file_path"] = doc_data.get("file_path") or safe_name
+        user_input_for_igentic = doc_data
 
-        # 2) iGentic – Process SOW
+        # 2) iGentic – Process SOW (orchestrator receives DI-extracted JSON)
         orchestration_response = process_sow_with_igentic(user_input_for_igentic, sow_id)
         if orchestration_response.get("status") == "error":
             return func.HttpResponse(
