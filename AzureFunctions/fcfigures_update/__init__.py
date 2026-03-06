@@ -122,8 +122,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 payment_details = _extract_payment_details_from_igentic_response(ok_result)
                                 if payment_details:
                                     kwargs["payment_details"] = payment_details
+                        else:
+                        # Any non-successful status becomes Need Approval
+                            kwargs["approval_status"] = "Need Approval"
+                            kwargs["status"] = "Need Approval"
                     else:
-                            # Any non-successful status becomes Need Approval
+                         # Any non-successful status becomes Need Approval
                         kwargs["approval_status"] = "Need Approval"
                         kwargs["status"] = "Need Approval"
                 except Exception as igentic_err:
