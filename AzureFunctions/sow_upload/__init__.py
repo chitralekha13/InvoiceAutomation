@@ -103,6 +103,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Send the full Document Intelligence JSON to the SOW orchestrator so it can run on DI output
         doc_data["file_path"] = doc_data.get("file_path") or safe_name
         user_input_for_igentic = doc_data
+        logger.info("Document Intelligence JSON for SOW: %s", json.dumps(doc_data, default=str)[:2000])
 
         # 2) iGentic – Process SOW (orchestrator receives DI-extracted JSON)
         orchestration_response = process_sow_with_igentic(user_input_for_igentic, sow_id)
