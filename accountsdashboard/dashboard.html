@@ -115,24 +115,30 @@
 
         .metric-card {
             background: white;
-            padding: 10px 6px;
+            padding: 8px 12px;
             border-radius: 4px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.08);
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 60px;
         }
 
         .metric-card .value {
             font-size: 18px;
             font-weight: 600;
             color: #333;
+            line-height: 1.2;
         }
 
         .metric-card .label {
             font-size: 10px;
             color: #888;
-            margin-top: 2px;
+            margin-top: 4px;
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            line-height: 1.2;
         }
 
         .metric-card.amount .value { color: #0078d4; }
@@ -1350,8 +1356,10 @@
                 btn.style.background = '#0078d4';
                 editableCells.forEach(cell => cell.classList.remove('edit-enabled'));
                 if (indicator) indicator.classList.remove('show');
+                loadDashboard();
                 updateToastArea('View Mode', 'Editing disabled. Click "Enable Edit" to make changes.', '');
             }
+
         }
 
 
