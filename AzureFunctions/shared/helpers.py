@@ -1254,19 +1254,21 @@ def _parse_continuation_response_for_approval(result: Dict) -> Optional[Dict]:
         if isinstance(raw, str) and raw.strip():
             raw_lower = raw.lower()
             if "ready for payment" in raw_lower or "ready for payment." in raw_lower:
-                approval_status = "Ready for Payment"
+                approval_status = "Approved"
             elif "approved" in raw_lower and "need" not in raw_lower:
                 approval_status = "Approved"
-            elif "complete" in raw_lower:
-                approval_status = "Complete"
+            #elif "complete" in raw_lower:
+            #   approval_status = "Complete"
             elif "need approval" in raw_lower or "needs approval" in raw_lower:
-                approval_status = "NEED APPROVAL"
+                approval_status = "Need Approval"
             elif "pending" in raw_lower:
                 approval_status = "Pending"
-            elif "match" in raw_lower and "do not" not in raw_lower and "don't" not in raw_lower:
-                approval_status = "Approved"
-            elif "do not match" in raw_lower or "mismatch" in raw_lower:
-                approval_status = "NEED APPROVAL"
+            else:
+                approval_status = None
+            #elif "match" in raw_lower and "do not" not in raw_lower and "don't" not in raw_lower:
+            #   approval_status = "Approved"
+            #elif "do not match" in raw_lower or "mismatch" in raw_lower:
+            #   approval_status = "NEED APPROVAL"
 
     if not approval_status:
         return None

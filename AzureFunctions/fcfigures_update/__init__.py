@@ -93,6 +93,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if "approved_hours" in body:
             try:
                 timesheet = float(body["approved_hours"]) if body["approved_hours"] not in ("", None) else None
+                logger.info("Parsed approved_hours for iGentic validation: %s", timesheet)
             except (TypeError, ValueError):
                 timesheet = None
             if timesheet is not None:
@@ -102,10 +103,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         f"Timesheet hours = {int(timesheet) if timesheet == int(timesheet) else timesheet}",
                         request_label="Validate approved hours",
                     )
+                    logger.info("iGentic response for approved hours validation: %s", result)
                     cmp_result = _parse_continuation_response_for_approval(result)
+                    logger.info("iGentic comparison result for approved hours validation: %s", cmp_result)
                     if cmp_result:
                         approval_status = cmp_result.get("approval_status") or "Pending"
                         hours_match = cmp_result.get("hours_match")
+                        logger.info("iGentic approval status: %s, hours match: %s", approval_status, hours_match)
                         # Treat orchestrator \"success\" statuses or a positive hours_match as Approved/Ready.
                         if approval_status in ("Approved", "Complete", "Ready for Payment", "ready for payment") or hours_match:
                             kwargs["approval_status"] = approval_status
@@ -123,9 +127,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 if payment_details:
                                     kwargs["payment_details"] = payment_details
                         else:
-                            # Any non-successful status becomes Need Approval
+                            logger.info("iGentic did not approve hours; approval_status: %s, hours_match: %s", approval_status, hours_match)
+                        # Any non-successful status becomes Need Approval
                             kwargs["approval_status"] = "Need Approval"
                             kwargs["status"] = "Need Approval"
+                    else:
+                         # Any non-successful status becomes Need Approval
+                        logger.info("iGentic did not return a valid comparison result; setting Need Approval")
+                        kwargs["approval_status"] = "Need Approval"
+                        kwargs["status"] = "Need Approval"
                 except Exception as igentic_err:
                     logger.warning("iGentic approved-hours validation failed; saving approved_hours only: %s", igentic_err)
 
