@@ -10,7 +10,7 @@ import azure.functions as func
 import openpyxl
 import psycopg2
 import psycopg2.extras
-from shared.helpers import upload_excel_to_sharepoint,upload_sync_report_to_sharepoint
+from shared.helpers import upload_excel_to_sharepoint,upload_sync_report_to_sharepoint,_extract_payment_details_from_igentic_response,continue_igentic_session
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT invoice_id, resource_name, start_date, end_date,
-                invoice_hours, approval_status, division, client_name, project_name_excel
+                invoice_hours, approval_status, division, client_name, project_name_excel,payment_details
             FROM   invoices
             WHERE  LOWER(approval_status) = 'pending'
             AND  invoice_hours IS NOT NULL
@@ -107,7 +107,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     # 7. Generate comparison report if there are unmatched/ambiguous results
     sp_thread.join(timeout=2)
 
-    unmatched_ambiguous = [r for r in results if r['status'] in ('UNMATCHED', 'AMBIGUOUS')]
+    unmatched_ambiguous = [r for r in results if r['status'] in ('UNMATCHED', 'AMBIGUOUS', 'PERIOD_MISMATCH')]
     if unmatched_ambiguous:
         report_thread = threading.Thread(
             target=_upload_comparison_report,
@@ -115,17 +115,32 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             daemon=True
         )
         report_thread.start()
+    
+    raw_sheet_hours = sum(
+    sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
+    for group in groups.values()
+    )
 
     summary = {
-        "processed":    len(results),
-        "matched":      sum(1 for r in results if r['status'] == 'MATCHED'),
-        "need_approval":sum(1 for r in results if r['status'] == 'Need Approval'),
-        "pending":      sum(1 for r in results if r['status'] == 'PENDING'),
-        "unmatched":    sum(1 for r in results if r['status'] == 'UNMATCHED'),
-        "ambiguous":    sum(1 for r in results if r['status'] == 'AMBIGUOUS'),
-        "skipped_not_pending": sum(1 for r in results if r['status'] == 'SKIPPED_NOT_PENDING'),
-        "details":      results
-    }
+            "processed":    len(results),
+            "matched":      sum(1 for r in results if r['status'] == 'MATCHED'),
+            "need_approval":sum(1 for r in results if r['status'] == 'Need Approval'),
+            "pending":      sum(1 for r in results if r['status'] == 'PENDING'),
+            "unmatched":    sum(1 for r in results if r['status'] == 'UNMATCHED'),
+            "ambiguous":    sum(1 for r in results if r['status'] == 'AMBIGUOUS'),
+            "skipped_not_pending": sum(1 for r in results if r['status'] == 'SKIPPED_NOT_PENDING'),
+            "period_mismatch": sum(1 for r in results if r['status'] == 'PERIOD_MISMATCH'),
+            # Hour tallies
+            "total_hours": sum(r.get('total_hours', 0) for r in results),
+            "matched_hours": sum(r.get('total_hours', 0) for r in results if r['status'] == 'MATCHED'),
+            "need_approval_hours": sum(r.get('total_hours', 0) for r in results if r['status'] == 'Need Approval'),
+            "pending_hours": sum(r.get('total_hours', 0) for r in results if r['status'] == 'PENDING'),
+            "unmatched_hours": sum(r.get('total_hours', 0) for r in results if r['status'] == 'UNMATCHED'),
+            "ambiguous_hours": sum(r.get('total_hours', 0) for r in results if r['status'] == 'AMBIGUOUS'),
+            "period_mismatch_hours": sum(r.get('total_hours', 0) for r in results if r['status'] == 'PERIOD_MISMATCH'),
+            "details":      results
+}
+
     return func.HttpResponse(
         json.dumps(summary),
         status_code=200,
@@ -323,22 +338,33 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
     }
 
     if match_status in ('UNMATCHED', 'AMBIGUOUS'):
-        return {**base, 'status': match_status, 'invoice_id': None}
+        total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
+        return {**base, 'status': match_status, 'invoice_id': None, 'total_hours': total_hours}  # ADD total_hours
+
 
     # Guard: invoice must still be Pending
     current_status = (inv.get('approval_status') or '').strip().lower()
     if current_status != 'pending':
+        total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
         return {**base,
                 'status': 'SKIPPED_NOT_PENDING',
                 'invoice_id': str(inv['invoice_id']),
-                'db_status': inv.get('approval_status')}
+                'db_status': inv.get('approval_status'),
+                'total_hours': total_hours}  
+
 
     # Pay period check
+    # Pay period check
     if not _pay_period_matches(inv, yr, mo):
+        total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
         return {**base,
                 'status': 'PERIOD_MISMATCH',
                 'invoice_id': str(inv['invoice_id']),
-                'invoice_period_start': str(inv.get('start_date', ''))}
+                'invoice_period_start': str(inv.get('start_date', '')),
+                'total_hours': total_hours,  
+                'matched_to': inv.get('resource_name')
+                }  
+
 
     # Evaluate approval across all rows in this group
     approval_vals = [
@@ -360,6 +386,21 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         hours_match = abs(total_hours - vendor_hrs) < 0.5
 
         new_status  = 'Approved' if hours_match else 'Need Approval'
+        payment_details = None
+
+        if new_status == 'Approved':
+            try:
+                ok_result = continue_igentic_session(
+                    inv['invoice_id'],
+                    "payment details",
+                    request_label="Get payment details",
+                )
+                payment_details = _extract_payment_details_from_igentic_response(ok_result)
+                if payment_details:
+                    logger.info("Payment details extracted and saved from Excel Timesheet Update")
+            except Exception as igentic_err:
+                logger.warning("iGentic payment details call failed; continuing without payment details: %s", igentic_err)
+
 
         _write_update(cursor, conn, inv['invoice_id'], {
             'approved_hours':  total_hours,
@@ -367,7 +408,11 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
             'division':        division,
             'client_name':     client_name,
             'project_name_excel':    project_name_excel,
+            'payment_details': payment_details,
         })
+
+
+
         return {**base,
                 'status':         'MATCHED',
                 'invoice_id':   str(inv['invoice_id']),
@@ -416,7 +461,8 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
                 'matched_to':    inv.get('resource_name')}
 
     else:
-        # All still Pending — update dimensions only, leave approval_status
+    # All still Pending — update dimensions only, leave approval_status
+        total_hours = sum(_to_float((_get_col(r, COL_HOURS) or _get_col(r, 'hours') or '0').strip()) for r in group)
         _write_update(cursor, conn, inv['invoice_id'], {
             'division':    division,
             'client_name': client_name,
@@ -425,7 +471,9 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
         return {**base,
                 'status':       'PENDING',
                 'invoice_id': str(inv['invoice_id']),
-                'matched_to':   inv.get('resource_name')}
+                'matched_to':   inv.get('resource_name'),
+                'total_hours': total_hours} 
+
 
 
 # DB helpers
@@ -679,7 +727,7 @@ def _generate_comparison_report(unmatched_results: list, all_results: list, db_i
              'Hours (Approved)', 'Hours (Pending)', 'Hours (Other)', 'Total Hours', 'Possible DB Match']
     write_header(ws1, 2, cols1, 'C0392B')
 
-    status_colors = {'UNMATCHED': 'FADBD8', 'AMBIGUOUS': 'FDEBD0'}
+    status_colors = {'UNMATCHED': 'FADBD8', 'AMBIGUOUS': 'FDEBD0', 'PERIOD_MISMATCH': 'FEF9E7'}
 
     for r_idx, result in enumerate(unmatched_results, start=3):
         status = result.get('status', '')
