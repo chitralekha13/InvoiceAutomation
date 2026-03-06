@@ -1099,70 +1099,142 @@ def process_sow_with_igentic(extracted_data: Dict, sow_id: str) -> Dict:
         return {"status": "error", "error": str(e)}
 
 
+def _map_igentic_sow_format_to_db(parsed: Dict) -> Dict:
+    """
+    Map iGentic SOW parser output to sow_documents columns.
+    iGentic returns: vendor_consultancy_name, resources[{name, hourly_rate, role_designation}],
+    payment_terms, maximum_approved_hours_per_month, sow_start_date, sow_end_date, etc.
+    """
+    out = {}
+    if not isinstance(parsed, dict):
+        return out
+    # vendor_consultancy_name -> consultancy_name
+    vcn = parsed.get("vendor_consultancy_name")
+    if vcn is not None and isinstance(vcn, str):
+        out["consultancy_name"] = vcn.strip()
+    # resources[0] -> resource_name, rate_per_hour, project_role
+    resources = parsed.get("resources")
+    if isinstance(resources, list) and len(resources) > 0:
+        r0 = resources[0]
+        if isinstance(r0, dict):
+            if r0.get("name") is not None:
+                out["resource_name"] = str(r0.get("name")).strip()
+            hr = r0.get("hourly_rate") or r0.get("hourly rate")
+            if hr is not None:
+                try:
+                    s = str(hr).replace("$", "").replace(",", "").strip()
+                    out["rate_per_hour"] = float(s)
+                except (ValueError, TypeError):
+                    out["rate_per_hour"] = hr
+            role = r0.get("role_designation") or r0.get("role/designation") or r0.get("project_role")
+            if role is not None:
+                out["project_role"] = str(role).strip()
+    # payment_terms -> net_terms
+    pt = parsed.get("payment_terms")
+    if pt is not None:
+        out["net_terms"] = str(pt).strip()
+    # maximum_approved_hours_per_month -> max_sow_hours (extract number)
+    max_hrs = parsed.get("maximum_approved_hours_per_month")
+    if max_hrs is not None:
+        s = str(max_hrs)
+        m = re.search(r"(\d+(?:\.\d+)?)", s)
+        if m:
+            try:
+                out["max_sow_hours"] = float(m.group(1))
+            except (ValueError, TypeError):
+                pass
+        else:
+            out["max_sow_hours"] = max_hrs
+    # Direct keys (same name in iGentic and DB)
+    for key in ("sow_start_date", "sow_end_date", "project_name_scope_description"):
+        if parsed.get(key) is not None and key != "project_name_scope_description":
+            out[key] = parsed[key]
+        if key == "project_name_scope_description" and parsed.get(key):
+            out["sow_project_duration"] = str(parsed[key]).strip()
+    return out
+
+
 def _extract_sow_fields_from_igentic_response(resp: Dict) -> Dict:
     """
     Extract SOW fields from iGentic response for sow_documents table.
-    Looks for: resource_name, consultancy_name, sow_start_date, sow_end_date,
-    net_terms, max_sow_hours, rate_per_hour, project_role, sow_project_duration.
+    Supports both our column names and iGentic SOW format (vendor_consultancy_name, resources[], payment_terms, etc.).
     """
     out = {}
     data = resp.get("responseData") or resp.get("response_data") or resp
     result = data.get("result")
+
+    def merge_sow(d: Dict) -> None:
+        if not isinstance(d, dict):
+            return
+        # iGentic SOW format (vendor_consultancy_name, resources, payment_terms, ...)
+        if d.get("vendor_consultancy_name") or d.get("resources"):
+            mapped = _map_igentic_sow_format_to_db(d)
+            for k, v in mapped.items():
+                if v is not None and out.get(k) is None:
+                    out[k] = v
+        # Direct DB keys
+        for key in (
+            "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
+            "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
+        ):
+            if d.get(key) is not None and out.get(key) is None:
+                out[key] = d[key]
+
+    # Result may be JSON string
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+            merge_sow(parsed)
+        except json.JSONDecodeError:
+            pass
+    elif isinstance(result, dict):
+        merge_sow(result)
+
     # Direct dict with SOW keys
     for key in (
         "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
         "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
     ):
         for src in (data, result):
-            if isinstance(src, dict) and src.get(key) is not None:
+            if isinstance(src, dict) and src.get(key) is not None and out.get(key) is None:
                 out[key] = src.get(key)
                 break
+
     # Agent response JSON block (e.g. SOW parser agent)
-    if not out.get("resource_name") and not out.get("consultancy_name"):
-        agent_responses = (
-            data.get("agentResponses") or data.get("agent_responses") or []
-        )
-        if isinstance(agent_responses, str):
-            try:
-                agent_responses = json.loads(agent_responses)
-            except Exception:
-                agent_responses = []
-        for item in (agent_responses or []):
-            content = item.get("Content") or item.get("content") or ""
-            if not isinstance(content, str):
-                continue
+    agent_responses = data.get("agentResponses") or data.get("agent_responses") or []
+    if isinstance(agent_responses, str):
+        try:
+            agent_responses = json.loads(agent_responses)
+        except Exception:
+            agent_responses = []
+    for item in (agent_responses or []):
+        content = item.get("Content") or item.get("content") or ""
+        if not isinstance(content, str):
+            continue
+        # Try ```json ... ``` first, then any {...}
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', content, re.IGNORECASE | re.DOTALL)
+        if match:
+            raw = match.group(1)
+        else:
             json_match = re.search(r'\{[\s\S]*\}', content)
-            if json_match:
-                try:
-                    parsed = json.loads(json_match.group(0))
-                    if not isinstance(parsed, dict):
-                        continue
-                    for key in (
-                        "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
-                        "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
-                    ):
-                        if parsed.get(key) is not None and out.get(key) is None:
-                            out[key] = parsed[key]
-                except json.JSONDecodeError:
-                    pass
-    # JSON block in display_text / result string
-    if not out.get("resource_name") and not out.get("consultancy_name"):
-        raw = result or data.get("display_text") or data.get("displayText") or ""
-        if isinstance(raw, dict):
-            raw = json.dumps(raw)
-        if isinstance(raw, str):
-            match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
-            if match:
-                try:
-                    parsed = json.loads(match.group(1))
-                    for key in (
-                        "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
-                        "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
-                    ):
-                        if parsed.get(key) is not None and out.get(key) is None:
-                            out[key] = parsed[key]
-                except json.JSONDecodeError:
-                    pass
+            raw = json_match.group(0) if json_match else None
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                merge_sow(parsed)
+            except json.JSONDecodeError:
+                pass
+
+    # JSON block in display_text / result string (when result is still a string and wasn't parseable above)
+    raw = result if isinstance(result, str) else data.get("display_text") or data.get("displayText") or ""
+    if isinstance(raw, str):
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+                merge_sow(parsed)
+            except json.JSONDecodeError:
+                pass
     return out
 
 
