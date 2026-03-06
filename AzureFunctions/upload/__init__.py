@@ -124,7 +124,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
         use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
         if use_db:
-            from shared.helpers import insert_invoice, update_invoice, get_invoice, save_complete_log, find_duplicate_invoice
+            from shared.helpers import (
+                insert_invoice,
+                update_invoice,
+                get_invoice,
+                save_complete_log,
+                find_duplicate_invoice,
+                get_matching_sow,
+                merge_sow_into_invoice_fields,
+            )
             try:
                 vendor_org = get_org_for_user(vendor_id)
             except Exception as e:
@@ -273,6 +281,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=500,
                     mimetype="application/json",
                 )
+            # Merge matching SOW data into invoice fields (net terms, due date, need-approval if rate/hours mismatch)
+            try:
+                sow = get_matching_sow(fields.get("resource_name"), fields.get("vendor_name"))
+                if sow:
+                    merge_sow_into_invoice_fields(fields, sow)
+                    logger.info("Merged matching SOW into invoice fields for invoice %s", invoice_id)
+            except Exception as e:
+                logger.warning("SOW merge skipped: %s", e)
             if fields:
                 try:
                     update_invoice(invoice_id, **fields)

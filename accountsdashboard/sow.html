@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOW Dashboard - Accounts Portal</title>
+    <script src="config.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: #1e3a5f;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title { color: white; font-size: 20px; font-weight: 600; }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .btn-back {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.5);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+        }
+        .btn-back:hover { background: rgba(255,255,255,0.3); color: white; }
+        .btn-upload {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-upload:hover { background: #0e6b0e; }
+        .btn-upload:disabled { background: #90b8d8; cursor: not-allowed; }
+        input[type="file"] { display: none; }
+        .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
+        .toolbar { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; }
+        .table-wrap { background: white; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+        th { background: #f0f4f8; font-weight: 600; color: #333; }
+        tr:hover { background: #fafafa; }
+        .empty-msg { padding: 40px; text-align: center; color: #666; }
+        .error-msg { padding: 16px; background: #fff0f0; color: #c00; border-radius: 4px; margin-bottom: 16px; }
+        .success-msg { padding: 16px; background: #f0fff0; color: #0a0; border-radius: 4px; margin-bottom: 16px; }
+        .user-info { color: rgba(255,255,255,0.9); font-size: 14px; display: flex; align-items: center; gap: 12px; }
+        .btn-logout {
+            background: transparent;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.6);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .btn-logout:hover { background: rgba(255,255,255,0.1); }
+        a.pdf-link { color: #0078d4; text-decoration: none; }
+        a.pdf-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <a href="dashboard.html" class="btn-back">← Back to Dashboard</a>
+            <span class="header-title">SOW Dashboard</span>
+            <button type="button" class="btn-upload" id="btnUploadSow">Upload SOW</button>
+            <input type="file" id="sowFileInput" accept=".pdf,.png,.jpg,.jpeg" />
+        </div>
+        <div class="user-info">
+            <span id="userName"></span>
+            <button type="button" class="btn-logout" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <div id="messageArea"></div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Resource name</th>
+                        <th>Consultancy name</th>
+                        <th>SOW start date</th>
+                        <th>SOW end date</th>
+                        <th>Net terms</th>
+                        <th>Max SOW hours</th>
+                        <th>Rate per hour</th>
+                        <th>Project role</th>
+                        <th>SOW project duration</th>
+                        <th>Document</th>
+                    </tr>
+                </thead>
+                <tbody id="sowTableBody">
+                    <tr><td colspan="10" class="empty-msg">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').trim().replace(/\/+$/, '');
+        if (API_BASE && !/^https?:\/\//i.test(API_BASE)) API_BASE = 'https://' + API_BASE;
+        if (API_BASE && API_BASE.startsWith('http://')) API_BASE = 'https://' + API_BASE.slice(7);
+
+        const userEmail = sessionStorage.getItem('userEmail');
+        const userName = sessionStorage.getItem('userName');
+        const loggedIn = sessionStorage.getItem('loggedIn');
+        const accessToken = sessionStorage.getItem('accessToken');
+
+        if (!loggedIn && !userName) {
+            window.location.href = 'index.html';
+        }
+        document.getElementById('userName').textContent = userName || userEmail || '';
+
+        function showMessage(text, isError) {
+            const el = document.getElementById('messageArea');
+            el.className = isError ? 'error-msg' : 'success-msg';
+            el.textContent = text;
+            el.style.display = 'block';
+            setTimeout(function() { el.style.display = 'none'; }, 6000);
+        }
+
+        async function loadSows() {
+            const tbody = document.getElementById('sowTableBody');
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Loading…</td></tr>';
+            try {
+                const headers = {};
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/list', { method: 'GET', headers });
+                const data = await res.json().catch(function() { return { sows: [] }; });
+                const sows = data.sows || [];
+                if (sows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">No SOWs yet. Use "Upload SOW" to add one.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = sows.map(function(s) {
+                    const doc = s.pdf_url
+                        ? '<a href="' + s.pdf_url + '" target="_blank" class="pdf-link">' + (s.doc_name || 'PDF') + '</a>'
+                        : (s.doc_name || '—');
+                    return '<tr>' +
+                        '<td>' + (s.resource_name || '—') + '</td>' +
+                        '<td>' + (s.consultancy_name || '—') + '</td>' +
+                        '<td>' + (s.sow_start_date || '—') + '</td>' +
+                        '<td>' + (s.sow_end_date || '—') + '</td>' +
+                        '<td>' + (s.net_terms || '—') + '</td>' +
+                        '<td>' + (s.max_sow_hours != null ? s.max_sow_hours : '—') + '</td>' +
+                        '<td>' + (s.rate_per_hour != null ? s.rate_per_hour : '—') + '</td>' +
+                        '<td>' + (s.project_role || '—') + '</td>' +
+                        '<td>' + (s.sow_project_duration || '—') + '</td>' +
+                        '<td>' + doc + '</td>' +
+                        '</tr>';
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Failed to load: ' + e.message + '</td></tr>';
+            }
+        }
+
+        document.getElementById('btnUploadSow').onclick = function() {
+            document.getElementById('sowFileInput').click();
+        };
+        document.getElementById('sowFileInput').onchange = async function() {
+            const file = this.files && this.files[0];
+            if (!file) return;
+            const btn = document.getElementById('btnUploadSow');
+            btn.disabled = true;
+            try {
+                const form = new FormData();
+                form.append('file', file);
+                const headers = {};
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/upload', {
+                    method: 'POST',
+                    headers: headers,
+                    body: form
+                });
+                const data = await res.json().catch(function() { return {}; });
+                if (!res.ok) {
+                    showMessage(data.error || data.detail || 'Upload failed', true);
+                    return;
+                }
+                showMessage('SOW uploaded and processed successfully.', false);
+                loadSows();
+            } catch (e) {
+                showMessage('Upload failed: ' + e.message, true);
+            } finally {
+                btn.disabled = false;
+                this.value = '';
+            }
+        };
+
+        function logout() {
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        loadSows();
+    </script>
+</body>
+</html>

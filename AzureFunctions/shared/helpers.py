@@ -447,6 +447,181 @@ def get_all_invoices() -> list:
         cursor.close()
         conn.close()
 
+
+# ============================================================================
+# SOW (Statement of Work) Database Helpers
+# ============================================================================
+
+def _normalize_for_sow_match(value: Optional[str]) -> str:
+    """Normalize string for SOW/invoice matching: strip and lower."""
+    if value is None:
+        return ""
+    return (str(value).strip()).lower()
+
+
+def _parse_net_terms_days(net_terms: Optional[str]) -> Optional[int]:
+    """Parse net terms string (e.g. 'Net 30', '30', 'Net 45') to number of days. Returns None if unparseable."""
+    if not net_terms or not str(net_terms).strip():
+        return None
+    s = str(net_terms).strip()
+    # Try to extract a number (e.g. 30 from "Net 30" or "30 days")
+    import re
+    m = re.search(r'\b(\d+)\b', s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def insert_sow(
+    sow_id: str,
+    doc_name: Optional[str] = None,
+    pdf_url: Optional[str] = None,
+    resource_name: Optional[str] = None,
+    consultancy_name: Optional[str] = None,
+    sow_start_date: Optional[str] = None,
+    sow_end_date: Optional[str] = None,
+    net_terms: Optional[str] = None,
+    max_sow_hours: Optional[float] = None,
+    rate_per_hour: Optional[float] = None,
+    project_role: Optional[str] = None,
+    sow_project_duration: Optional[str] = None,
+) -> None:
+    """Insert a SOW document record into PostgreSQL."""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO sow_documents (
+                sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+                sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+                project_role, sow_project_duration, created_at, last_updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        """, (
+            sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+            sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+            project_role, sow_project_duration,
+        ))
+        conn.commit()
+        logger.info("Inserted SOW %s into PostgreSQL", sow_id)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_all_sows() -> list:
+    """Get all SOW documents for dashboard, newest first."""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+                   sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+                   project_role, sow_project_duration, created_at, last_updated_at
+            FROM sow_documents ORDER BY created_at DESC
+        """)
+        rows = cursor.fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, 'isoformat'):
+                    d[k] = v.isoformat()
+            out.append(d)
+        return out
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[str]) -> Optional[Dict]:
+    """
+    Find a SOW that matches the given resource name and consultancy name.
+    Matching is case-insensitive and trims whitespace. Returns first match or None.
+    """
+    rn = _normalize_for_sow_match(resource_name)
+    cn = _normalize_for_sow_match(consultancy_name)
+    if not rn and not cn:
+        return None
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+                   sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+                   project_role, sow_project_duration
+            FROM sow_documents
+            WHERE LOWER(TRIM(COALESCE(resource_name, ''))) = %s
+              AND LOWER(TRIM(COALESCE(consultancy_name, ''))) = %s
+            ORDER BY last_updated_at DESC
+            LIMIT 1
+        """, (rn, cn))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        for k, v in d.items():
+            if hasattr(v, 'isoformat'):
+                d[k] = v.isoformat()
+        return d
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def merge_sow_into_invoice_fields(fields: Dict, sow: Dict) -> Dict:
+    """
+    Merge matching SOW data into invoice fields (in place). Used before writing invoice to DB.
+    - Overwrites payment_terms with SOW net_terms and sets due_date from SOW (invoice_date + net terms days).
+    - If invoice pay rate != SOW rate_per_hour or vendor_hours > max_sow_hours, appends to notes and sets status/approval_status to Need Approval.
+    """
+    comments = []
+    # Net terms and due date
+    net_terms = sow.get("net_terms")
+    if net_terms:
+        fields["payment_terms"] = net_terms
+    days = _parse_net_terms_days(net_terms)
+    inv_date = fields.get("invoice_date") or fields.get("start_date") or fields.get("end_date")
+    if days is not None and inv_date:
+        try:
+            from datetime import datetime, date, timedelta
+            if isinstance(inv_date, str):
+                dt = datetime.fromisoformat(inv_date.replace("Z", "+00:00"))
+            else:
+                dt = inv_date
+            d = dt.date() if isinstance(dt, datetime) else dt
+            due = d + timedelta(days=days)
+            fields["due_date"] = due.isoformat()[:10]
+        except Exception:
+            pass
+    # Rate check: invoice pay rate vs SOW rate_per_hour
+    inv_rate = fields.get("pay_rate") or fields.get("hourly_rate") or fields.get("rate_per_hour")
+    sow_rate = sow.get("rate_per_hour")
+    if sow_rate is not None and inv_rate is not None:
+        try:
+            if abs(float(sow_rate) - float(inv_rate)) > 0.01:
+                comments.append(f"Pay rate from invoice ({inv_rate}) does not match SOW rate per hour ({sow_rate}).")
+        except (TypeError, ValueError):
+            pass
+    # Hours check: vendor_hours vs max_sow_hours
+    vendor_hours = fields.get("vendor_hours") or fields.get("invoice_hours")
+    max_hours = sow.get("max_sow_hours")
+    if max_hours is not None and vendor_hours is not None:
+        try:
+            if float(vendor_hours) > float(max_hours):
+                comments.append(f"Vendor hours ({vendor_hours}) exceeds Max SOW hours ({max_hours}).")
+        except (TypeError, ValueError):
+            pass
+    if comments:
+        existing = (fields.get("notes") or fields.get("comment") or "").strip()
+        sep = " " if existing else ""
+        fields["notes"] = existing + sep + " ".join(comments)
+        if "notes" not in fields and "comment" in fields:
+            fields["comment"] = fields.get("notes", existing)
+        fields["status"] = "Need Approval"
+        fields["approval_status"] = "Need Approval"
+    return fields
+
+
 # ============================================================================
 # Authentication Helpers
 # ============================================================================
@@ -881,6 +1056,98 @@ def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Opti
     except Exception as e:
         logger.exception(f"iGentic call failed{endpoint}")
         return {"status": "error", "error": str(e)}
+
+
+def process_sow_with_igentic(extracted_data: Dict, sow_id: str) -> Dict:
+    """
+    Process SOW document with iGentic SOW orchestrator (separate endpoint).
+    Sends full_text/extracted_text; agent returns structured SOW fields
+    (resource_name, consultancy_name, sow_start_date, etc.).
+    Uses IGENTIC_SOW_ENDPOINT; do not use the invoice orchestrator for SOW.
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_SOW_ENDPOINT')
+    if not endpoint:
+        return {"status": "error", "error": "IGENTIC_SOW_ENDPOINT not configured (separate SOW orchestrator)"}
+    payload = {
+        "request": "Process SOW",
+        "userInput": json.dumps(extracted_data),
+        "sessionId": sow_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.exception("iGentic SOW call failed")
+        return {"status": "error", "error": str(e)}
+
+
+def _extract_sow_fields_from_igentic_response(resp: Dict) -> Dict:
+    """
+    Extract SOW fields from iGentic response for sow_documents table.
+    Looks for: resource_name, consultancy_name, sow_start_date, sow_end_date,
+    net_terms, max_sow_hours, rate_per_hour, project_role, sow_project_duration.
+    """
+    out = {}
+    data = resp.get("responseData") or resp.get("response_data") or resp
+    result = data.get("result")
+    # Direct dict with SOW keys
+    for key in (
+        "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
+        "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
+    ):
+        for src in (data, result):
+            if isinstance(src, dict) and src.get(key) is not None:
+                out[key] = src.get(key)
+                break
+    # Agent response JSON block (e.g. SOW parser agent)
+    if not out.get("resource_name") and not out.get("consultancy_name"):
+        agent_responses = (
+            data.get("agentResponses") or data.get("agent_responses") or []
+        )
+        if isinstance(agent_responses, str):
+            try:
+                agent_responses = json.loads(agent_responses)
+            except Exception:
+                agent_responses = []
+        for item in (agent_responses or []):
+            content = item.get("Content") or item.get("content") or ""
+            if not isinstance(content, str):
+                continue
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                    if not isinstance(parsed, dict):
+                        continue
+                    for key in (
+                        "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
+                        "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
+                    ):
+                        if parsed.get(key) is not None and out.get(key) is None:
+                            out[key] = parsed[key]
+                except json.JSONDecodeError:
+                    pass
+    # JSON block in display_text / result string
+    if not out.get("resource_name") and not out.get("consultancy_name"):
+        raw = result or data.get("display_text") or data.get("displayText") or ""
+        if isinstance(raw, dict):
+            raw = json.dumps(raw)
+        if isinstance(raw, str):
+            match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    parsed = json.loads(match.group(1))
+                    for key in (
+                        "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
+                        "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
+                    ):
+                        if parsed.get(key) is not None and out.get(key) is None:
+                            out[key] = parsed[key]
+                except json.JSONDecodeError:
+                    pass
+    return out
 
 
 def _is_payment_like(obj: dict) -> bool:
