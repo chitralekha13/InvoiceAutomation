@@ -696,7 +696,10 @@
                         Manage users
                     </button>
                     <button type="button" onclick="downloadExcel(); closeHeaderMenu();">
-                        Download Current Summary
+                        Download Dasboard
+                    </button>
+                    <button type="button" onclick="downloadExcelcur(); closeHeaderMenu();">
+                        Download Current Data
                     </button>
 
                     <button type="button" onclick="generateDailySummary(); closeHeaderMenu();">
@@ -1791,6 +1794,36 @@
             a.click();
             URL.revokeObjectURL(a.href);
         }
+
+        function downloadExcelcur() {
+            const table = document.querySelector('table');
+            const headers = [];
+            const rows = [];
+
+            // Get headers (skip first th which is checkbox)
+            table.querySelectorAll('th').forEach((th, i) => {
+                if (i > 0) headers.push(th.textContent.trim());
+            });
+
+            // Get rows from tbody
+            table.querySelectorAll('tbody tr').forEach(tr => {
+                const row = [];
+                tr.querySelectorAll('td').forEach((td, i) => {
+                    if (i > 0) row.push(td.textContent.trim());
+                });
+                if (row.length > 0) rows.push(row);
+            });
+
+            // Create and download CSV
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + c.replace(/"/g, '""') + '"').join(','))].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'invoices_currentfilter_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
 
 
         document.getElementById('filterAll').addEventListener('change', () => { updateTileActiveState(); applyFilters(); renderTable(); });
