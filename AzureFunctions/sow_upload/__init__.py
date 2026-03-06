@@ -100,26 +100,27 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "status": "no_di",
             }
 
-        # Send the full Document Intelligence JSON to the SOW orchestrator so it can run on DI output
+        # Send only Document Intelligence JSON to the SOW orchestrator (no other payload)
         doc_data["file_path"] = doc_data.get("file_path") or safe_name
-        user_input_for_igentic = doc_data
-        logger.info("Document Intelligence JSON for SOW: %s", json.dumps(doc_data, default=str)[:2000])
+        di_json_for_sow = doc_data
+        logger.info("SOW input: Document Intelligence JSON only (file_path=%s, lines=%s)",
+                   di_json_for_sow.get("file_path"), len(di_json_for_sow.get("extracted_text") or []))
 
-        # 2) iGentic – Process SOW (orchestrator receives DI-extracted JSON)
-        orchestration_response = process_sow_with_igentic(user_input_for_igentic, sow_id)
-        if orchestration_response.get("status") == "error":
+        # 2) iGentic – Process SOW (orchestrator receives only DI JSON)
+        raw_igentic_response = process_sow_with_igentic(di_json_for_sow, sow_id)
+        if raw_igentic_response.get("status") == "error":
             return func.HttpResponse(
                 json.dumps({
                     "error": "SOW processing failed",
-                    "detail": orchestration_response.get("error", "iGentic error"),
+                    "detail": raw_igentic_response.get("error", "iGentic error"),
                 }),
                 status_code=502,
                 mimetype="application/json",
             )
 
-        # 3) Extract SOW fields from agent response
-        sow_fields = _extract_sow_fields_from_igentic_response(orchestration_response)
-        logger.info("Extracted SOW fields from iGentic: %s", sow_fields)
+        # 3) Use only extracted SOW JSON in code (discard rest of iGentic response)
+        sow_fields = _extract_sow_fields_from_igentic_response(raw_igentic_response)
+        logger.info("SOW output (iGentic): %s", json.dumps(sow_fields, default=str))
 
         # 4) Optional: upload file to SharePoint (Invoices/SOWs subfolder; SOWs list may not exist)
         pdf_url = None

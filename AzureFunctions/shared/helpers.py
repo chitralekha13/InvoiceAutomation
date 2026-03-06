@@ -533,6 +533,22 @@ def get_all_sows() -> list:
         conn.close()
 
 
+def delete_sow(sow_id: str) -> bool:
+    """Delete SOW from PostgreSQL by sow_id. Returns True if deleted, False if not found."""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM sow_documents WHERE sow_id = %s", (sow_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info("Deleted SOW %s from database", sow_id)
+        return deleted
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[str]) -> Optional[Dict]:
     """
     Find a SOW that matches the given resource name and consultancy name.

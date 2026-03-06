@@ -67,6 +67,16 @@
         .btn-logout:hover { background: rgba(255,255,255,0.1); }
         a.pdf-link { color: #0078d4; text-decoration: none; }
         a.pdf-link:hover { text-decoration: underline; }
+        .btn-delete {
+            background: #d83b01;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-delete:hover { background: #a52d01; }
     </style>
 </head>
 <body>
@@ -99,10 +109,11 @@
                         <th>Project role</th>
                         <th>SOW project duration</th>
                         <th>Document</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="sowTableBody">
-                    <tr><td colspan="10" class="empty-msg">Loading…</td></tr>
+                    <tr><td colspan="11" class="empty-msg">Loading…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -142,13 +153,14 @@
                 const data = await res.json().catch(function() { return { sows: [] }; });
                 const sows = data.sows || [];
                 if (sows.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">No SOWs yet. Use "Upload SOW" to add one.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">No SOWs yet. Use "Upload SOW" to add one.</td></tr>';
                     return;
                 }
                 tbody.innerHTML = sows.map(function(s) {
                     const doc = s.pdf_url
                         ? '<a href="' + s.pdf_url + '" target="_blank" class="pdf-link">' + (s.doc_name || 'PDF') + '</a>'
                         : (s.doc_name || '—');
+                    const sowId = (s.sow_id || '').replace(/"/g, '&quot;');
                     return '<tr>' +
                         '<td>' + (s.resource_name || '—') + '</td>' +
                         '<td>' + (s.consultancy_name || '—') + '</td>' +
@@ -160,10 +172,14 @@
                         '<td>' + (s.project_role || '—') + '</td>' +
                         '<td>' + (s.sow_project_duration || '—') + '</td>' +
                         '<td>' + doc + '</td>' +
+                        '<td><button type="button" class="btn-delete" data-sow-id="' + sowId + '">Delete</button></td>' +
                         '</tr>';
                 }).join('');
+                tbody.querySelectorAll('.btn-delete').forEach(function(btn) {
+                    btn.addEventListener('click', function() { deleteSow(this.getAttribute('data-sow-id')); });
+                });
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Failed to load: ' + e.message + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Failed to load: ' + e.message + '</td></tr>';
             }
         }
 
@@ -199,6 +215,25 @@
                 this.value = '';
             }
         };
+
+        async function deleteSow(sowId) {
+            if (!sowId) return;
+            if (!confirm('Delete this SOW? This cannot be undone.')) return;
+            try {
+                const headers = {};
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/' + encodeURIComponent(sowId), { method: 'DELETE', headers });
+                const data = await res.json().catch(function() { return {}; });
+                if (!res.ok) {
+                    showMessage(data.error || 'Delete failed', true);
+                    return;
+                }
+                showMessage('SOW deleted.', false);
+                loadSows();
+            } catch (e) {
+                showMessage('Delete failed: ' + e.message, true);
+            }
+        }
 
         function logout() {
             sessionStorage.clear();
