@@ -103,9 +103,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         request_label="Validate approved hours",
                     )
                     cmp_result = _parse_continuation_response_for_approval(result)
+                    logger.info("iGentic comparison result for approved hours validation: %s", cmp_result)
                     if cmp_result:
                         approval_status = cmp_result.get("approval_status") or "Pending"
                         hours_match = cmp_result.get("hours_match")
+                        logger.info("iGentic approval status: %s, hours match: %s", approval_status, hours_match)
                         # Treat orchestrator \"success\" statuses or a positive hours_match as Approved/Ready.
                         if approval_status in ("Approved", "Complete", "Ready for Payment", "ready for payment") or hours_match:
                             kwargs["approval_status"] = approval_status
@@ -123,11 +125,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                                 if payment_details:
                                     kwargs["payment_details"] = payment_details
                         else:
+                            logger.info("iGentic did not approve hours; approval_status: %s, hours_match: %s", approval_status, hours_match)
                         # Any non-successful status becomes Need Approval
                             kwargs["approval_status"] = "Need Approval"
                             kwargs["status"] = "Need Approval"
                     else:
                          # Any non-successful status becomes Need Approval
+                        logger.info("iGentic did not return a valid comparison result; setting Need Approval")
                         kwargs["approval_status"] = "Need Approval"
                         kwargs["status"] = "Need Approval"
                 except Exception as igentic_err:
