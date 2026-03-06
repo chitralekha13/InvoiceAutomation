@@ -103,8 +103,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Send only Document Intelligence JSON to the SOW orchestrator (no other payload)
         doc_data["file_path"] = doc_data.get("file_path") or safe_name
         di_json_for_sow = doc_data
-        logger.info("SOW input: Document Intelligence JSON only (file_path=%s, lines=%s)",
-                   di_json_for_sow.get("file_path"), len(di_json_for_sow.get("extracted_text") or []))
+        di_json_log = json.dumps(di_json_for_sow, default=str, indent=2)
+        logger.info("SOW input – Document Intelligence JSON: %s", di_json_log[:8000] + ("..." if len(di_json_log) > 8000 else ""))
 
         # 2) iGentic – Process SOW (orchestrator receives only DI JSON)
         raw_igentic_response = process_sow_with_igentic(di_json_for_sow, sow_id)
@@ -120,7 +120,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         # 3) Use only extracted SOW JSON in code (discard rest of iGentic response)
         sow_fields = _extract_sow_fields_from_igentic_response(raw_igentic_response)
-        logger.info("SOW output (iGentic): %s", json.dumps(sow_fields, default=str))
+        sow_output_log = json.dumps(sow_fields, default=str, indent=2)
+        logger.info("SOW output – iGentic JSON: %s", sow_output_log)
 
         # 4) Optional: upload file to SharePoint (Invoices/SOWs subfolder; SOWs list may not exist)
         pdf_url = None
