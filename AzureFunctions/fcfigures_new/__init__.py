@@ -72,6 +72,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         kwargs = {}
         updated_fields = {}
         source = body.get("source", "unknown")
+# Handle other fields from dashboard edit (due_date, invoice_amount, etc.)
+        for dash_key, sql_col in FIELD_MAP.items():
+            if dash_key in body and dash_key not in ('approved_hours', 'payment_done'):
+                val = body[dash_key]
+                if val is not None and val != "":
+                    kwargs[sql_col] = val
+                    logger.info("Updated %s: %s", sql_col, val)
 
         # Extract approved_hours from request
         approved_hours = body.get("approved_hours")
