@@ -85,7 +85,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         ok_result = continue_igentic_session(
                             invoice_id,
                             "payment details",
-                            request_label="Get payment details",
+                            request_label=f"The Approved hours is {approved_hours}. Get payment details",
                         )
                         logger.info("iGentic response for payment details: %s", ok_result)
                         payment_details = _extract_payment_details_from_igentic_response(ok_result)

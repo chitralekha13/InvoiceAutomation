@@ -393,7 +393,7 @@ def _process_group(first, last, yr, mo, group, invoices, cursor, conn) -> dict:
                 ok_result = continue_igentic_session(
                     inv['invoice_id'],
                     "payment details",
-                    request_label="Get payment details",
+                    request_label=f"The Approved hours is {total_hours}. Get payment details",
                 )
                 payment_details = _extract_payment_details_from_igentic_response(ok_result)
                 if payment_details:
