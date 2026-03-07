@@ -11,6 +11,25 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+FIELD_MAP = {
+    "invoice_number": "invoice_number",
+    "consultancy_name": "vendor_name",
+    "resource_name": "resource_name",
+    "pay_period_start": "start_date",
+    "pay_period_end": "end_date",
+    "net_terms": "payment_terms",
+    "vendor_hours": "invoice_hours",
+    "approved_hours": "approved_hours",
+    "pay_rate": "hourly_rate",
+    "invoice_amount": "invoice_amount",
+    "invoice_date": "invoice_date",
+    "due_date": "due_date",
+    "project_name": "project_name",
+    "business_unit": "business_unit",
+    "template": "template",
+    "current_comments": "notes",
+    "addl_comments": "addl_comments",
+}
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logger.info("Fcfigures_new validation function processed a request.")
