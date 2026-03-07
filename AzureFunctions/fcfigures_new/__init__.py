@@ -116,7 +116,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         if kwargs:
             # Allowed columns for update
             allowed = {
-                allowed = {
                 "invoice_number",
                 "vendor_name",
                 "resource_name",
@@ -138,7 +137,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "status",
                 "payment_details",
                 "bill_pay_initiated_on",
-            }
             }
             kwargs_clean = {k: v for k, v in kwargs.items() if k in allowed}
             if kwargs_clean:
