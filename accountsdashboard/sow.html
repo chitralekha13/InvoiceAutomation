@@ -176,7 +176,7 @@
 
         async function loadSows() {
             const tbody = document.getElementById('sowTableBody');
-            tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Loading…</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Loading…</td></tr>';
             try {
                 const headers = {};
                 if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
@@ -193,7 +193,6 @@
                     const doc = canView
                         ? '<button type="button" class="btn-view" data-url="' + s.pdf_url + '" data-name="' + (s.doc_name || 'Document').replace(/"/g, '&quot;') + '">View Document</button>'
                         : (s.doc_name || '—');
-                    const sowId = (s.sow_id || '').replace(/"/g, '&quot;');
                     return '<tr>' +
                         '<td class="sow-editable" data-field="resource_name" data-id="' + sowId + '">' + (s.resource_name || '—') + '</td>' +
                         '<td class="sow-editable" data-field="consultancy_name" data-id="' + sowId + '">' + (s.consultancy_name || '—') + '</td>' +
