@@ -281,12 +281,21 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=500,
                     mimetype="application/json",
                 )
-            # Merge matching SOW data into invoice fields (net terms, due date, need-approval if rate/hours mismatch)
+            # Validate against SOW when a matching SOW exists (due date, net terms, comments only; status unchanged)
             try:
                 sow = get_matching_sow(fields.get("resource_name"), fields.get("vendor_name"))
+                upload_date = datetime.utcnow().date()
                 if sow:
-                    merge_sow_into_invoice_fields(fields, sow)
+                    merge_sow_into_invoice_fields(fields, sow, upload_date=upload_date)
                     logger.info("Merged matching SOW into invoice fields for invoice %s", invoice_id)
+                else:
+                    # No matching SOW: record in comments only
+                    existing = (fields.get("notes") or fields.get("comment") or "").strip()
+                    no_match = "No match invoice"
+                    combined = existing + (" " if existing else "") + no_match
+                    fields["notes"] = combined
+                    fields["comment"] = combined
+                    logger.info("No matching SOW for invoice %s; comments set to include '%s'", invoice_id, no_match)
             except Exception as e:
                 logger.warning("SOW merge skipped: %s", e)
             if fields:

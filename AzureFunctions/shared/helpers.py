@@ -11,7 +11,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import jwt
 import re
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, Optional, Any, Union
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.client_credential import ClientCredential
@@ -472,6 +472,33 @@ def _parse_net_terms_days(net_terms: Optional[str]) -> Optional[int]:
     return None
 
 
+def _parse_date_to_date(value) -> Optional[date]:
+    """Parse invoice/SOW date (string or date) to date for comparison. Handles ISO and 'May 02, 2022' style."""
+    from datetime import datetime as _dt
+    if value is None:
+        return None
+    if hasattr(value, "date"):
+        return value.date() if isinstance(value, datetime) else value
+    s = str(value).strip()[:10]
+    if not s:
+        return None
+    # ISO
+    try:
+        return _dt.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        pass
+    # "May 02, 2022" etc.
+    try:
+        return _dt.strptime(str(value).strip()[:20], "%b %d, %Y").date()
+    except ValueError:
+        pass
+    try:
+        return _dt.strptime(str(value).strip()[:20], "%B %d, %Y").date()
+    except ValueError:
+        pass
+    return None
+
+
 def insert_sow(
     sow_id: str,
     doc_name: Optional[str] = None,
@@ -626,57 +653,82 @@ def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[st
         conn.close()
 
 
-def merge_sow_into_invoice_fields(fields: Dict, sow: Dict) -> Dict:
+def merge_sow_into_invoice_fields(
+    fields: Dict,
+    sow: Dict,
+    upload_date=None,
+) -> Dict:
     """
-    Merge matching SOW data into invoice fields (in place). Used before writing invoice to DB.
-    - Overwrites payment_terms with SOW net_terms and sets due_date from SOW (invoice_date + net terms days).
-    - If invoice pay rate != SOW rate_per_hour or vendor_hours > max_sow_hours, appends to notes and sets status/approval_status to Need Approval.
+    Validate invoice against matching SOW and merge SOW terms (in place). Used before writing invoice to DB.
+    - Marks as validated against SOW; overwrites payment_terms with SOW net_terms.
+    - Due date = invoice uploaded date + net terms days; recalculated whenever net terms change.
+    - SOW validation outcome is written to comments only (status/approval_status are left unchanged).
+    - Comment by priority: SOW expired > SOW hours permit exceeded > mismatch rate > Validated against SOW.
+    This logic lives in code (not iGentic) for deterministic, fast validation and a single source of truth.
     """
+    from datetime import datetime, date, timedelta
+    if upload_date is None:
+        upload_date = date.today()
+    upload_d = _parse_date_to_date(upload_date) or date.today()
     comments = []
-    # Net terms and due date
+
+    # Always apply SOW net terms and due date when we have a matching SOW
     net_terms = sow.get("net_terms")
     if net_terms:
         fields["payment_terms"] = net_terms
     days = _parse_net_terms_days(net_terms)
-    inv_date = fields.get("invoice_date") or fields.get("start_date") or fields.get("end_date")
-    if days is not None and inv_date:
-        try:
-            from datetime import datetime, date, timedelta
-            if isinstance(inv_date, str):
-                dt = datetime.fromisoformat(inv_date.replace("Z", "+00:00"))
-            else:
-                dt = inv_date
-            d = dt.date() if isinstance(dt, datetime) else dt
-            due = d + timedelta(days=days)
-            fields["due_date"] = due.isoformat()[:10]
-        except Exception:
-            pass
-    # Rate check: invoice pay rate vs SOW rate_per_hour
-    inv_rate = fields.get("pay_rate") or fields.get("hourly_rate") or fields.get("rate_per_hour")
-    sow_rate = sow.get("rate_per_hour")
-    if sow_rate is not None and inv_rate is not None:
-        try:
-            if abs(float(sow_rate) - float(inv_rate)) > 0.01:
-                comments.append(f"Pay rate from invoice ({inv_rate}) does not match SOW rate per hour ({sow_rate}).")
-        except (TypeError, ValueError):
-            pass
-    # Hours check: vendor_hours vs max_sow_hours
+    # Due date = invoice uploaded date + net terms (recalculated when net terms change)
+    if days is not None:
+        due = upload_d + timedelta(days=days)
+        fields["due_date"] = due.isoformat()[:10]
+
+    # SOW end date check: invoice uploaded after SOW end date
+    sow_end = _parse_date_to_date(sow.get("sow_end_date"))
+    sow_expired = sow_end is not None and upload_d > sow_end
+
+    # Hours check: vendor_hours > max_sow_hours
     vendor_hours = fields.get("vendor_hours") or fields.get("invoice_hours")
     max_hours = sow.get("max_sow_hours")
+    hours_exceeded = False
     if max_hours is not None and vendor_hours is not None:
         try:
-            if float(vendor_hours) > float(max_hours):
+            hours_exceeded = float(vendor_hours) > float(max_hours)
+            if hours_exceeded:
                 comments.append(f"Vendor hours ({vendor_hours}) exceeds Max SOW hours ({max_hours}).")
         except (TypeError, ValueError):
             pass
-    if comments:
-        existing = (fields.get("notes") or fields.get("comment") or "").strip()
-        sep = " " if existing else ""
-        fields["notes"] = existing + sep + " ".join(comments)
-        if "notes" not in fields and "comment" in fields:
-            fields["comment"] = fields.get("notes", existing)
-        fields["status"] = "Need Approval"
-        fields["approval_status"] = "Need Approval"
+
+    # Rate check: invoice pay rate vs SOW rate_per_hour
+    inv_rate = fields.get("pay_rate") or fields.get("hourly_rate") or fields.get("rate_per_hour")
+    sow_rate = sow.get("rate_per_hour")
+    rate_mismatch = False
+    if sow_rate is not None and inv_rate is not None:
+        try:
+            rate_mismatch = abs(float(sow_rate) - float(inv_rate)) > 0.01
+            if rate_mismatch:
+                comments.append(f"Pay rate from invoice ({inv_rate}) does not match SOW rate per hour ({sow_rate}).")
+        except (TypeError, ValueError):
+            pass
+
+    # SOW validation outcome goes to comments only (do not change status/approval_status)
+    if sow_expired:
+        comments.insert(0, "Invoice uploaded after SOW end date.")
+    sow_comment = (
+        "SOW expired"
+        if sow_expired
+        else "SOW hours permit exceeded"
+        if hours_exceeded
+        else "mismatch rate"
+        if rate_mismatch
+        else "Validated against SOW"
+    )
+    comments.insert(0, sow_comment)
+
+    # Write to comments/notes only
+    existing = (fields.get("notes") or fields.get("comment") or "").strip()
+    combined = existing + (" " if existing else "") + " ".join(comments)
+    fields["notes"] = combined
+    fields["comment"] = combined
     return fields
 
 
