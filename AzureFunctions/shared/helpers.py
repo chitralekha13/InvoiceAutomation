@@ -549,6 +549,48 @@ def delete_sow(sow_id: str) -> bool:
         conn.close()
 
 
+def update_sow(sow_id: str, **kwargs) -> None:
+    """Update SOW record in PostgreSQL database."""
+    if not kwargs:
+        return
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        set_clauses = []
+        values = []
+        for key, value in kwargs.items():
+            # Basic safety: only allow known columns to be updated
+            if key not in {
+                "resource_name",
+                "consultancy_name",
+                "sow_start_date",
+                "sow_end_date",
+                "net_terms",
+                "max_sow_hours",
+                "rate_per_hour",
+                "project_role",
+                "sow_project_duration",
+            }:
+                continue
+            set_clauses.append(f"{key} = %s")
+            values.append(value)
+        if not set_clauses:
+            return
+        set_clauses.append("last_updated_at = NOW()")
+        values.append(sow_id)
+        query = f"""
+            UPDATE sow_documents
+            SET {', '.join(set_clauses)}
+            WHERE sow_id = %s
+        """
+        cursor.execute(query, values)
+        conn.commit()
+        logger.info("Updated SOW %s in PostgreSQL database", sow_id)
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[str]) -> Optional[Dict]:
     """
     Find a SOW that matches the given resource name and consultancy name.

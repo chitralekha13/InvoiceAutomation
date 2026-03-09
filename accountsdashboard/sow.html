@@ -67,6 +67,35 @@
         .btn-logout:hover { background: rgba(255,255,255,0.1); }
         a.pdf-link { color: #0078d4; text-decoration: none; }
         a.pdf-link:hover { text-decoration: underline; }
+        .btn-view {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-view:hover {
+            background: #218838;
+        }
+        .btn-toggle-edit {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-left: 12px;
+        }
+        .btn-toggle-edit.disable {
+            background: #d13438;
+        }
+        .sow-editable.sow-edit-enabled {
+            background: #fffceb;
+            cursor: text;
+        }
         .btn-delete {
             background: #d83b01;
             color: white;
@@ -89,6 +118,7 @@
         </div>
         <div class="user-info">
             <span id="userName"></span>
+            <button type="button" class="btn-toggle-edit" id="btnSowToggleEdit">Enable Edit</button>
             <button type="button" class="btn-logout" onclick="logout()">Logout</button>
         </div>
     </div>
@@ -129,6 +159,7 @@
         const userName = sessionStorage.getItem('userName');
         const loggedIn = sessionStorage.getItem('loggedIn');
         const accessToken = sessionStorage.getItem('accessToken');
+        let sowEditMode = false;
 
         if (!loggedIn && !userName) {
             window.location.href = 'index.html';
@@ -157,20 +188,22 @@
                     return;
                 }
                 tbody.innerHTML = sows.map(function(s) {
-                    const doc = s.pdf_url
-                        ? '<a href="' + s.pdf_url + '" target="_blank" class="pdf-link">' + (s.doc_name || 'PDF') + '</a>'
+                    const sowId = (s.sow_id || '').replace(/"/g, '&quot;');
+                    const canView = !!s.pdf_url;
+                    const doc = canView
+                        ? '<button type="button" class="btn-view" data-url="' + s.pdf_url + '" data-name="' + (s.doc_name || 'Document').replace(/"/g, '&quot;') + '">View Document</button>'
                         : (s.doc_name || '—');
                     const sowId = (s.sow_id || '').replace(/"/g, '&quot;');
                     return '<tr>' +
-                        '<td>' + (s.resource_name || '—') + '</td>' +
-                        '<td>' + (s.consultancy_name || '—') + '</td>' +
-                        '<td>' + (s.sow_start_date || '—') + '</td>' +
-                        '<td>' + (s.sow_end_date || '—') + '</td>' +
-                        '<td>' + (s.net_terms || '—') + '</td>' +
-                        '<td>' + (s.max_sow_hours != null ? s.max_sow_hours : '—') + '</td>' +
-                        '<td>' + (s.rate_per_hour != null ? s.rate_per_hour : '—') + '</td>' +
-                        '<td>' + (s.project_role || '—') + '</td>' +
-                        '<td>' + (s.sow_project_duration || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="resource_name" data-id="' + sowId + '">' + (s.resource_name || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="consultancy_name" data-id="' + sowId + '">' + (s.consultancy_name || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="sow_start_date" data-id="' + sowId + '">' + (s.sow_start_date || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="sow_end_date" data-id="' + sowId + '">' + (s.sow_end_date || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="net_terms" data-id="' + sowId + '">' + (s.net_terms || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="max_sow_hours" data-id="' + sowId + '">' + (s.max_sow_hours != null ? s.max_sow_hours : '—') + '</td>' +
+                        '<td class="sow-editable" data-field="rate_per_hour" data-id="' + sowId + '">' + (s.rate_per_hour != null ? s.rate_per_hour : '—') + '</td>' +
+                        '<td class="sow-editable" data-field="project_role" data-id="' + sowId + '">' + (s.project_role || '—') + '</td>' +
+                        '<td class="sow-editable" data-field="sow_project_duration" data-id="' + sowId + '">' + (s.sow_project_duration || '—') + '</td>' +
                         '<td>' + doc + '</td>' +
                         '<td><button type="button" class="btn-delete" data-sow-id="' + sowId + '">Delete</button></td>' +
                         '</tr>';
@@ -178,6 +211,13 @@
                 tbody.querySelectorAll('.btn-delete').forEach(function(btn) {
                     btn.addEventListener('click', function() { deleteSow(this.getAttribute('data-sow-id')); });
                 });
+                tbody.querySelectorAll('.btn-view').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        const url = this.getAttribute('data-url');
+                        if (url) window.open(url, '_blank');
+                    });
+                });
+                bindSowEditableCells();
             } catch (e) {
                 tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Failed to load: ' + e.message + '</td></tr>';
             }
@@ -215,6 +255,79 @@
                 this.value = '';
             }
         };
+
+        function toggleSowEditMode() {
+            sowEditMode = !sowEditMode;
+            const btn = document.getElementById('btnSowToggleEdit');
+            const cells = document.querySelectorAll('.sow-editable');
+            if (sowEditMode) {
+                btn.textContent = 'Disable Edit';
+                btn.classList.add('disable');
+                cells.forEach(function(c) { c.classList.add('sow-edit-enabled'); });
+            } else {
+                btn.textContent = 'Enable Edit';
+                btn.classList.remove('disable');
+                cells.forEach(function(c) { c.classList.remove('sow-edit-enabled'); });
+            }
+        }
+
+        function bindSowEditableCells() {
+            document.querySelectorAll('.sow-editable').forEach(function(cell) {
+                cell.addEventListener('click', function() {
+                    if (!sowEditMode) return;
+                    const field = this.dataset.field;
+                    const sowId = this.dataset.id;
+                    if (!field || !sowId) return;
+                    const original = this.textContent.trim();
+                    const current = original === '—' ? '' : original;
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = current;
+                    input.style.cssText = 'width:100%;padding:4px;font-size:inherit;border:2px solid #0078d4;';
+                    this.textContent = '';
+                    this.appendChild(input);
+                    input.focus();
+                    const cellRef = this;
+                    function cancel() {
+                        cellRef.textContent = original;
+                        if (sowEditMode) cellRef.classList.add('sow-edit-enabled');
+                    }
+                    input.addEventListener('blur', function() {
+                        saveSowEdit(sowId, field, input.value, cellRef, original);
+                    });
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') input.blur();
+                        if (e.key === 'Escape') cancel();
+                    });
+                });
+            });
+        }
+
+        async function saveSowEdit(sowId, field, value, cell, originalValue) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/' + encodeURIComponent(sowId) + '/update', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ field: field, value: value })
+                });
+                const data = await res.json().catch(function() { return {}; });
+                if (!res.ok || data.error) {
+                    cell.textContent = originalValue;
+                    showMessage(data.error || 'Save failed', true);
+                    return;
+                }
+                cell.textContent = value || '—';
+                if (sowEditMode) cell.classList.add('sow-edit-enabled');
+                showMessage('SOW updated.', false);
+            } catch (e) {
+                cell.textContent = originalValue;
+                showMessage('Save failed: ' + e.message, true);
+            }
+        }
+
+        document.getElementById('btnSowToggleEdit').onclick = toggleSowEditMode;
 
         async function deleteSow(sowId) {
             if (!sowId) return;
