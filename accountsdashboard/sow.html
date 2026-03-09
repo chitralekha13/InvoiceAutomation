@@ -104,7 +104,9 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
+            display: none;
         }
+        .btn-delete.show { display: inline-block; }
         .btn-delete:hover { background: #a52d01; }
     </style>
 </head>
@@ -118,7 +120,6 @@
         </div>
         <div class="user-info">
             <span id="userName"></span>
-            <button type="button" class="btn-toggle-edit" id="btnSowToggleEdit">Enable Edit</button>
             <button type="button" class="btn-logout" onclick="logout()">Logout</button>
         </div>
     </div>
@@ -139,7 +140,10 @@
                         <th>Project role</th>
                         <th>SOW project duration</th>
                         <th>Document</th>
-                        <th>Actions</th>
+                        <th>
+                            Actions
+                            <button type="button" class="btn-toggle-edit" id="btnSowToggleEdit">Enable Edit</button>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="sowTableBody">
@@ -216,6 +220,9 @@
                         if (url) window.open(url, '_blank');
                     });
                 });
+                if (sowEditMode) {
+                    document.querySelectorAll('.btn-delete').forEach(function(btn) { btn.classList.add('show'); });
+                }
                 bindSowEditableCells();
             } catch (e) {
                 tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Failed to load: ' + e.message + '</td></tr>';
@@ -263,10 +270,12 @@
                 btn.textContent = 'Disable Edit';
                 btn.classList.add('disable');
                 cells.forEach(function(c) { c.classList.add('sow-edit-enabled'); });
+                document.querySelectorAll('.btn-delete').forEach(function(btn) { btn.classList.add('show'); });
             } else {
                 btn.textContent = 'Enable Edit';
                 btn.classList.remove('disable');
                 cells.forEach(function(c) { c.classList.remove('sow-edit-enabled'); });
+                document.querySelectorAll('.btn-delete').forEach(function(btn) { btn.classList.remove('show'); });
             }
         }
 
