@@ -55,6 +55,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         sys_path = os.path.join(os.path.dirname(__file__), '..')
         if sys_path not in __import__('sys').path:
             __import__('sys').path.insert(0, sys_path)
+        from datetime import timedelta
         from shared.helpers import (
             get_invoice,
             update_invoice,
@@ -62,6 +63,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             _parse_continuation_response_for_approval,
             _extract_payment_details_from_igentic_response,
             save_complete_log,
+            _parse_net_terms_days,
+            _parse_date_to_date,
         )
 
         existing = get_invoice(invoice_id)
@@ -87,6 +90,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     except (TypeError, ValueError):
                         pass
                 kwargs[sql_col] = val
+
+        # When net terms change, recalculate due date = invoice received/created date + net terms days
+        if "net_terms" in body:
+            base_date = _parse_date_to_date(
+                existing.get("invoice_received_date") or existing.get("created_at")
+            )
+            if base_date is None:
+                from datetime import date
+                base_date = date.today()
+            net_terms_val = body.get("net_terms") or existing.get("payment_terms")
+            days = _parse_net_terms_days(net_terms_val)
+            if days is not None:
+                new_due = base_date + timedelta(days=days)
+                kwargs["due_date"] = new_due.isoformat()[:10]
+                logger.info("Recalculated due_date to %s from net_terms=%s (base_date=%s, days=%s)",
+                            kwargs["due_date"], net_terms_val, base_date, days)
 
         # When approved_hours is updated: validation and payment details all happen on iGentic (same session).
         # We only send the hours; iGentic validates (match vs invoice hours) and returns payment details if matched.
@@ -165,6 +184,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "project_name",
                 "business_unit",
                 "notes",
+                "comments",
                 "template",
                 "addl_comments",
                 "approval_status",
