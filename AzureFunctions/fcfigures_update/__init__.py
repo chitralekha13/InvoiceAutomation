@@ -28,6 +28,7 @@ FIELD_MAP = {
     "business_unit": "business_unit",
     "template": "template",
     "current_comments": "notes",
+    "comments": "comments",
     "addl_comments": "addl_comments",
 }
 

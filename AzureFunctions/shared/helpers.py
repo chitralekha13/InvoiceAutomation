@@ -724,11 +724,10 @@ def merge_sow_into_invoice_fields(
     )
     comments.insert(0, sow_comment)
 
-    # Write to comments/notes only
-    existing = (fields.get("notes") or fields.get("comment") or "").strip()
+    # Write to comments column (invoices.comments) for SOW validation messages
+    existing = (fields.get("comments") or fields.get("notes") or "").strip()
     combined = existing + (" " if existing else "") + " ".join(comments)
-    fields["notes"] = combined
-    fields["comment"] = combined
+    fields["comments"] = combined
     return fields
 
 

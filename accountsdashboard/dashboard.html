@@ -834,6 +834,7 @@
                                 <th>Vendor Hours</th>
                                 <th>Approved Hours</th>
                                 <th>Status</th>
+                                <th>Comments</th>
                                 <th>Pay Rate</th>
                                 <th>Invoice Amount</th>
                                 <th>
@@ -876,6 +877,7 @@
                                 <th><!-- Vendor Hours - no filter --></th>
                                 <th><!-- Approved Hours - no filter --></th>
                                 <th><!-- Status - already filtered by dropdown --></th>
+                                <th><input type="text" id="filterComments" placeholder="Filter..." class="column-filter"></th>
                                 <th><!-- Pay Rate - no filter --></th>
                                 <th><!-- Invoice Amount - no filter --></th>
                                 <th><!-- Date Inv Recd - no filter --></th>
@@ -1159,6 +1161,7 @@
             const divisionFilter = document.getElementById('filterDivision')?.value.toLowerCase() || '';
             const clientFilter = document.getElementById('filterClient')?.value.toLowerCase() || '';
             const projectFilter = document.getElementById('filterProject')?.value.toLowerCase() || '';
+            const commentsFilter = document.getElementById('filterComments')?.value.toLowerCase() || '';
             
             filteredRows = filteredRows.filter(r => {
                 const matchesDocName = !docNameFilter || (r.doc_name || '').toLowerCase().includes(docNameFilter);
@@ -1168,9 +1171,10 @@
                 const matchesDivision = !divisionFilter || (r.division || '').toLowerCase().includes(divisionFilter);
                 const matchesClient = !clientFilter || (r.client_name || '').toLowerCase().includes(clientFilter);
                 const matchesProject = !projectFilter || ((r.project_name || '').toLowerCase().includes(projectFilter));
+                const matchesComments = !commentsFilter || ((r.comments || r.notes || '').toLowerCase().includes(commentsFilter));
                 
                 return matchesDocName && matchesInvoiceNo && matchesConsultancy && 
-                    matchesResource && matchesDivision && matchesClient && matchesProject;
+                    matchesResource && matchesDivision && matchesClient && matchesProject && matchesComments;
             });
         }
 
@@ -1209,6 +1213,7 @@
                     <td class="editable ${disabledClass}" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
                     <td class="editable ${disabledClass}" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
                     <td>${escapeHtml(row.approval_status || row.status || 'Pending')}</td>
+                    <td class="editable ${disabledClass}" data-field="comments" data-id="${id}" title="${escapeHtml((row.comments || row.notes || '').slice(0, 200))}">${escapeHtml(row.comments || row.notes || '')}</td>
                     <td class="editable ${disabledClass}" data-field="pay_rate" data-id="${id}">${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : ''}</td>
                     <td class="editable ${disabledClass}" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
@@ -1613,7 +1618,7 @@
 
         // Column filter listeners
         ['filterDocName', 'filterInvoiceNo', 'filterConsultancy', 'filterResource', 
-        'filterDivision', 'filterClient', 'filterProject'].forEach(id => {
+        'filterDivision', 'filterClient', 'filterComments', 'filterProject'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
                 el.addEventListener('input', debounce(() => {
