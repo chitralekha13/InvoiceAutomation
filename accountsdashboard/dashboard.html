@@ -1510,6 +1510,13 @@
                             renderTable();
                             updateToastArea('Saved', `${field} updated successfully`, 'success');
                         }, 1000);
+                    } else if (field === 'net_terms' && data.invoice && data.invoice.due_date) {
+                        // Backend recalculates due date when net terms change; re-render so Due Date cell updates
+                        setTimeout(() => {
+                            applyFilters();
+                            renderTable();
+                            updateToastArea('Saved', 'Net terms and due date updated', 'success');
+                        }, 800);
                     } else {
                         updateToastArea('Saved', `${field} updated`, 'success');
                     }
