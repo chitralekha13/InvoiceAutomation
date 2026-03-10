@@ -453,10 +453,16 @@ def get_all_invoices() -> list:
 # ============================================================================
 
 def _normalize_for_sow_match(value: Optional[str]) -> str:
-    """Normalize string for SOW/invoice matching: strip and lower."""
+    """Normalize string for SOW/invoice matching: strip, lower, remove trailing punctuation, collapse spaces."""
     if value is None:
         return ""
-    return (str(value).strip()).lower()
+    s = str(value).strip().lower()
+    # Remove trailing punctuation (e.g. "Sigmago Solutions Inc." vs "Sigmago Solutions Inc")
+    s = s.rstrip(".,;:")
+    # Collapse multiple spaces
+    import re
+    s = re.sub(r"\s+", " ", s)
+    return s
 
 
 def _parse_net_terms_days(net_terms: Optional[str]) -> Optional[int]:
@@ -620,12 +626,15 @@ def update_sow(sow_id: str, **kwargs) -> None:
 
 def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[str]) -> Optional[Dict]:
     """
-    Find a SOW that matches the given resource name and consultancy name.
-    Matching is case-insensitive and trims whitespace. Returns first match or None.
+    Find a SOW that matches the given resource name AND consultancy name.
+    Both must match: same consultancy can have multiple resources (multiple SOWs), so we match
+    on the pair (resource, consultancy). Uses _normalize_for_sow_match for both fields.
+    Returns first match or None.
     """
     rn = _normalize_for_sow_match(resource_name)
     cn = _normalize_for_sow_match(consultancy_name)
-    if not rn and not cn:
+    # Require both resource and consultancy to be present; never match on consultancy alone
+    if not rn or not cn:
         return None
     conn = get_sql_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -636,18 +645,19 @@ def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[st
                    project_role, sow_project_duration
             FROM sow_documents
             WHERE LOWER(TRIM(COALESCE(resource_name, ''))) = %s
-              AND LOWER(TRIM(COALESCE(consultancy_name, ''))) = %s
             ORDER BY last_updated_at DESC
-            LIMIT 1
-        """, (rn, cn))
-        row = cursor.fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        for k, v in d.items():
-            if hasattr(v, 'isoformat'):
-                d[k] = v.isoformat()
-        return d
+        """, (rn,))
+        rows = cursor.fetchall()
+        for row in rows:
+            sow_rn = _normalize_for_sow_match(row.get("resource_name"))
+            sow_cn = _normalize_for_sow_match(row.get("consultancy_name"))
+            if sow_rn == rn and sow_cn == cn:
+                d = dict(row)
+                for k, v in d.items():
+                    if hasattr(v, 'isoformat'):
+                        d[k] = v.isoformat()
+                return d
+        return None
     finally:
         cursor.close()
         conn.close()
