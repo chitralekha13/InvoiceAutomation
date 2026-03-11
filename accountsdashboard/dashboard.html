@@ -155,10 +155,62 @@
         }
         .metric-card.clickable.active .value,
         .metric-card.clickable.active .label { color: white; }
-        #tilePending { border-left: 4px solid #16A34A; }
-        #tileApproved { border-left: 4px solid #7C3AED; }
-        #tileNeedApproval { border-left: 4px solid #2563EB; }
-        #tilePaymentInitiated { border-left: 4px solid #7C3AED; }
+
+
+        #tilePending { 
+            background: #dcfce7; 
+        }
+        #tilePending:hover { 
+            background: #16A34A; 
+        }
+        #tilePending .value, #tilePending .label { 
+            color: #16A34A; 
+        }
+        #tilePending:hover .value, #tilePending:hover .label { 
+            color: white; 
+        }
+
+        #tileApproved { 
+            background: #ede9fe; 
+        }
+        #tileApproved:hover { 
+            background: #7C3AED; 
+        }
+        #tileApproved .value, #tileApproved .label { 
+            color: #7C3AED; 
+        }
+        #tileApproved:hover .value, #tileApproved:hover .label { 
+            color: white; 
+        }
+
+
+        #tileNeedApproval { 
+            background: #dbeafe; 
+        }
+        #tileNeedApproval:hover { 
+            background: #2563EB; 
+        }
+        #tileNeedApproval .value, #tileNeedApproval .label { 
+            color: #2563EB; 
+        }
+        #tileNeedApproval:hover .value, #tileNeedApproval:hover .label { 
+            color: white; 
+        }
+
+
+        #tilePaymentInitiated { 
+            background: #ede9fe; 
+        }
+        #tilePaymentInitiated:hover { 
+            background: #7C3AED; 
+        }
+        #tilePaymentInitiated .value, #tilePaymentInitiated .label { 
+            color: #7C3AED; 
+        }
+        #tilePaymentInitiated:hover .value, #tilePaymentInitiated:hover .label { 
+            color: white; 
+        }
+
 
         .edit-mode-indicator {
             position: fixed;
@@ -570,7 +622,6 @@
             border-bottom: 1px solid #dee2e6;
         }
         .column-filter {
-            width: 100%;
             padding: 6px 8px;
             border: 1px solid #ccc;
             border-radius: 4px;
@@ -624,25 +675,91 @@
             gap: 16px;
             margin-bottom: 20px;
         }
+        
         .daily-stat-box {
             background: #f8f9fa;
             padding: 16px;
-            border-radius: 0px;
             text-align: center;
-            border-left: 4px solid #0078d4;
+            transition: all 0.3s ease;
         }
-        .daily-stat-box.pending {
-            border-left-color: #16A34A;
+
+        /* Total */
+        .daily-stat-box:first-child { 
+            background: #f3f4f6; 
         }
-        .daily-stat-box.approved {
-            border-left-color: #7C3AED;
+        .daily-stat-box:first-child:hover {
+            background: #e5e7eb;
         }
-        .daily-stat-box.need-approval {
-            border-left-color: #2563EB;
+        .daily-stat-box:first-child .daily-stat-value,
+        .daily-stat-box:first-child .daily-stat-label {
+            color: #333;
         }
-        .daily-stat-box.payment-done {
-            border-left-color: #7C3AED;
+
+        /* Pending - Green */
+        .daily-stat-box.pending { 
+            background: #dcfce7; 
         }
+        .daily-stat-box.pending:hover { 
+            background: #16A34A; 
+        }
+        .daily-stat-box.pending .daily-stat-value,
+        .daily-stat-box.pending .daily-stat-label { 
+            color: #16A34A; 
+        }
+        .daily-stat-box.pending:hover .daily-stat-value,
+        .daily-stat-box.pending:hover .daily-stat-label { 
+            color: white; 
+        }
+
+        /* Approved - Purple */
+        .daily-stat-box.approved { 
+            background: #ede9fe; 
+        }
+        .daily-stat-box.approved:hover { 
+            background: #7C3AED; 
+        }
+        .daily-stat-box.approved .daily-stat-value,
+        .daily-stat-box.approved .daily-stat-label { 
+            color: #7C3AED; 
+        }
+        .daily-stat-box.approved:hover .daily-stat-value,
+        .daily-stat-box.approved:hover .daily-stat-label { 
+            color: white; 
+        }
+
+        /* Need Approval - Blue */
+        .daily-stat-box.need-approval { 
+            background: #dbeafe; 
+        }
+        .daily-stat-box.need-approval:hover { 
+            background: #2563EB; 
+        }
+        .daily-stat-box.need-approval .daily-stat-value,
+        .daily-stat-box.need-approval .daily-stat-label { 
+            color: #2563EB; 
+        }
+        .daily-stat-box.need-approval:hover .daily-stat-value,
+        .daily-stat-box.need-approval:hover .daily-stat-label { 
+            color: white; 
+        }
+
+        /* Payment Done - Purple */
+        .daily-stat-box.payment-done { 
+            background: #ede9fe; 
+        }
+        .daily-stat-box.payment-done:hover { 
+            background: #7C3AED; 
+        }
+        .daily-stat-box.payment-done .daily-stat-value,
+        .daily-stat-box.payment-done .daily-stat-label { 
+            color: #7C3AED; 
+        }
+        .daily-stat-box.payment-done:hover .daily-stat-value,
+        .daily-stat-box.payment-done:hover .daily-stat-label { 
+            color: white; 
+        }
+
+
         .daily-stat-value {
             font-size: 32px;
             font-weight: 600;
@@ -965,7 +1082,7 @@
                                 <th style="width: 120px;">Project Name (Excel)</th>
                                 <th style="width: 120px;">Payment initiated on</th>
                                 <th style="width: 120px;">Payment Details</th>
-                                <th style="min-width: 180px;">
+                                <th style="width: 120px;">
                                     <div style="display: flex; flex-direction: column; gap: 4px;">
                                         <button type="button" id="btnToggleEdit" onclick="toggleEditMode()" 
                                                 style="background: #0078d4; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
@@ -2333,6 +2450,10 @@
                     <div class="daily-stat-value" id="modalTotalCount">0</div>
                     <div class="daily-stat-label">Total Invoices</div>
                 </div>
+                <div class="daily-stat-box pending">
+                    <div class="daily-stat-value" id="modalPendingCount">0</div>
+                    <div class="daily-stat-label">Pending</div>
+                </div>
                 <div class="daily-stat-box approved">
                     <div class="daily-stat-value" id="modalApprovedCount">0</div>
                     <div class="daily-stat-label">Approved</div>
@@ -2340,10 +2461,6 @@
                 <div class="daily-stat-box need-approval">
                     <div class="daily-stat-value" id="modalNeedApprovalCount">0</div>
                     <div class="daily-stat-label">Need Approval</div>
-                </div>
-                <div class="daily-stat-box pending">
-                    <div class="daily-stat-value" id="modalPendingCount">0</div>
-                    <div class="daily-stat-label">Pending</div>
                 </div>
                 <div class="daily-stat-box payment-done">
                     <div class="daily-stat-value" id="modalPaymentDoneCount">0</div>
