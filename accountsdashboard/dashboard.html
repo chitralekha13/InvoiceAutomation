@@ -6,6 +6,7 @@
     <title>Invoice Management - Accounts Portal</title>
     <script src="config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
       if (/^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname)) {
         var s = document.createElement('script'); s.src = 'config.local.js'; s.onerror = function() { this.remove(); }; document.head.appendChild(s);
@@ -154,6 +155,11 @@
         }
         .metric-card.clickable.active .value,
         .metric-card.clickable.active .label { color: white; }
+        #tilePending { border-left: 4px solid #16A34A; }
+        #tileApproved { border-left: 4px solid #7C3AED; }
+        #tileNeedApproval { border-left: 4px solid #2563EB; }
+        #tilePaymentInitiated { border-left: 4px solid #7C3AED; }
+
         .edit-mode-indicator {
             position: fixed;
             top: 70px;
@@ -380,6 +386,32 @@
         tr.row-payment-done {
             background-color: #e0f5e0 !important;
         }
+
+        .payment-modal-close {
+            position: relative;
+            /* existing styles... */
+        }
+        .payment-modal-close::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            right: 0;
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-bottom: 6px;
+        }
+        .payment-modal-close:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+
         .payment-modal {
             position: fixed;
             inset: 0;
@@ -407,7 +439,7 @@
         .payment-details-table .payment-section { font-weight: 600; color: #1e3a5f; padding-top: 12px; }
         .payment-pre { white-space: pre-wrap; margin: 0; font-family: inherit; }
         .payment-modal-close { float: right; background: #666; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-        .payment-modal-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; }
+        .payment-modal-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;text-align: right; }
         .btn-payment-done-modal {
             background: #107c10;
             color: white;
@@ -494,6 +526,32 @@
             gap: 12px;
         }
 
+        /* Status Badge Styles */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-badge.pending {
+            background: #dcfce7;
+            color: #16A34A;
+        }
+        .status-badge.approved {
+            background: #ede9fe;
+            color: #7C3AED;
+        }
+        .status-badge.need-approval {
+            background: #dbeafe;
+            color: #2563EB;
+        }
+        .status-badge.payment-initiated {
+            background: #ede9fe;
+            color: #7C3AED;
+        }
+
+
         /* Excel Upload progress toast */
         .toast { position: fixed; bottom: 24px; right: 24px; background: #1e3a5f; color: white; padding: 14px 20px; border-radius: 6px; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 3000; display: none; max-width: 360px; }
         .toast.show { display: block; }
@@ -540,7 +598,7 @@
         .daily-summary-content {
             background: white;
             padding: 24px;
-            border-radius: 8px;
+            border-radius: 0px;
             max-width: 90%;
             max-height: 85vh;
             overflow: auto;
@@ -569,21 +627,21 @@
         .daily-stat-box {
             background: #f8f9fa;
             padding: 16px;
-            border-radius: 6px;
+            border-radius: 0px;
             text-align: center;
             border-left: 4px solid #0078d4;
         }
         .daily-stat-box.pending {
-            border-left-color: #ca5010;
+            border-left-color: #16A34A;
         }
         .daily-stat-box.approved {
-            border-left-color: #107c10;
+            border-left-color: #7C3AED;
         }
         .daily-stat-box.need-approval {
-            border-left-color: #d13438;
+            border-left-color: #2563EB;
         }
         .daily-stat-box.payment-done {
-            border-left-color: #107c10;
+            border-left-color: #7C3AED;
         }
         .daily-stat-value {
             font-size: 32px;
@@ -600,7 +658,7 @@
             max-height: 400px;
             overflow: auto;
             border: 1px solid #dee2e6;
-            border-radius: 6px;
+            border-radius: 0px;
         }
         .daily-summary-table {
             width: 100%;
@@ -679,6 +737,62 @@
             background: #e0e0e0 !important;
         }
 
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-bottom: 6px;
+        }
+
+        .icon-btn:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .btn-logout.icon-btn { background: transparent; color: white; }
+        .btn-logout.icon-btn:hover { background: rgba(255,255,255,0.15); }
+
+        .btn-refresh.icon-btn { background: #0078d4; color: white; }
+        .btn-refresh.icon-btn:hover { background: #005a9e; }
+
+        .btn-view.icon-btn { background: #28a745; color: white; }
+        .btn-view.icon-btn:hover { background: #218838; }
+
+        .btn-view-payment.icon-btn { background: #107c10; color: white; }
+        .btn-view-payment.icon-btn:hover { background: #0e6b0e; }
+
+        .row-delete-btn.icon-btn { color: #d13438; background: none; }
+        .row-delete-btn.icon-btn:hover { transform: scale(1.2); }
+
+        .viewer-btn.icon-btn { padding: 7px 16px; }
+        .viewer-btn-download.icon-btn { background: #0078d4; color: #fff; }
+        .viewer-btn-download.icon-btn:hover { background: #006cbf; }
+        .viewer-btn-close.icon-btn { background: #fff; color: #333; border: 1px solid #ccc; }
+        .viewer-btn-close.icon-btn:hover { background: #f0f0f0; }
 
 
     </style>
@@ -726,7 +840,7 @@
         </div>
         <div class="user-info">
             <span class="user-name" id="userName"></span>
-            <button type="button" class="btn-logout" onclick="logout()">Logout</button>
+            <button type="button" class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout"><i class="fas fa-sign-out-alt"></i></button>
         </div>
 
     </div>
@@ -747,7 +861,7 @@
             <button type="button" id="clearFilterBtn" class="btn-refresh" onclick="clearAllFilters()" style="background: #f32a0b; display: none;">Clear Filters</button>
         </div>
         <div style="display:flex;gap:16px;align-items:center;">
-            <button class="btn-refresh" onclick="loadDashboard()">Refresh</button>
+            <button class="btn-refresh icon-btn" onclick="loadDashboard()" data-tooltip="Refresh">    <i class="fas fa-sync-alt"></i></button>
             <!-- <button class="btn-refresh" onclick="downloadExcel()">Download Excel</button> -->
         </div>
 
@@ -811,51 +925,51 @@
                     <table>
                         <thead>
                             <tr>
-                                <th class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                                <th>S.No</th>
-                                <th>ID (UUID)</th>
-                                <th>Doc Name</th>
-                                <th>Invoice No</th>
-                                <th>Consultancy Name</th>
-                                <th>Resource Name</th>
-                                <th>Division</th>
-                                <th>Client Name</th>
-                                <th>
+                                <th style="width: 40px;" class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                <th style="width: 50px;">S.No</th>
+                                <th style="width: 100px;">ID (UUID)</th>
+                                <th style="width: 120px;">Doc Name</th>
+                                <th style="width: 100px;">Invoice No</th>
+                                <th style="width: 120px;">Consultancy Name</th>
+                                <th style="width: 120px;">Resource Name</th>
+                                <th style="width: 50px;">Division</th>
+                                <th style="width: 120px;">Client Name</th>
+                                <th style="width: 100px;">
                                     <button type="button" class="sort-btn" data-sort="pay_period_start" onclick="sortTable('pay_period_start')">
                                         Pay Period Start <span class="sort-icon">↕</span>
                                     </button>
                                 </th>
-                                <th>
+                                <th style="width: 100px;">
                                     <button type="button" class="sort-btn" data-sort="pay_period_end" onclick="sortTable('pay_period_end')">
                                         Pay Period End <span class="sort-icon">↕</span>
                                     </button>
                                 </th>
-                                <th>Net Terms</th>
-                                <th>Vendor Hours</th>
-                                <th>Approved Hours</th>
-                                <th>Status</th>
-                                <th>Comments</th>
-                                <th>Pay Rate</th>
-                                <th>Invoice Amount</th>
-                                <th>
+                                <th style="width: 80px;">Net Terms</th>
+                                <th style="width: 100px;">Vendor Hours</th>
+                                <th style="width: 100px;">Approved Hours</th>
+                                <th style="width: 100px;">Status</th>
+                                <th style="width: 120px;">Comments</th>
+                                <th style="width: 100px;">Pay Rate</th>
+                                <th style="width: 120px;">Invoice Amount</th>
+                                <th style="width: 120px;">
                                     <button type="button" class="sort-btn" data-sort="pay_period_start" onclick="sortTable('pay_period_start')">
                                         Date Inv Recd <span class="sort-icon">↕</span>
                                     </button>
                                 </th>
-                                <th>
+                                <th style="width: 120px;">
                                     <button type="button" class="sort-btn" data-sort="pay_period_start" onclick="sortTable('pay_period_start')">
                                         Due Date <span class="sort-icon">↕</span>
                                     </button>
                                 </th>
-                                <th>Project Name</th>
-                                <th>Project Name (Excel)</th>
-                                <th>Payment initiated on</th>
-                                <th>Payment Details</th>
+                                <th style="width: 120px;">Project Name</th>
+                                <th style="width: 120px;">Project Name (Excel)</th>
+                                <th style="width: 120px;">Payment initiated on</th>
+                                <th style="width: 120px;">Payment Details</th>
                                 <th style="min-width: 180px;">
                                     <div style="display: flex; flex-direction: column; gap: 4px;">
                                         <button type="button" id="btnToggleEdit" onclick="toggleEditMode()" 
                                                 style="background: #0078d4; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                                            Enable Edit
+                                            <i class="fas fa-edit" data-tooltip="Enable Edit"></i>
                                         </button>
                                         <!-- <span style="font-size: 11px; font-weight: normal;">View / Download</span> -->
                                     </div>
@@ -916,7 +1030,7 @@
 
     <div id="paymentModal" class="payment-modal" style="display:none" onclick="if(event.target===this)closePaymentModal()">
         <div class="payment-modal-content">
-            <button type="button" class="payment-modal-close" onclick="closePaymentModal()">Close</button>
+            <button type="button" class="payment-modal-close" onclick="closePaymentModal()" data-tooltip="Close"><i class="fas fa-times"></i></button>
             <h3>Payment Information</h3>
             <div id="paymentModalContent" class="payment-modal-body"></div>
             <div class="payment-modal-footer">
@@ -930,8 +1044,8 @@
         <div id="viewerHeader">
             <span id="viewerFileName"></span>
             <div id="viewerActions">
-                <button class="viewer-btn viewer-btn-download" id="btnDownload">Download</button>
-                <button class="viewer-btn viewer-btn-close"    id="btnClose">Close</button>
+                <button class="viewer-btn viewer-btn-download" id="btnDownload"><i class="fas fa-download" data-tooltip="Download"></i></button>
+                <button class="viewer-btn viewer-btn-close"    id="btnClose">	<i class="fas fa-times" data-tooltip="Close"></i></button>
             </div>
         </div>
         <div id="pdfContainer"></div>
@@ -1197,7 +1311,7 @@
                 tr.innerHTML = `
                     <td class="checkbox-col">
                         <input type="checkbox" class="row-select" data-id="${id}">
-                        <button type="button" class="row-delete-btn" data-id="${id}">Delete</button>
+                        <button type="button" class="row-delete-btn icon-btn" data-id="${id}" data-tooltip="Delete"><i class="fas fa-trash-alt"></i></button>
                     </td>
                     <td>${idx + 1}</td>
                     <td title="${id}">${id ? id.slice(0, 8) + '...' : ''}</td>
@@ -1212,7 +1326,7 @@
                     <td class="editable ${disabledClass}" data-field="net_terms" data-id="${id}">${escapeHtml(row.net_terms || '')}</td>
                     <td class="editable ${disabledClass}" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
                     <td class="editable ${disabledClass}" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
-                    <td>${escapeHtml(row.approval_status || row.status || 'Pending')}</td>
+                    <td><span class="status-badge ${getStatusClass(row.approval_status || row.status || 'Pending')}">${escapeHtml(row.approval_status || row.status || 'Pending')}</span></td>
                     <td class="editable ${disabledClass}" data-field="comments" data-id="${id}" title="${escapeHtml((row.comments || row.notes || '').slice(0, 200))}">${escapeHtml(row.comments || row.notes || '')}</td>
                     <td class="editable ${disabledClass}" data-field="pay_rate" data-id="${id}">${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : ''}</td>
                     <td class="editable ${disabledClass}" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
@@ -1222,13 +1336,14 @@
                     <td class="editable ${disabledClass}" data-field="project_name_excel" data-id="${id}">${escapeHtml(row.project_name_excel || '')}</td>
                     <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
                     <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
-                        ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment">View Payment</button>' : ''}
+                        ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment icon-btn" data-tooltip="View Payment"><i class="fas fa-credit-card"></i></button>' : ''}
                     </td>
                     <td>
                         <button class="btn-view"
                             data-id="${escapeAttr(row.invoice_uuid || row.invoice_id || row.id || '')}"
-                            data-name="${escapeAttr(row.doc_name || row.name || '')}">
-                            View Document
+                            data-name="${escapeAttr(row.doc_name || row.name || '')}"
+                            data-tooltip="View Document">
+                            <i class="fas fa-file-alt"></i>
                         </button>
                     </td>
                 `;
@@ -2178,11 +2293,20 @@
             renderTable();
         }
 
+        function getStatusClass(status) {
+            const s = (status || '').toLowerCase();
+            if (s === 'pending') return 'pending';
+            if (s === 'approved') return 'approved';
+            if (s === 'need approval' || s === 'need_approval') return 'need-approval';
+            if (s === 'payment initiated' || s === 'payment_initiated') return 'payment-initiated';
+            return '';
+        }
+
     </script>
 
     <div id="timeConverterModal" class="payment-modal" style="display:none" onclick="if(event.target===this)closeTimeConverter()">
     <div class="payment-modal-content" style="max-width: 500px;">
-        <button type="button" class="payment-modal-close" onclick="closeTimeConverter()">Close</button>
+        <button type="button" class="payment-modal-close" onclick="closeTimeConverter()" data-tooltip="Close"><i class="fas fa-times"></i></button>
         <h3>UTC ↔ Local Time Converter</h3>
         <div style="margin-top: 20px;">
             <label style="display: block; margin-bottom: 8px; font-weight: 600;">Enter UTC Time:</label>
@@ -2201,7 +2325,7 @@
         <div class="daily-summary-content">
             <div class="daily-summary-header">
                 <div class="daily-summary-title">📅 Daily Summary - <span id="modalSummaryDate">--/--/----</span></div>
-                <button type="button" class="payment-modal-close" onclick="closeDailySummary()">Close</button>
+                <button type="button" class="payment-modal-close" onclick="closeDailySummary()" data-tooltip="Close"><i class="fas fa-times"></i></button>
             </div>
             
             <div class="daily-summary-stats">
@@ -2248,7 +2372,7 @@
             
             <div class="daily-summary-actions">
                 <button type="button" class="btn-download-excel" onclick="downloadDailySummaryExcel()">
-                    📊 Download Excel
+                    <i class="fas fa-file-excel" data-tooltip="Download Excel"></i>
                 </button>
             </div>
         </div>
