@@ -477,7 +477,7 @@
             background: white;
             padding: 24px;
             border-radius: 8px;
-            max-width: 600px;
+            max-width: 900px;
             max-height: 80vh;
             overflow: auto;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
@@ -924,28 +924,29 @@
                     <span></span><span></span><span></span>
                 </button>
                 <div class="header-dropdown" id="headerDropdown">
-                    <button type="button" onclick="window.open('users.html','_blank'); closeHeaderMenu();">
+                    <button type="button" onclick="window.open('users.html','_self'); closeHeaderMenu();">
                         Manage users
                     </button>
                     <button type="button" onclick="downloadExcel(); closeHeaderMenu();">
-                        Download Dasboard
+                        Download Dashboard
                     </button>
                     <button type="button" onclick="downloadExcelcur(); closeHeaderMenu();">
-                        Download Current Data
+                        Download Current Summary
                     </button>
-
                     <button type="button" onclick="generateDailySummary(); closeHeaderMenu();">
-                        Generate daily summary
+                        Generate Daily Summary
                     </button>
-                    <a href="sow.html" onclick="closeHeaderMenu();">SOW Dashboard</a>
+                    <button type="button" onclick="window.open('sow.html','_self'); closeHeaderMenu();">
+                        SOW Dashboard
+                    </button>
                     <hr class="dropdown-divider">
                     <input type="file" id="syncExcelInput" accept=".xlsx,.xls"
                         style="display:none" onchange="onSyncFileChosen(this)">
                     <button type="button" onclick="document.getElementById('syncExcelInput').click();">
-                        Monthly TimeSheet Upload
+                        TimeSheet Upload
                     </button>
                     <button type="button" onclick="openSyncReportsFolder(); closeHeaderMenu();">
-                        View Sync Status Reports
+                        View Sync Reports
                     </button>
                     <button type="button" onclick="openTimeConverter(); closeHeaderMenu();">
                         UTC/Local Time Converter
@@ -1094,31 +1095,31 @@
                                 </th>
                             </tr>
                             <tr class="filter-row">
-                                <th><!-- Checkbox column - no filter --></th>
-                                <th><!-- S.No - no filter --></th>
-                                <th><!-- ID - no filter --></th>
-                                <th><input type="text" id="filterDocName" placeholder="Filter..." class="column-filter"></th>
-                                <th><input type="text" id="filterInvoiceNo" placeholder="Filter..." class="column-filter"></th>
-                                <th><input type="text" id="filterConsultancy" placeholder="Filter..." class="column-filter"></th>
-                                <th><input type="text" id="filterResource" placeholder="Filter..." class="column-filter"></th>
-                                <th><input type="text" id="filterDivision" placeholder="Filter..." class="column-filter"></th>
-                                <th><input type="text" id="filterClient" placeholder="Filter..." class="column-filter"></th>
-                                <th><!-- Pay Period Start - date range if needed --></th>
-                                <th><!-- Pay Period End - date range if needed --></th>
-                                <th><!-- Net Terms - no filter --></th>
-                                <th><!-- Vendor Hours - no filter --></th>
-                                <th><!-- Approved Hours - no filter --></th>
-                                <th><!-- Status - already filtered by dropdown --></th>
-                                <th><input type="text" id="filterComments" placeholder="Filter..." class="column-filter"></th>
-                                <th><!-- Pay Rate - no filter --></th>
-                                <th><!-- Invoice Amount - no filter --></th>
-                                <th><!-- Date Inv Recd - no filter --></th>
-                                <th><!-- Due Date - already filtered --></th>
-                                <th><input type="text" id="filterProject" placeholder="Filter..." class="column-filter"></th>
-                                <th><!-- Project Name Excel - no filter --></th>
-                                <th><!-- Payment initiated - no filter --></th>
-                                <th><!-- Payment Details - no filter --></th>
-                                <th><!-- Enable Edit - no filter --></th>
+                                <th style="width: 40px;"><!-- Checkbox column - no filter --></th>
+                                <th style="width: 50px;"><!-- S.No - no filter --></th>
+                                <th style="width: 100px;"><!-- ID - no filter --></th>
+                                <th style="width: 120px;"><input type="text" id="filterDocName" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><input type="text" id="filterInvoiceNo" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><input type="text" id="filterConsultancy" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><input type="text" id="filterResource" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 50px;"><input type="text" id="filterDivision" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><input type="text" id="filterClient" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><!-- Pay Period Start - date range if needed --></th>
+                                <th style="width: 100px;"><!-- Pay Period End - date range if needed --></th>
+                                <th style="width: 80px;"><!-- Net Terms - no filter --></th>
+                                <th style="width: 100px;"><!-- Vendor Hours - no filter --></th>
+                                <th style="width: 100px;"><!-- Approved Hours - no filter --></th>
+                                <th style="width: 100px;"><!-- Status - already filtered by dropdown --></th>
+                                <th style="width: 120px;"><input type="text" id="filterComments" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><!-- Pay Rate - no filter --></th>
+                                <th style="width: 120px;"><!-- Invoice Amount - no filter --></th>
+                                <th style="width: 120px;"><!-- Date Inv Recd - no filter --></th>
+                                <th style="width: 120px;"><!-- Due Date - already filtered --></th>
+                                <th style="width: 120px;"><input type="text" id="filterProject" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><!-- Project Name Excel - no filter --></th>
+                                <th style="width: 120px;"><!-- Payment initiated - no filter --></th>
+                                <th style="width: 120px;"><!-- Payment Details - no filter --></th>
+                                <th style="width: 120px;"><!-- Enable Edit - no filter --></th>
                             </tr>
 
                         </thead>

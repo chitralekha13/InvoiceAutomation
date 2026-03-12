@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>User Management</title>
   <script src="config.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -67,9 +68,9 @@
         .header-dropdown-wrap { position: relative; }
     
 
-    .container { max-width: 1200px; margin: 50px auto; padding: 0 20px; }
+    .container { max-width: 1400px; margin: 50px auto; padding: 0 20px; }
 
-    .stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; justify-content: center; }
     .stat-card {
       background: white; border-radius: 8px; padding: 16px 24px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.07); min-width: 130px;
@@ -84,6 +85,9 @@
     .documents-card {
       background: white; padding: 40px;
       border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
     }
 
     .message { padding: 15px; border-radius: 5px; margin-bottom: 20px; display: none; }
@@ -270,6 +274,51 @@
             align-items: center;
             gap: 16px;
         }
+    .btn-logout.icon-btn {
+      background: transparent;
+      color: white;
+      border: 1px solid rgba(255,255,255,0.6);
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+  }
+  .btn-logout.icon-btn i { font-size: 16px; }
+  .btn-search.icon-btn, .btn-refresh.icon-btn {
+      padding: 10px 14px;
+      border-radius: 5px;
+  }
+  .btn-search.icon-btn i, .btn-refresh.icon-btn i {
+      font-size: 16px;
+  }
+  [data-tooltip] { position: relative; }
+  [data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 1000;
+      margin-bottom: 6px;
+  }
+
+  .btn-edit.icon-btn, .btn-save.icon-btn, .btn-cancel-edit.icon-btn {
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+  }
+  .btn-edit.icon-btn { background: #0078d4; color: white; border: none; cursor: pointer; }
+  .btn-edit.icon-btn:hover { background: #006cbf; }
+  .btn-save.icon-btn { background: #107c10; color: white; border: none; cursor: pointer; }
+  .btn-save.icon-btn:hover { background: #0e6b0e; }
+  .btn-cancel-edit.icon-btn { background: #666; color: white; border: none; cursor: pointer; }
+  .btn-cancel-edit.icon-btn:hover { background: #484848; }
+
   </style>
 </head>
 
@@ -290,7 +339,10 @@
         </div>
         <div class="user-info">
             <span class="user-name" id="userName"></span>
-            <button type="button" class="btn-logout" onclick="logout()">Logout</button>
+            <div class="user-info">
+              <span class="user-name" id="userName"></span>
+              <button type="button" class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout"><i class="fas fa-sign-out-alt"></i></button>
+          </div>
         </div>
     </div>
 
@@ -321,10 +373,10 @@
 
     <div class="search-bar">
       <input type="text" class="search-input" id="search"
-             placeholder="Search by name, organisation, ID, role or status…"
-             oninput="filterTable()"/>
-      <button class="btn-search" onclick="filterTable()">Search</button>
-      <button class="btn-refresh" onclick="loadUsers()">Refresh</button>
+            placeholder="Search by name, organisation, ID, role or status…"
+            oninput="filterTable()"/>
+      <button class="btn-search icon-btn" onclick="filterTable()" data-tooltip="Search"><i class="fas fa-search"></i></button>
+      <button class="btn-refresh icon-btn" onclick="loadUsers()" data-tooltip="Refresh"><i class="fas fa-sync-alt"></i></button>
     </div>
 
     <table class="documents-table">
@@ -490,9 +542,9 @@
         : `<span class="role-badge role-${u.role.toLowerCase()}">${u.role}</span>`;
 
       const actionCell = isEditing
-        ? `<button class="btn-save"        onclick="saveEdit('${u.email}')">Save</button>
-           <button class="btn-cancel-edit" onclick="cancelEdit()">Cancel</button>`
-        : `<button class="btn-edit" onclick="startEdit('${u.email}')">Edit</button>`;
+        ? `<button class="btn-save icon-btn"        onclick="saveEdit('${u.email}')" data-tooltip="Save"><i class="fas fa-check"></i></button>
+          <button class="btn-cancel-edit icon-btn" onclick="cancelEdit()" data-tooltip="Cancel"><i class="fas fa-times"></i></button>`
+        : `<button class="btn-edit icon-btn" onclick="startEdit('${u.email}')" data-tooltip="Edit"><i class="fas fa-edit"></i></button>`;
 
       return `<tr style="${isEditing ? "background:#f0f7ff;" : ""}">
         <td><span class="file-firstname">${u.firstname}</span></td>

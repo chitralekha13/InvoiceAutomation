@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOW Dashboard - Accounts Portal</title>
     <script src="config.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -108,19 +109,42 @@
         }
         .btn-delete.show { display: inline-block; }
         .btn-delete:hover { background: #a52d01; }
+
+        [data-tooltip] { position: relative; }
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            margin-bottom: 6px;
+        }
+        
+        .btn-logout.icon-btn { padding: 8px 12px; }
+        .btn-logout.icon-btn i { font-size: 16px; }
+        .btn-upload i, .btn-back i { margin-right: 6px; }
+
+
     </style>
 </head>
 <body>
     <div class="header">
         <div class="header-left">
-            <a href="dashboard.html" class="btn-back">← Back to Dashboard</a>
+            <a href="dashboard.html" class="btn-back icon-btn" data-tooltip="Home"><i class="fas fa-home"></i></a>
             <span class="header-title">SOW Dashboard</span>
-            <button type="button" class="btn-upload" id="btnUploadSow">Upload SOW</button>
-            <input type="file" id="sowFileInput" accept=".pdf,.png,.jpg,.jpeg" />
         </div>
         <div class="user-info">
-            <span id="userName"></span>
-            <button type="button" class="btn-logout" onclick="logout()">Logout</button>
+            <span id="userName" data-tooltip="Logged in user"></span>
+            <button type="button" class="btn-upload icon-btn" id="btnUploadSow" data-tooltip="Upload SOW"><i class="fas fa-upload"></i></button>
+            <input type="file" id="sowFileInput" accept=".pdf,.png,.jpg,.jpeg" />
+            <button type="button" class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout"><i class="fas fa-sign-out-alt"></i></button>
         </div>
     </div>
 
