@@ -131,6 +131,20 @@
         .btn-logout.icon-btn i { font-size: 16px; }
         .btn-upload i, .btn-back i { margin-right: 6px; }
 
+        .btn-toggle-edit.icon-btn {
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .btn-toggle-edit.icon-btn i { font-size: 14px; }
+
+        .btn-view.icon-btn {
+            padding: 6px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .btn-view.icon-btn i { font-size: 14px; }
+
 
     </style>
 </head>
@@ -165,8 +179,7 @@
                         <th>SOW project duration</th>
                         <th>Document</th>
                         <th>
-                            Actions
-                            <button type="button" class="btn-toggle-edit" id="btnSowToggleEdit">Enable Edit</button>
+                            <button type="button" class="btn-toggle-edit icon-btn" id="btnSowToggleEdit" data-tooltip="Toggle Edit"><i class="fas fa-edit"></i></button>
                         </th>
                     </tr>
                 </thead>
@@ -219,7 +232,7 @@
                     const sowId = (s.sow_id || '').replace(/"/g, '&quot;');
                     const canView = !!s.pdf_url;
                     const doc = canView
-                        ? '<button type="button" class="btn-view" data-url="' + s.pdf_url + '" data-name="' + (s.doc_name || 'Document').replace(/"/g, '&quot;') + '">View Document</button>'
+                            ? '<button type="button" class="btn-view icon-btn" data-url="' + s.pdf_url + '" data-name="' + (s.doc_name || 'Document').replace(/"/g, '&quot;') + '" data-tooltip="View Document"><i class="fas fa-eye"></i></button>'
                         : (s.doc_name || '—');
                     return '<tr>' +
                         '<td class="sow-editable" data-field="resource_name" data-id="' + sowId + '">' + (s.resource_name || '—') + '</td>' +
@@ -291,12 +304,14 @@
             const btn = document.getElementById('btnSowToggleEdit');
             const cells = document.querySelectorAll('.sow-editable');
             if (sowEditMode) {
-                btn.textContent = 'Disable Edit';
+                btn.innerHTML = '<i class="fas fa-lock"></i>'; 
+                btn.setAttribute('data-tooltip', 'Disable Edit');
                 btn.classList.add('disable');
                 cells.forEach(function(c) { c.classList.add('sow-edit-enabled'); });
                 document.querySelectorAll('.btn-delete').forEach(function(btn) { btn.classList.add('show'); });
             } else {
-                btn.textContent = 'Enable Edit';
+                btn.innerHTML = '<i class="fas fa-edit"></i>';
+                btn.setAttribute('data-tooltip', 'Enable Edit');
                 btn.classList.remove('disable');
                 cells.forEach(function(c) { c.classList.remove('sow-edit-enabled'); });
                 document.querySelectorAll('.btn-delete').forEach(function(btn) { btn.classList.remove('show'); });
