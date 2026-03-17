@@ -307,12 +307,34 @@
       z-index: 1000;
       margin-bottom: 6px;
   }
-  .btn-edit.icon-btn:hover::after {
+  
+  .btn-edit.icon-btn::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s, visibility 0.2s;
+      margin-bottom: 6px;
       bottom: auto;
       top: 100%;
       margin-bottom: 0;
       margin-top: 6px;
   }
+
+  .btn-edit.icon-btn:hover::after {
+      opacity: 1;
+      visibility: visible;
+  }
+
   .btn-save.icon-btn:hover::after {
       bottom: auto;
       top: 100%;

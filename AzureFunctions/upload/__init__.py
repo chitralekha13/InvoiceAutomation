@@ -184,23 +184,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logger.info(f"Extracted fields from iGentic: {fields}")
 
         if use_db and fields:
-            # 3a) Duplicate invoice check
-            existing_id = find_duplicate_invoice(fields)
-            if existing_id:
-                logger.info(f"Duplicate invoice detected (matches {existing_id}), rejecting – not saved to SharePoint or DB")
-                return func.HttpResponse(
-                    json.dumps({
-                        "message": "Duplicate invoice - rejected, not saved anywhere",
-                        "filename": safe_name,
-                        "invoice_uuid": invoice_id,
-                        "duplicate_of": existing_id,
-                        "data": {"invoice_processing": invoice_data, "agent_orchestration": orchestration_response},
-                    }),
-                    status_code=200,
-                    mimetype="application/json",
-                )
-
-            # 3b) Vendor org check: vendor can only upload invoices for their own org/company
+            # 3a) Vendor org check: vendor can only upload invoices for their own org/company
             inv_vendor_name = (fields.get("vendor_name") or "").strip()
             if vendor_org and inv_vendor_name:
                 inv_vendor_lower = inv_vendor_name.lower()
@@ -219,6 +203,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         status_code=403,
                         mimetype="application/json",
                     )
+
+            # 3b) Duplicate invoice check (only after confirming org)
+            existing_id = find_duplicate_invoice(fields)
+            if existing_id:
+                logger.info(f"Duplicate invoice detected (matches {existing_id}), rejecting – not saved to SharePoint or DB")
+                return func.HttpResponse(
+                    json.dumps({
+                        "message": "Duplicate invoice - rejected, not saved anywhere",
+                        "filename": safe_name,
+                        "invoice_uuid": invoice_id,
+                        "duplicate_of": existing_id,
+                        "data": {"invoice_processing": invoice_data, "agent_orchestration": orchestration_response},
+                    }),
+                    status_code=200,
+                    mimetype="application/json",
+                )
 
         # 4) Not a duplicate: upload to SharePoint and save
         #now = __import__('datetime').datetime.now()
