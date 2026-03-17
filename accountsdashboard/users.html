@@ -283,6 +283,7 @@
       cursor: pointer;
   }
   .btn-logout.icon-btn i { font-size: 16px; }
+  .btn-logout.icon-btn::after { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px;}
   .btn-search.icon-btn, .btn-refresh.icon-btn {
       padding: 10px 14px;
       border-radius: 5px;
@@ -306,6 +307,27 @@
       z-index: 1000;
       margin-bottom: 6px;
   }
+  .btn-edit.icon-btn:hover::after {
+      bottom: auto;
+      top: 100%;
+      margin-bottom: 0;
+      margin-top: 6px;
+  }
+  .btn-save.icon-btn:hover::after {
+      bottom: auto;
+      top: 100%;
+      margin-bottom: 0;
+      margin-top: 6px;
+  }
+
+  .btn-cancel-edit.icon-btn:hover::after {
+      bottom: auto;
+      top: 100%;
+      margin-bottom: 0;
+      margin-top: 6px;
+  }
+
+
 
   .btn-edit.icon-btn, .btn-save.icon-btn, .btn-cancel-edit.icon-btn {
       padding: 6px 10px;

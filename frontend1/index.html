@@ -278,7 +278,7 @@
                 const allowed = await validateUserEmail(loginResponse.account.username);
                 if (!allowed) return;
 
-                window.location.href = "retrieveupload.html";
+                window.location.href = "upload.html";
 
             } catch (e) {
                 handleLoginError(e);

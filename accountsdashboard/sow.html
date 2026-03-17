@@ -66,6 +66,7 @@
             font-size: 13px;
         }
         .btn-logout:hover { background: rgba(255,255,255,0.1); }
+        
         a.pdf-link { color: #0078d4; text-decoration: none; }
         a.pdf-link:hover { text-decoration: underline; }
         .btn-view {
@@ -126,9 +127,23 @@
             z-index: 1000;
             margin-bottom: 6px;
         }
-        
+        .btn-toggle-edit.icon-btn:hover::after {
+            bottom: auto;
+            top: 100%;
+            margin-bottom: 0;
+            margin-top: 6px;
+        }
+        .btn-back:hover::after {
+            bottom: auto;
+            top: 100%;
+            margin-bottom: 0;
+            margin-top: 6px;
+        }
+
+
         .btn-logout.icon-btn { padding: 8px 12px; }
         .btn-logout.icon-btn i { font-size: 16px; }
+        .btn-logout.icon-btn::after { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px;}
         .btn-upload i, .btn-back i { margin-right: 6px; }
 
         .btn-toggle-edit.icon-btn {
@@ -156,14 +171,16 @@
         </div>
         <div class="user-info">
             <span id="userName" data-tooltip="Logged in user"></span>
-            <button type="button" class="btn-upload icon-btn" id="btnUploadSow" data-tooltip="Upload SOW"><i class="fas fa-upload"></i></button>
-            <input type="file" id="sowFileInput" accept=".pdf,.png,.jpg,.jpeg" />
             <button type="button" class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout"><i class="fas fa-sign-out-alt"></i></button>
         </div>
     </div>
 
     <div class="main">
         <div id="messageArea"></div>
+        <div class="toolbar">
+            <button type="button" class="btn-upload" id="btnUploadSow" data-tooltip="Upload SOW"><i class="fas fa-upload"></i> Upload SOW</button>
+            <input type="file" id="sowFileInput" accept=".pdf,.png,.jpg,.jpeg" />
+        </div>
         <div class="table-wrap">
             <table>
                 <thead>
