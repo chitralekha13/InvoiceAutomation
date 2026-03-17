@@ -517,14 +517,17 @@
             document.getElementById('viewerOverlay').style.display = 'flex';
 
             try {
-                // Fetch through your API backend instead of directly from SharePoint
                 const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
-                const response = await fetch(API_BASE + '/api/sow/download', {
+                const response = await fetch(API_BASE + '/api/getdata', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pdf_url: url })
+                    body: JSON.stringify({ 
+                        pdf_url: url,
+                        fileName: fileName,
+                        action: 'stream'
+                    })
                 });
-                
+
                 if (!response.ok) throw new Error('Failed to fetch document');
                 
                 const blob = await response.blob();
@@ -541,6 +544,7 @@
                     `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to load: ${err.message}</p>`;
             }
         }
+
 
 
         async function renderPDF(arrayBuffer) {

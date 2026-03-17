@@ -140,6 +140,35 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 }
             )
 
+        if action == "stream" and (body or {}).get("pdf_url"):
+            sharepoint_url = (body or {}).get("pdf_url")
+            file_name = (body or {}).get("fileName") or "document.pdf"
+            file_path = "/" + sharepoint_url.split("/", 3)[-1] if sharepoint_url.startswith("http") else sharepoint_url
+
+            try:
+                ctx = get_sharepoint_context()
+                file = ctx.web.get_file_by_server_relative_url(file_path)
+                ctx.load(file)
+                ctx.execute_query()
+                file_content = file.read()
+            except Exception as e:
+                logger.exception("SharePoint download failed for pdf_url")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Failed to fetch file: {str(e)}"}),
+                    status_code=502,
+                    mimetype="application/json"
+                )
+
+            return func.HttpResponse(
+                body=file_content,
+                status_code=200,
+                headers={
+                    "Content-Type":                "application/pdf",
+                    "Content-Disposition":         f'inline; filename="{file_name}"',
+                    "Access-Control-Allow-Origin": "*",
+                }
+            )
+
         return func.HttpResponse(
             json.dumps({"error": "Unknown action"}),
             status_code=400,
