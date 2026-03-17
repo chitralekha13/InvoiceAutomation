@@ -441,7 +441,15 @@
 
         .payment-modal-close {
             position: relative;
-            /* existing styles... */
+            float: right;
+            background: #d13438;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 2001;
         }
         .payment-modal-close i,
         .payment-modal-close .fa-times {
@@ -449,9 +457,10 @@
         }
         .payment-modal-close::after {
             content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            right: 0;
+            position: fixed;
+            bottom: auto;
+            top:auto;
+            right: 24px;
             background: #333;
             color: white;
             padding: 4px 8px;
@@ -462,13 +471,17 @@
             visibility: hidden;
             transition: opacity 0.2s, visibility 0.2s;
             margin-bottom: 6px;
+            z-index: 2002;
         }
         .payment-modal-close:hover::after {
             opacity: 1;
             visibility: visible;
         }
 
-        .payment-modal {
+        .payment-modal-close:hover {
+            background: #666;
+        }
+            .payment-modal {
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,0.5);
