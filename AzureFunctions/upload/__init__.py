@@ -10,6 +10,7 @@ import uuid
 import io
 import re
 from datetime import datetime
+from shared.helpers import (invalid_invoice, insert_credit_invoice,update_due_date)  # Ensure these are imported for use in the code below
 
 
 logger = logging.getLogger(__name__)
@@ -221,42 +222,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 )
 
         # 4) Not a duplicate: upload to SharePoint and save
-        #now = __import__('datetime').datetime.now()
-        #folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
-        # Use pay period from agent response if available, otherwise use current date
-            pay_period_start = fields.get("pay_period_start") or fields.get("start_date")
-            logger.info(f"Determining folder path for SharePoint upload. pay_period_start={pay_period_start}")
-            if pay_period_start:
-                try:
-                    # Parse the date string to get year and month
-                    if isinstance(pay_period_start, str):
-                        # Try multiple date formats
-                        for fmt in ('%Y/%m/%d', '%Y-%m-%d'):
-                            try:
-                                pay_date = datetime.strptime(pay_period_start[:10], fmt)
-                                break
-                            except ValueError:
-                                continue
-                        else:
-                            # If no format worked, use current date
-                            pay_date = datetime.now()
-                    elif hasattr(pay_period_start, 'year'):
-                        # Already a date/datetime object
-                        pay_date = pay_period_start
-                    else:
-                        pay_date = datetime.now()
-                    
-                    folder_path = f"Invoices/{pay_date.year}/{pay_date.month:02d}_{pay_date.strftime('%B')}"
-                    logger.info(f"Using folder path based on pay_period_start: {folder_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to parse pay_period_start: {e}, using current date")
-                    now = datetime.now()
-                    folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
-            else:
-                # No pay period in agent response, use current date
-                now = datetime.now()
-                folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+        now = __import__('datetime').datetime.now()
+        folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
 
+        logger.info(f"Using folder path based on utc time now: {folder_path}")
         try:
             server_url = upload_file_to_sharepoint(file_content, safe_name, folder_path)
         except Exception as e:
@@ -316,10 +285,25 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             try:
                 amount = float(fields["invoice_amount"])
                 if amount < 0:
+
+                    vendor_name = fields.get("vendor_name")
+                    pay_period_start = fields.get("pay_period_start") or fields.get("start_date")
+                    pay_period_end = fields.get("pay_period_end") or fields.get("end_date")
+                    resource_name = fields.get("resource_name")
+                    invalid_invoice(vendor_name, resource_name,pay_period_start, pay_period_end)
+                    insert_credit_invoice(vendor_name, resource_name, pay_period_start, pay_period_end)
+
                     #update_invoice(invoice_id, is_credit_note=True)
                     logger.info(f"Marked invoice {invoice_id} as credit note based on negative amount: {amount}")
             except Exception as e:
                 logger.warning(f"Failed to determine if invoice {invoice_id} is a credit note: {e}")
+
+        # 5C) Update Due Date
+        if fields and fields.get("invoice_id") is not None:
+            try:
+                update_due_date(fields.get("invoice_id"))
+            except:
+                logger.warning(f"Failed to update due date for invoice {invoice_id}: {e}")
 
         # 6) Update Excel file in SharePoint (always - uses CSV data from iGentic)
         if fields:  # Only update Excel if we extracted CSV fields

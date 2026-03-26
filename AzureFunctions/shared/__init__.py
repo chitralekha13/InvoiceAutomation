@@ -24,6 +24,9 @@ from .helpers import (
     update_excel_file,
     save_complete_log,
     save_status_change_log,
+    invalid_invoice,
+    insert_credit_invoice,
+    update_due_date
 )
 
 __all__ = [
@@ -49,4 +52,8 @@ __all__ = [
     'update_excel_file',
     'save_complete_log',
     'save_status_change_log',
+    'invalid_invoice',
+    'insert_credit_invoice',
+    'update_due_date'
+
 ]

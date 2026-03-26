@@ -11,7 +11,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import jwt
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, Optional, Any, Union
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.client_credential import ClientCredential
@@ -285,6 +285,166 @@ def update_invoice(invoice_id: str, **kwargs) -> None:
         cursor.execute(query, values)
         conn.commit()
         logger.info(f"Updated invoice {invoice_id} in PostgreSQL database")
+    finally:
+        cursor.close()
+        conn.close()
+
+def invalid_invoice(vendor_name: str, resource_name: str, start_date: str, end_date: str) -> None:
+    """Mark invoice as invalid in PostgreSQL database"""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE invoices_india
+            SET status = 'Invalid', 
+                last_updated_at = NOW(),
+                approval_status = 'Invalid'
+            WHERE vendor_name = %s 
+                and resource_name = %s
+                AND ((start_date = %s) 
+                AND (end_date = %s))
+                AND status IN ('Pending', 'Need Approval')
+        """, (vendor_name, resource_name, start_date, end_date))
+        conn.commit()
+        logger.info(f"Marked invoice(s) for vendor {vendor_name} as invalid in PostgreSQL database")
+    finally:
+        cursor.close()
+        conn.close()
+
+def insert_credit_invoice(vendor_name: str, resource_name: str, start_date: str, end_date: str) -> None:
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Get sums
+        cursor.execute("""
+            SELECT SUM(invoice_hours), SUM(invoice_amount)
+            FROM invoices_india
+            WHERE vendor_name = %s
+              AND resource_name = %s
+              AND start_date = %s
+              AND end_date = %s
+              AND status = 'Invalid'
+        """, (vendor_name, resource_name, start_date, end_date))
+        
+        sums = cursor.fetchone()
+        invoice_hours_updated = sums[0] or 0
+        invoice_amount_updated = sums[1] or 0
+
+        # Get first invoice_id
+        cursor.execute("""
+            SELECT invoice_id,doc_name,payment_terms,invoice_number,payment_details,hourly_rate
+            FROM invoices_india
+            WHERE vendor_name = %s
+              AND resource_name = %s
+              AND start_date = %s
+              AND end_date = %s
+              AND status = 'Invalid'
+            ORDER BY created_at
+            LIMIT 1
+        """, (vendor_name, resource_name, start_date, end_date))
+        
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            logger.warning("No invalid invoices found. Skipping credit insert.")
+            return
+
+        invoice_id_updated = f"{row[0]}-Credit"
+        doc_name_updated = f"{row[1]}-Credit"
+        payment_terms_updated = row[2]
+        invoice_number_updated = f"{row[3]}-Credit"
+        payment_details_updated = row[4]
+        hourly_rate_updated = row[5]
+
+        # Insert credit invoice
+        cursor.execute("""
+            INSERT INTO invoices_india (
+                invoice_id, vendor_name, start_date, end_date, status,
+                created_at, invoice_received_date, is_credit_note,
+                invoice_hours, invoice_amount, resource_name,
+                doc_name,payment_terms,invoice_number,payment_details,hourly_rate
+            )
+            VALUES (%s, %s, %s, %s, 'Pending', NOW(), NOW(), TRUE, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            invoice_id_updated,
+            vendor_name,
+            start_date,
+            end_date,
+            invoice_hours_updated,
+            invoice_amount_updated,
+            resource_name,
+            doc_name_updated,
+            payment_terms_updated,
+            invoice_number_updated,
+            payment_details_updated,
+            hourly_rate_updated
+
+        ))
+
+        conn.commit()
+
+        update_due_date(invoice_id_updated)
+
+        if hourly_rate_updated*invoice_hours_updated == invoice_amount_updated:
+            logger.info(f"Validated Corrected Invoice Amount for vendor {vendor_name}")
+        else:
+            logger.info("Need to Validate Corrected Invoice Amount")
+
+        logger.info(f"Inserted credit invoice for vendor {vendor_name}")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+import re
+from datetime import timedelta
+
+def update_due_date(invoice_id: str) -> None:
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT created_at, payment_terms
+            FROM invoices_india
+            WHERE invoice_id = %s
+        """, (invoice_id,))
+        
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            logger.warning("No invoices found. Skipping Due date Edit")
+            return
+        
+        date_created = row[0]
+        terms_raw = row[1]
+
+        if not terms_raw:
+            logger.warning("No payment terms found")
+            return
+
+        match = re.search(r'\d+', terms_raw)
+        if not match:
+            logger.warning("No numeric value found in payment terms")
+            return
+
+        net_terms_numeric = int(match.group())
+
+
+        updated_due = date_created + timedelta(days=net_terms_numeric)
+
+
+        cursor.execute("""
+            UPDATE invoices_india
+            SET due_date = %s
+            WHERE invoice_id = %s
+        """, (updated_due, invoice_id))
+
+        conn.commit()
+        logger.info(f"Updated due date for invoice {invoice_id}")
+
     finally:
         cursor.close()
         conn.close()
