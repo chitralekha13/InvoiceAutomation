@@ -311,6 +311,16 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             except Exception as e:
                 logger.warning("Save JSON log failed: %s", e)
         
+        # 5B) Check if the data is Credit Note based on invoice_amount:
+        if fields and fields.get("invoice_amount") is not None:
+            try:
+                amount = float(fields["invoice_amount"])
+                if amount < 0:
+                    #update_invoice(invoice_id, is_credit_note=True)
+                    logger.info(f"Marked invoice {invoice_id} as credit note based on negative amount: {amount}")
+            except Exception as e:
+                logger.warning(f"Failed to determine if invoice {invoice_id} is a credit note: {e}")
+
         # 6) Update Excel file in SharePoint (always - uses CSV data from iGentic)
         if fields:  # Only update Excel if we extracted CSV fields
             try:
