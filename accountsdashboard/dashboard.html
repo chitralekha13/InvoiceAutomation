@@ -109,7 +109,7 @@
         .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
         .metrics-row {
             display: grid;
-            grid-template-columns: repeat(8, 1fr);
+            grid-template-columns: repeat(9, 1fr);
             gap: 8px;
             margin-bottom: 16px;
         }
@@ -438,6 +438,9 @@
         tr.row-payment-done {
             background-color: #e0f5e0 !important;
         }
+        tr.row-invalid {
+            background-color: #fde7e9 !important;
+        }
 
         .payment-modal-close {
             position: relative;
@@ -619,6 +622,10 @@
         .status-badge.payment-initiated {
             background: #ede9fe;
             color: #7C3AED;
+        }
+        .status-badge.invalid {
+            background: #fde7e9;
+            color: #a4262c;
         }
 
 
@@ -940,6 +947,29 @@
         .viewer-btn-close.icon-btn { background: #fff; color: #333; border: 1px solid #ccc; }
         .viewer-btn-close.icon-btn:hover { background: #f0f0f0; }
 
+        .metric-card.past-months-summary {
+            background: linear-gradient(135deg, #7C3AED 0%, #9f5afd 100%);
+            color: white;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card.past-months-summary:hover {
+            background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .metric-card.past-months-summary .value {
+            color: white;
+            font-size: 24px;
+        }
+        .metric-card.past-months-summary .label {
+            color: rgba(255,255,255,0.9);
+        }
+        .metric-card.past-months-summary .date-display {
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 4px;
+        }
 
     </style>
 </head>
@@ -1001,10 +1031,15 @@
                 <option value="approved">Approved</option>
                 <option value="need_approval">Need Approval</option>
                 <option value="payment_initiated">Payment Initiated</option>
+                <option value="invalid">Invalid</option>
             </select>
 
             <label for="dueBy">Due by</label>
             <input type="date" id="dueBy" placeholder="mm/dd/yyyy">
+
+            <label for="filterMonth">Month</label>
+            <input type="month" id="filterMonth">
+
             <button type="button" id="clearFilterBtn" class="btn-refresh" onclick="clearAllFilters()" style="background: #f32a0b; display: none;">Clear Filters</button>
         </div>
         <div style="display:flex;gap:16px;align-items:center;">
@@ -1040,6 +1075,10 @@
                 <div class="value" id="mPaymentInitiated">0</div>
                 <div class="label">Payment Initiated</div>
             </div>
+            <div class="metric-card clickable" id="tileInvalid" data-filter="invalid" onclick="filterByTile('invalid')">
+                <div class="value" id="mInvalid">0</div>
+                <div class="label">Invalid</div>
+            </div>
             <div class="metric-card amount">
                 <div class="value" id="mTotalAmount">$0.00</div>
                 <div class="label">Total Amount</div>
@@ -1050,6 +1089,14 @@
                 <div class="date-display" id="dailySummaryDate">--/--/----</div>
                 <div class="time-toggle" id="dailySummaryTimeToggle" onclick="event.stopPropagation(); toggleDailySummaryTimeFormat()">
                     Show Local Time
+                </div>
+            </div>
+            <div class="metric-card past-months-summary" id="pastMonthsSummaryCard" onclick="openPastMonthsSummary()" style="background: linear-gradient(135deg, #7C3AED 0%, #9f5afd 100%); color: white; cursor: pointer;">
+                <div class="value" id="pastMonthsSummaryCount">0</div>
+                <div class="label">Past Months</div>
+                <div class="date-display" id="pastMonthsSummaryDate">Excluding Current</div>
+                <div class="time-toggle" style="font-size: 10px; color: rgba(255,255,255,0.7); margin-top: 2px;">
+                    Non-Payment Initiated
                 </div>
             </div>
             <div class="metric-card" id="toastArea" style="cursor: default; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
@@ -1257,12 +1304,26 @@
             if (!e.target.closest('.header-dropdown-wrap')) closeHeaderMenu();
         });
 
+
+        document.getElementById('filterMonth').addEventListener('change', function() {
+            monthFilter = document.getElementById('filterMonth').value;
+            applyFilters();
+            renderTable();
+            updateTileActiveState();
+        });
+
+        let monthFilter = '';
         let allRows = [];
         let filteredRows = [];
         let excelUrl = '';
         let isEditMode = false;
 
+        // Set default month filter to current month
         window.addEventListener('load', () => { 
+            const now = new Date();
+            const currentMonth = now.toISOString().slice(0, 7);
+            document.getElementById('filterMonth').value = currentMonth;
+            monthFilter = currentMonth;
             loadDashboard();
             displayCurrentTime();
         });
@@ -1278,6 +1339,11 @@
 
         function showLoading(show) {
             document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+        }
+
+        function updatePastMonthsSummaryCard() {
+            const pastMonthsData = getPastMonthsSummaryData();
+            document.getElementById('pastMonthsSummaryCount').textContent = pastMonthsData.length;
         }
 
         async function loadDashboard() {
@@ -1305,7 +1371,8 @@
                 renderMetrics(data.metrics || {});
                 renderTable();
                 updateTileActiveState();
-                updateDailySummaryCard()
+                updateDailySummaryCard();
+                updatePastMonthsSummaryCard();
             } catch (err) {
                 console.error('Dashboard load error:', err);
                 alert('Dashboard failed: ' + (err.message || 'Check API URL and network.'));
@@ -1320,12 +1387,25 @@
             document.getElementById('mApproved').textContent = m.approved ?? 0;
             document.getElementById('mNeedApproval').textContent = m.need_approval ?? 0;
             document.getElementById('mPaymentInitiated').textContent = m.payment_initiated ?? 0;
-            document.getElementById('mTotalAmount').textContent = '$' + ((m.total_amount ?? 0) / 1).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            document.getElementById('mInvalid').textContent = (m.invalid ?? allRows.filter(r => {
+                const s = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                return s === 'invalid';
+            }).length);
+            const totalAmountExcludingInvalid = allRows.reduce((sum, r) => {
+                const normalizedStatus = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                if (normalizedStatus === 'invalid') return sum;
+                return sum + (parseFloat(r.invoice_amount) || 0);
+            }, 0);
+            document.getElementById('mTotalAmount').textContent = '$' + totalAmountExcludingInvalid.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
-
+        
         function clearAllFilters() {
             document.getElementById('filterAll').value = 'all';
             document.getElementById('dueBy').value = '';
+            // Set default back to current month
+            const now = new Date();
+            const currentMonth = now.toISOString().slice(0, 7);
+            document.getElementById('filterMonth').value = currentMonth;
             document.getElementById('clearFilterBtn').style.display = 'none';
             document.getElementById('dailySummaryCard').style.opacity = '1';
             document.getElementById('dailySummaryCard').style.pointerEvents = 'auto';
@@ -1334,6 +1414,7 @@
             applyFilters();
             renderTable();
         }
+
 
         function filterByTile(filterValue) {
             document.getElementById('filterAll').value = filterValue;
@@ -1369,15 +1450,25 @@
                     return d && d.toString().slice(0, 10) <= dueBy;
                 });
             }
+
+            // Add month filter logic
+            if (monthFilter) {
+                filteredRows = filteredRows.filter(r => {
+                    const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
+                    if (!d) return false;
+                    const dateStr = d.toString().slice(0, 7); // Format: YYYY-MM
+                    return dateStr === monthFilter;
+                });
+            }
             
             // Update metrics to show filtered counts
-            updateMetricsForFilter(statusFilter, dueBy);
+            updateMetricsForFilter(statusFilter, dueBy, monthFilter);
             
             // Apply column filters
             applyColumnFilters();
         }
 
-        function updateMetricsForFilter(statusFilter, dueBy) {
+        function updateMetricsForFilter(statusFilter, dueBy, monthFilter) { // Add monthFilter parameter
             let filtered = [...allRows];
             
             if (dueBy) {
@@ -1387,20 +1478,40 @@
                 });
             }
             
+            // Add month filter logic
+            if (monthFilter) {
+                filtered = filtered.filter(r => {
+                    const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
+                    if (!d) return false;
+                    const dateStr = d.toString().slice(0, 7);
+                    return dateStr === monthFilter;
+                });
+            }
+            
             // Calculate counts based on filtered data
             const total = filtered.length;
             const pending = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'pending').length;
             const approved = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'approved').length;
             const needApproval = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'need approval').length;
             const paymentInitiated = filtered.filter(r => r.bill_pay_initiated_on).length;
+            const invalid = filtered.filter(r => {
+                const s = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                return s === 'invalid';
+            }).length;
+            const totalAmount = filtered.reduce((sum, r) => {
+                const normalizedStatus = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                if (normalizedStatus === 'invalid') return sum;
+                return sum + (parseFloat(r.invoice_amount) || 0);
+            }, 0);
             
             document.getElementById('mTotal').textContent = total;
             document.getElementById('mPending').textContent = pending;
             document.getElementById('mApproved').textContent = approved;
             document.getElementById('mNeedApproval').textContent = needApproval;
             document.getElementById('mPaymentInitiated').textContent = paymentInitiated;
+            document.getElementById('mInvalid').textContent = invalid;
+            document.getElementById('mTotalAmount').textContent = '$' + totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
-
 
 
         // Column filter state
@@ -1454,7 +1565,13 @@
                 const id = row.invoice_uuid || row.invoice_id || '';
                 const tr = document.createElement('tr');
                 const isPaymentInitiated = !!row.bill_pay_initiated_on;
-                const disabledClass = isPaymentInitiated ? 'cell-disabled' : '';
+                const statusValue = (row.approval_status || row.status || '').toLowerCase().replace(/\s/g, '_');
+                const isInvalid = statusValue === 'invalid';
+                const isNonEditable = isPaymentInitiated || isInvalid;
+                const disabledClass = isNonEditable ? 'cell-disabled' : '';
+                const disabledReason = isInvalid ? 'Invalid Invoice' : 'Cannot edit - Payment Initiated';
+                const disabledDataAttr = isNonEditable ? `data-tooltip="${disabledReason}"` : '';
+                const disabledTitleAttr = isNonEditable ? `title="${disabledReason}"` : '';
                 tr.innerHTML = `
                     <td class="checkbox-col">
                         <input type="checkbox" class="row-select" data-id="${id}">
@@ -1463,24 +1580,24 @@
                     <td>${idx + 1}</td>
                     <td title="${id}">${id ? id.slice(0, 8) + '...' : ''}</td>
                     <td>${escapeHtml(row.doc_name || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="invoice_number" data-id="${id}">${escapeHtml(row.invoice_number || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="consultancy_name" data-id="${id}">${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="resource_name" data-id="${id}">${escapeHtml(row.resource_name || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="division" data-id="${id}">${escapeHtml(row.division || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="client_name" data-id="${id}">${escapeHtml(row.client_name || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="pay_period_start" data-id="${id}">${formatDate(row.pay_period_start)}</td>
-                    <td class="editable ${disabledClass}" data-field="pay_period_end" data-id="${id}">${formatDate(row.pay_period_end)}</td>
-                    <td class="editable ${disabledClass}" data-field="net_terms" data-id="${id}">${escapeHtml(row.net_terms || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
-                    <td class="editable ${disabledClass}" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_number" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.invoice_number || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="consultancy_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="resource_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.resource_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="division" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.division || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="client_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.client_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_period_start" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDate(row.pay_period_start)}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_period_end" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDate(row.pay_period_end)}</td>
+                    <td class="editable ${disabledClass}" data-field="net_terms" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.net_terms || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="vendor_hours" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
+                    <td class="editable ${disabledClass}" data-field="approved_hours" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.approved_hours ?? ''}</td>
                     <td><span class="status-badge ${getStatusClass(row.approval_status || row.status || 'Pending')}">${escapeHtml(row.approval_status || row.status || 'Pending')}</span></td>
-                    <td class="editable ${disabledClass}" data-field="comments" data-id="${id}" title="${escapeHtml((row.comments || row.notes || '').slice(0, 200))}">${escapeHtml(row.comments || row.notes || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="pay_rate" data-id="${id}">${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : ''}</td>
-                    <td class="editable ${disabledClass}" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                    <td class="editable ${disabledClass}" data-field="comments" data-id="${id}" ${disabledDataAttr} title="${isNonEditable ? disabledReason : escapeHtml((row.comments || row.notes || '').slice(0, 200))}">${escapeHtml(row.comments || row.notes || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_rate" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : ''}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_amount" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
                     <td>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
-                    <td class="editable ${disabledClass}" data-field="due_date" data-id="${id}">${formatDate(row.due_date || row.dueDate)}</td>
-                    <td class="editable ${disabledClass}" data-field="project_name" data-id="${id}">${escapeHtml(row.project_name || '')}</td>
-                    <td class="editable ${disabledClass}" data-field="project_name_excel" data-id="${id}">${escapeHtml(row.project_name_excel || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="due_date" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDate(row.due_date || row.dueDate)}</td>
+                    <td class="editable ${disabledClass}" data-field="project_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.project_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="project_name_excel" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.project_name_excel || '')}</td>
                     <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
                     <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
                         ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment icon-btn" data-tooltip="View Payment"><i class="fas fa-credit-card"></i></button>' : ''}
@@ -1497,11 +1614,14 @@
                 if (row.bill_pay_initiated_on) {
                 tr.classList.add('row-payment-done');
             }
+            if (isInvalid) {
+                tr.classList.add('row-invalid');
+            }
             // Apply current edit mode state to newly rendered cells
             if (isEditMode) {
                 document.querySelectorAll('.editable').forEach(cell => {
                     const row = cell.closest('tr');
-                    if (row && row.classList.contains('row-payment-done')) {
+                    if (row && (row.classList.contains('row-payment-done') || row.classList.contains('row-invalid'))) {
                         cell.classList.add('edit-disabled');
                     } else {
                         cell.classList.add('edit-enabled');
@@ -1672,7 +1792,7 @@
                     
                     // Check if the cell is disabled (payment initiated)
                     if (this.classList.contains('cell-disabled')) {
-                        this.title = "Cannot edit - Payment Initiated";
+                        this.title = this.getAttribute('data-tooltip') || "Cannot edit - Payment Initiated";
                         return;
                     }
                     
@@ -2446,8 +2566,88 @@
             if (s === 'approved') return 'approved';
             if (s === 'need approval' || s === 'need_approval') return 'need-approval';
             if (s === 'payment initiated' || s === 'payment_initiated') return 'payment-initiated';
+            if (s === 'invalid') return 'invalid';
             return '';
         }
+
+        // Past Months Summary - shows all data except payment initiated for previous calendar months
+        function getPastMonthsSummaryData() {
+            const now = new Date();
+            //const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            const currentMonth = now.toISOString().slice(0, 7); // Current month YYYY-MM
+            
+            // Filter: previous months only (before current month), excluding payment_initiated status
+            const pastMonthsData = allRows.filter(r => {
+                const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
+                if (!d) return false;
+                
+                const dateStr = d.toString().slice(0, 7); // YYYY-MM
+                const rowMonth = dateStr.slice(0, 7);
+                
+                // Exclude current month and payment initiated status
+                const isPaymentInitiated = r.bill_pay_initiated_on;
+                const isPastMonth = rowMonth < currentMonth;
+                
+                return isPastMonth && !isPaymentInitiated;
+            });
+            
+            return pastMonthsData;
+        }
+
+        function openPastMonthsSummary() {
+            const pastMonthsData = getPastMonthsSummaryData();
+            
+            // Calculate stats
+            const total = pastMonthsData.length;
+            const pending = pastMonthsData.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'pending').length;
+            const approved = pastMonthsData.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'approved').length;
+            const needApproval = pastMonthsData.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'need approval').length;
+            
+            // Update stats display
+            document.getElementById('modalPastMonthsTotalCount').textContent = total;
+            document.getElementById('modalPastMonthsPendingCount').textContent = pending;
+            document.getElementById('modalPastMonthsApprovedCount').textContent = approved;
+            document.getElementById('modalPastMonthsNeedApprovalCount').textContent = needApproval;
+            
+            // Get current and previous month names
+            const now = new Date();
+            const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const monthName = prevMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
+            document.getElementById('modalPastMonthsDate').textContent = 'Till ' + monthName;
+            
+            // Populate table
+            const tbody = document.getElementById('pastMonthsSummaryTableBody');
+            tbody.innerHTML = '';
+            
+            pastMonthsData.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${escapeHtml(row.invoice_no || row.invoiceNumber || '')}</td>
+                    <td>${escapeHtml(row.consultancy_name || row.consultancyName || '')}</td>
+                    <td>${escapeHtml(row.resource_name || row.resourceName || '')}</td>
+                    <td>${escapeHtml(row.client_name || row.clientName || '')}</td>
+                    <td>${row.due_date || row.dueDate || ''}</td>
+                    <td>${row.invoice_amount ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                    <td><span class="status-badge ${getStatusClass(row.approval_status || row.status || 'Pending')}">${escapeHtml(row.approval_status || row.status || 'Pending')}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            document.getElementById('pastMonthsSummaryModal').classList.add('show');
+        }
+
+        function closePastMonthsSummary() {
+            document.getElementById('pastMonthsSummaryModal').classList.remove('show');
+        }
+
+        function downloadPastMonthsSummaryExcel() {
+            // Similar to downloadDailySummaryExcel but using pastMonthsData
+            const pastMonthsData = getPastMonthsSummaryData();
+            // Create Excel download logic here
+            alert('Download Past Months Summary - ' + pastMonthsData.length + ' records');
+        }
+
 
     </script>
 
@@ -2525,6 +2725,63 @@
         </div>
     </div>
 
+    <!-- Past Months Summary Modal -->
+<div id="pastMonthsSummaryModal" class="monthly-summary-modal" onclick="if(event.target===this)closePastMonthsSummary()">
+    <div class="monthly-summary-content">
+        <div class="monthly-summary-header">
+            <div class="monthly-summary-title">📅 Past Months Summary - <span id="modalPastMonthsDate">All Previous Months</span></div>
+            <button type="button" class="payment-modal-close icon-btn" onclick="closePastMonthsSummary()" data-tooltip="Close"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <div class="monthly-summary-stats">
+            <div class="daily-stat-box">
+                <div class="daily-stat-value" id="modalPastMonthsTotalCount">0</div>
+                <div class="daily-stat-label">Total Invoices</div>
+            </div>
+            <div class="daily-stat-box pending">
+                <div class="daily-stat-value" id="modalPastMonthsPendingCount">0</div>
+                <div class="daily-stat-label">Pending</div>
+            </div>
+            <div class="daily-stat-box approved">
+                <div class="daily-stat-value" id="modalPastMonthsApprovedCount">0</div>
+                <div class="daily-stat-label">Approved</div>
+            </div>
+            <div class="daily-stat-box need-approval">
+                <div class="daily-stat-value" id="modalPastMonthsNeedApprovalCount">0</div>
+                <div class="daily-stat-label">Need Approval</div>
+            </div>
+            <div class="daily-stat-box">
+                <div class="daily-stat-value" id="modalPastMonthsMonthLabel">Past Months</div>
+                <div class="daily-stat-label">Excluding Current</div>
+            </div>
+        </div>
+
+        
+        <div class="daily-summary-table-wrapper">
+            <table class="daily-summary-table">
+                <thead>
+                    <tr>
+                        <th>S.No</th>
+                        <th>Invoice No</th>
+                        <th>Consultancy</th>
+                        <th>Resource</th>
+                        <th>Client</th>
+                        <th>Due Date</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="pastMonthsSummaryTableBody"></tbody>
+            </table>
+        </div>
+        
+        <div class="daily-summary-actions">
+            <button type="button" class="btn-download-excel icon-btn" onclick="downloadPastMonthsSummaryExcel()">
+                <i class="fas fa-file-excel" data-tooltip="Download Excel"></i>
+            </button>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
