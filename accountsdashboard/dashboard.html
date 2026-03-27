@@ -267,7 +267,7 @@
 
         .pane-headers {
             display: grid;
-            grid-template-columns: repeat(3 1fr);
+            grid-template-columns: repeat(2 1fr);
             gap: 0;
             margin-bottom: 0;
             background: #f8f9fa;
@@ -1061,7 +1061,6 @@
         
         <div class="pane-headers">
             <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
-            <div class="pane-header" onclick="window.open('users.html', '_blank')">Resources View</div>
             <div class="pane-header" data-pane="consultancy" onclick="switchPane('consultancy')">Consultancy View</div>
         </div>
         
@@ -1174,12 +1173,7 @@
                             </div>
                         </div>
                     </div>
-                    <div style="align-self:flex-end;">
-                        <button onclick="applyConsultancyFilter()" 
-                            style="background:#0078d4; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:600;">
-                            Apply Filter
-                        </button>
-                    </div>
+                    
                 </div>
 
                 <!-- Table -->
@@ -1309,6 +1303,117 @@
                     const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
                     if (full) setDisplayName(full);
                 }
+            } catch (_) { }
+        }
+        async function applyConsultancyFilter() {
+            const vendorName = document.getElementById('consultancyDropdown').value;
+            if (!vendorName) {
+            alert('Please select a consultancy');
+            return;
+            }
+            const selectedResources = [...document.querySelectorAll('.resource-checkbox:checked')]
+            .map(cb => cb.value);
+
+            let url = API_BASE + '/api/consultancy/invoices?vendor_name=' + encodeURIComponent(vendorName);
+            if (selectedResources.length > 0) {
+                url += '&resources=' + encodeURIComponent(selectedResources.join(','));
+            }
+
+            try {
+                const res = await fetch(url, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+             });
+            if (!res.ok) return;
+            const data = await res.json().catch(() => ({}));
+            renderConsultancyTable(data.rows || []);
+            } catch (_) { }
+       }   
+        async function loadResources(vendorName) {
+            const container = document.getElementById('resourceCheckboxes');
+                if (!vendorName) {
+                    container.innerHTML = '<span style="color:#999;">Select a consultancy first</span>';
+                    renderConsultancyTable([]);
+                    return;
+                }
+            try {
+                const res = await fetch(API_BASE + '/api/vendor/summary?vendor_name=' + encodeURIComponent(vendorName), {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) return;
+                    const data = await res.json().catch(() => ({}));
+                    container.innerHTML = '';
+                    (data.summary || []).forEach(resource => {
+                    const label = document.createElement('label');
+                    label.style.display = 'block';
+                    label.style.marginBottom = '4px';
+                    label.innerHTML = `
+                    <input type="checkbox" value="${resource.resource_name}" class="resource-checkbox" onchange="applyConsultancyFilter()">
+                    ${resource.resource_name};
+            `
+                    container.appendChild(label);
+            });
+                // Auto load all invoices for this vendor when consultancy is selected
+                applyConsultancyFilter();
+            } catch (_) { }
+        }
+        function renderConsultancyTable(rows) {
+            const tbody = document.getElementById('consultancyTableBody');
+            tbody.innerHTML = '';
+            if (!rows || rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="25" style="text-align:center; color:#999; padding:40px;">No records found</td></tr>';
+                return;
+            }
+            rows.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                <td><input type="checkbox"></td>
+                <td>${index + 1}</td>
+                <td>${row.invoice_id || ''}</td>
+                <td>${row.doc_name || ''}</td>
+                <td>${row.invoice_number || ''}</td>
+                <td>${row.vendor_name || ''}</td>
+                <td>${row.resource_name || ''}</td>
+                <td>${row.business_unit || ''}</td>
+                <td>${row.project_name || ''}</td>
+                <td>${row.start_date || ''}</td>
+                <td>${row.end_date || ''}</td>
+                <td>${row.payment_terms || ''}</td>
+                <td>${row.vendor_hours || ''}</td>
+                <td>${row.approved_hours || ''}</td>
+                <td>${row.approval_status || ''}</td>
+                <td>${row.notes || ''}</td>
+                <td>${row.hourly_rate ? '₹' + row.hourly_rate : ''}</td>
+                <td>${row.invoice_amount ? '₹' + row.invoice_amount : ''}</td>
+                <td>${row.invoice_date || ''}</td>
+                <td>${row.due_date || ''}</td>
+                <td>${row.project_name || ''}</td>
+                <td>${row.bill_pay_initiated_on || ''}</td>
+                <td>${row.approved_by || ''}</td>
+                <td>${row.orchestrator_summary || ''}</td>
+                <td></td>
+        `       ;
+                tbody.appendChild(tr);
+            });
+        }
+        async function loadConsultancies() {
+            if (!API_BASE) return;
+            try {
+                const res = await fetch(API_BASE + '/api/vendors', {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                const dropdown = document.getElementById('consultancyDropdown');
+                dropdown.innerHTML = '<option value="">Select Consultancy</option>';
+                (data.vendors || []).forEach(vendor => {
+                const option = document.createElement('option');
+                option.value = vendor;
+                option.textContent = vendor;
+                dropdown.appendChild(option);
+                });
             } catch (_) { }
         }
 
