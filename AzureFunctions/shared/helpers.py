@@ -583,6 +583,83 @@ def get_invoices_by_vendor(vendor_id: str) -> list:
         cursor.close()
         conn.close()
 
+def get_all_vendors() -> list:
+    """Get distinct list of vendors from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cursor.execute("SELECT DISTINCT vendor_name FROM invoices WHERE vendor_name IS NOT NULL AND vendor_name != '' ORDER BY vendor_name;")
+        rows = cursor.fetchall()
+        return [dict(row)["vendor_name"] for row in rows]
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_vendor_summary(vendor_name: str):
+    """Get summary of total invoice amounts and hours by vendor from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                COUNT(invoice_id) as total_invoices,
+                SUM(invoice_amount) as total_amount,
+                COUNT(CASE WHEN approval_status = 'Pending' THEN 1 END) as pending,
+                COUNT(CASE WHEN approval_status = 'Complete' THEN 1 END) as approved,
+                COUNT(CASE WHEN approval_status = 'NEED APPROVAL' THEN 1 END) as need_approval,
+                COUNT(CASE WHEN approval_status = 'Ready for Payment' THEN 1 END) as payment_initiated,
+                COUNT(CASE WHEN due_date = CURRENT_DATE THEN 1 END) as due_today,
+                COUNT(CASE WHEN approval_status != 'Ready for Payment' THEN 1 END) as open_cases
+            FROM invoices
+            WHERE vendor_name = %s
+        """, (vendor_name,))
+        row = cursor.fetchone()
+        if not row:
+            return {}
+        result = dict(row)
+        for key, value in result.items():
+            if hasattr(value, 'isoformat'):
+                result[key] = value.isoformat()
+        return result
+        
+    finally:
+        cursor.close()
+        conn.close()
+def get_invoices_by_vendor_and_resources(vendor_name: str, resources: list= None):
+    """Filter by vendor and resources from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        if resources and len(resources) > 0:
+            placeholders = ','.join(['%s'] * len(resources))
+            cursor.execute(f"""
+                SELECT * FROM invoices
+                WHERE vendor_name = %s
+                AND resource_name IN ({placeholders})
+                ORDER BY created_at DESC
+            """, [vendor_name] + resources)
+        else:
+            cursor.execute("""
+                SELECT * FROM invoices
+                WHERE vendor_name = %s
+                ORDER BY created_at DESC
+            """, (vendor_name,))
+        rows = cursor.fetchall()
+        results = []
+        for row in rows:
+            result = dict(row)
+            for key, value in result.items():
+                if hasattr(value, 'isoformat'):
+                    result[key] = value.isoformat()
+            results.append(result)
+        return results
+    finally:
+        cursor.close()
+        conn.close()
+        
 def get_all_invoices() -> list:
     """Get all invoices (for accounts team) from PostgreSQL"""
     conn = get_sql_connection()
