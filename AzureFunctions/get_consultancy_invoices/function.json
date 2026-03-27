@@ -6,7 +6,7 @@
         "name": "req",
         "route": "consultancy/invoices",
         "methods": ["get"],
-        "authLevel": "function"
+        "authLevel": "anonymous"
     },
     {
       "type": "http",

@@ -6,7 +6,7 @@
         "name": "req",
         "route": "vendor/summary",
         "methods": ["get"],
-        "authLevel": "function"
+        "authLevel": "anonymous"
         },
     {
       "type": "http",
