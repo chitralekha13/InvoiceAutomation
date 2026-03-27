@@ -280,7 +280,7 @@
 
         .pane-headers {
             display: grid;
-            grid-template-columns: repeat(1, 1fr);
+            grid-template-columns: repeat(3 1fr);
             gap: 0;
             margin-bottom: 0;
             background: #f8f9fa;
@@ -1132,13 +1132,13 @@
         </div>
 
         <div class="sync-results" id="syncResultsPanel" style="display:none"></div>
-        <!--
+        
         <div class="pane-headers">
             <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
-            <div class="pane-header" onclick="window.open('users.html', '_blank')">Manage Users</div>
-            <div class="pane-header" data-pane="sow" onclick="switchPane('sow')">SOW Info</div> 
+            <div class="pane-header" onclick="window.open('users.html', '_blank')">Resources View</div>
+            <div class="pane-header" data-pane="consultancy" onclick="switchPane('consultancy')">Consultancy View</div>
         </div>
-        -->
+        
         <div class="panes-wrapper">
             <div class="pane table-section active" id="pane-invoices">
                 <div class="table-title">Invoice Management Table</div>
@@ -1230,14 +1230,79 @@
                 </div>
             </div>
 
-            <div class="pane" id="pane-sow">
-                <div class="pane-title">SOW Info</div>
+            <div class="pane table-section" id="pane-consultancy">
+                <div class="table-title">Consultancy View</div>
                 <div class="pane-body">
-                    <p class="sow-placeholder">SOW information will be displayed here.</p>
+                    <!-- Filters -->
+                    <div style="display:flex; gap:16px; align-items:flex-start; padding:12px 24px; border-bottom:1px solid #dee2e6;">
+                        <div>
+                            <label style="font-weight:600; display:block; margin-bottom:4px;">Consultancy Name</label>
+                            <select id="consultancyDropdown" class="column-filter" onchange="loadResources(this.value)">
+                                <option value="">Select Consultancy</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-weight:600; display:block; margin-bottom:4px;">Resources</label>
+                            <div id="resourceCheckboxes" style="max-height:150px; overflow-y:auto; border:1px solid #ccc; padding:8px; border-radius:4px; min-width:200px;">
+                                <span style="color:#999;">Select a consultancy first</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="align-self:flex-end;">
+                        <button onclick="applyConsultancyFilter()" 
+                            style="background:#0078d4; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:600;">
+                            Apply Filter
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox"></th>
+                                <th style="width: 50px;">S.No</th>
+                                <th style="width: 100px;">ID (UUID)</th>
+                                <th style="width: 120px;">Doc Name</th>
+                                <th style="width: 100px;">Invoice No</th>
+                                <th style="width: 120px;">Consultancy Name</th>
+                                <th style="width: 120px;">Resource Name</th>
+                                <th style="width: 50px;">Division</th>
+                                <th style="width: 120px;">Client Name</th>
+                                <th style="width: 100px;">Pay Period Start</th>
+                                <th style="width: 100px;">Pay Period End</th>
+                                <th style="width: 80px;">Net Terms</th>
+                                <th style="width: 100px;">Vendor Hours</th>
+                                <th style="width: 100px;">Approved Hours</th>
+                                <th style="width: 100px;">Status</th>
+                                <th style="width: 120px;">Comments</th>
+                                <th style="width: 100px;">Pay Rate</th>
+                                <th style="width: 120px;">Invoice Amount</th>
+                                <th style="width: 120px;">Date Inv Recd</th>
+                                <th style="width: 120px;">Due Date</th>
+                                <th style="width: 120px;">Project Name</th>
+                                <th style="width: 120px;">Project Name (Excel)</th>
+                                <th style="width: 120px;">Payment Initiated On</th>
+                                <th style="width: 120px;">Payment Details</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consultancyTableBody">
+                            <tr>
+                                <td colspan="25" style="text-align:center; color:#999; padding:40px;">
+                                    Select a consultancy to view invoices
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
-    </div>
+    </div>            
+            
+        
+    
 
     <div class="loading-overlay" id="loadingOverlay" style="display:none">
         <div class="spinner"></div>
@@ -1362,6 +1427,10 @@
             const pane = document.getElementById('pane-' + paneId);
             if (header) header.classList.add('active');
             if (pane) pane.classList.add('active');
+            //Load consultacies to filter data by consultancy name
+            if (paneId === 'consultancy') {
+            loadConsultancies();
+    }
         }
 
         function showLoading(show) {
