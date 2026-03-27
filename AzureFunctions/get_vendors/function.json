@@ -7,5 +7,11 @@
         "route": "vendors",
         "methods": ["get"],
         "authLevel": "function"
-    }]
+       },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
+    }
+  ]
 }

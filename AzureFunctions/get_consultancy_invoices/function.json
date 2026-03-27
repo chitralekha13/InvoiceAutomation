@@ -7,5 +7,11 @@
         "route": "consultancy/invoices",
         "methods": ["get"],
         "authLevel": "function"
-    }]
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
+    }
+  ]
 }
