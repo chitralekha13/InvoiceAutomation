@@ -469,14 +469,14 @@
         }
         .payment-modal-close i,
         .payment-modal-close .fa-times {
-            color: #333 !important;
+            color: #fff !important;
         }
-        .payment-modal-close::after {
+        .payment-modal-close.icon-btn::after {
             content: attr(data-tooltip);
-            position: fixed;
-            bottom: auto;
-            top:auto;
-            right: 24px;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
             background: #333;
             color: white;
             padding: 4px 8px;
@@ -488,8 +488,9 @@
             transition: opacity 0.2s, visibility 0.2s;
             margin-bottom: 6px;
             z-index: 2002;
+            pointer-events: none;
         }
-        .payment-modal-close:hover::after {
+        .payment-modal-close.icon-btn:hover::after {
             opacity: 1;
             visibility: visible;
         }
@@ -524,6 +525,7 @@
         .payment-details-table .payment-section { font-weight: 600; color: #1e3a5f; padding-top: 16px; font-size: 15px; }
         .payment-pre { white-space: pre-wrap; margin: 0; font-family: inherit; }
         .payment-modal-close { float: right; background: #666; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;}
+        .daily-summary-header .payment-modal-close { float: none; }
         .payment-modal-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;text-align: right; }
         .payment-modal-close:hover { background: #666; }
         .btn-payment-done-modal {
@@ -690,9 +692,11 @@
             border-radius: 0px;
             max-width: 90%;
             max-height: 85vh;
-            overflow: auto;
+            overflow: hidden;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             width: 800px;
+            display: flex;
+            flex-direction: column;
         }
         .daily-summary-header {
             display: flex;
@@ -701,6 +705,10 @@
             margin-bottom: 20px;
             padding-bottom: 16px;
             border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #fff;
         }
         .daily-summary-title {
             font-size: 20px;
@@ -840,6 +848,11 @@
             display: flex;
             gap: 12px;
             justify-content: flex-end;
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            background: #fff;
+            padding-top: 8px;
         }
         .btn-download-excel {
             background: #107c10;
@@ -852,6 +865,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: 600;
         }
         .btn-download-excel:hover {
             background: #0e6b0e;
@@ -961,27 +975,30 @@
         .viewer-btn-close.icon-btn:hover { background: #f0f0f0; }
 
         .metric-card.past-months-summary {
-            background:  #bfa5ea;
-            color: white;
+            background: #ede9fe;
             cursor: pointer;
             position: relative;
             overflow: hidden;
         }
         .metric-card.past-months-summary:hover {
-            background: #6d28d9 ;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            background: #7C3AED;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
         .metric-card.past-months-summary .value {
-            color: white;
-            font-size: 24px;
+            color: #7C3AED;
         }
         .metric-card.past-months-summary .label {
-            color: rgba(255,255,255,0.9);
+            color: #7C3AED;
         }
         .metric-card.past-months-summary .date-display {
             font-size: 12px;
-            color: rgba(255,255,255,0.8);
+            color: #7C3AED;
             margin-top: 4px;
+        }
+        .metric-card.past-months-summary:hover .value,
+        .metric-card.past-months-summary:hover .label,
+        .metric-card.past-months-summary:hover .date-display {
+            color: white;
         }
 
     </style>
@@ -1104,7 +1121,7 @@
                     Show Local Time
                 </div>
             </div>
-            <div class="metric-card past-months-summary" id="pastMonthsSummaryCard" onclick="openPastMonthsSummary()" style="background: linear-gradient(135deg, #7C3AED 0%, #9f5afd 100%); color: white; cursor: pointer;">
+            <div class="metric-card past-months-summary" id="pastMonthsSummaryCard" onclick="openPastMonthsSummary()">
                 <div class="value" id="pastMonthsSummaryCount">0</div>
                 <div class="label">Unpaid Invoices</div>
                 <div class="date-display" id="pastMonthsSummaryDate">Click for Details</div>
@@ -2728,8 +2745,9 @@
             </div>
             
             <div class="daily-summary-actions">
-                <button type="button" class="btn-download-excel icon-btn" onclick="downloadDailySummaryExcel()">
-                    <i class="fas fa-file-excel" data-tooltip="Download Excel"></i>
+                <button type="button" class="btn-download-excel icon-btn" onclick="downloadDailySummaryExcel()" data-tooltip="Download Excel">
+                    <i class="fas fa-file-excel"></i>
+                    <span>Download Excel</span>
                 </button>
             </div>
         </div>
@@ -2761,7 +2779,7 @@
                 <div class="daily-stat-label">Need Approval</div>
             </div>
             <div class="daily-stat-box">
-                <div class="daily-stat-value" id="modalPastMonthsMonthLabel">Past Months</div>
+                <!--<div class="daily-stat-value" id="modalPastMonthsMonthLabel">Past Due</div> -->
                 <div class="daily-stat-label">Excluding Current</div>
             </div>
         </div>
@@ -2786,8 +2804,9 @@
         </div>
         
         <div class="daily-summary-actions">
-            <button type="button" class="btn-download-excel icon-btn" onclick="downloadPastMonthsSummaryExcel()">
-                <i class="fas fa-file-excel" data-tooltip="Download Excel"></i>
+            <button type="button" class="btn-download-excel icon-btn" onclick="downloadPastMonthsSummaryExcel()" data-tooltip="Download Excel">
+                <i class="fas fa-file-excel"></i>
+                <span>Download Excel</span>
             </button>
         </div>
     </div>
