@@ -296,7 +296,7 @@ def invalid_invoice(vendor_name: str, resource_name: str, start_date: str, end_d
     
     try:
         cursor.execute("""
-            UPDATE invoices_india
+            UPDATE invoices
             SET status = 'Invalid', 
                 last_updated_at = NOW(),
                 approval_status = 'Invalid'
@@ -320,7 +320,7 @@ def insert_credit_invoice(vendor_name: str, resource_name: str, start_date: str,
         # Get sums
         cursor.execute("""
             SELECT SUM(invoice_hours), SUM(invoice_amount)
-            FROM invoices_india
+            FROM invoices
             WHERE vendor_name = %s
               AND resource_name = %s
               AND start_date = %s
@@ -335,7 +335,7 @@ def insert_credit_invoice(vendor_name: str, resource_name: str, start_date: str,
         # Get first invoice_id
         cursor.execute("""
             SELECT invoice_id,doc_name,payment_terms,invoice_number,payment_details,hourly_rate
-            FROM invoices_india
+            FROM invoices
             WHERE vendor_name = %s
               AND resource_name = %s
               AND start_date = %s
@@ -360,7 +360,7 @@ def insert_credit_invoice(vendor_name: str, resource_name: str, start_date: str,
 
         # Insert credit invoice
         cursor.execute("""
-            INSERT INTO invoices_india (
+            INSERT INTO invoices (
                 invoice_id, vendor_name, start_date, end_date, status,
                 created_at, invoice_received_date, is_credit_note,
                 invoice_hours, invoice_amount, resource_name,
@@ -408,7 +408,7 @@ def update_due_date(invoice_id: str) -> None:
     try:
         cursor.execute("""
             SELECT created_at, payment_terms
-            FROM invoices_india
+            FROM invoices
             WHERE invoice_id = %s
         """, (invoice_id,))
         
@@ -437,7 +437,7 @@ def update_due_date(invoice_id: str) -> None:
 
 
         cursor.execute("""
-            UPDATE invoices_india
+            UPDATE invoices
             SET due_date = %s
             WHERE invoice_id = %s
         """, (updated_due, invoice_id))
