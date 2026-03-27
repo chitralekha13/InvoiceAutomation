@@ -961,14 +961,14 @@
         .viewer-btn-close.icon-btn:hover { background: #f0f0f0; }
 
         .metric-card.past-months-summary {
-            background: linear-gradient(135deg, #7C3AED 0%, #9f5afd 100%);
+            background:  #bfa5ea;
             color: white;
             cursor: pointer;
             position: relative;
             overflow: hidden;
         }
         .metric-card.past-months-summary:hover {
-            background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
+            background: #6d28d9 ;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         .metric-card.past-months-summary .value {
@@ -1106,11 +1106,8 @@
             </div>
             <div class="metric-card past-months-summary" id="pastMonthsSummaryCard" onclick="openPastMonthsSummary()" style="background: linear-gradient(135deg, #7C3AED 0%, #9f5afd 100%); color: white; cursor: pointer;">
                 <div class="value" id="pastMonthsSummaryCount">0</div>
-                <div class="label">Past Months (Excl Current)</div>
-                <div class="date-display" id="pastMonthsSummaryDate">Non-Payment Initiated</div>
-                <div class="time-toggle" style="font-size: 10px; color: rgba(255,255,255,0.7); margin-top: 2px;">
-                    Non-Payment Initiated
-                </div>
+                <div class="label">Unpaid Invoices</div>
+                <div class="date-display" id="pastMonthsSummaryDate">Click for Details</div>
             </div>
             <div class="metric-card" id="toastArea" style="cursor: default; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                 <div class="value" id="toastAreaContent" style="font-size: 14px; color: #666; text-align: center; line-height: 1.4; padding: 8px;">No recent activity</div>
@@ -1464,10 +1461,10 @@
                 });
             }
 
-            // Add month filter logic
+            // Month filter based on pay period start
             if (monthFilter) {
                 filteredRows = filteredRows.filter(r => {
-                    const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
+                    const d = r.pay_period_start || r.Pay_period_start || r.start_date || '';
                     if (!d) return false;
                     const dateStr = d.toString().slice(0, 7); // Format: YYYY-MM
                     return dateStr === monthFilter;
@@ -1491,10 +1488,10 @@
                 });
             }
             
-            // Add month filter logic
+            // Month filter based on pay period start
             if (monthFilter) {
                 filtered = filtered.filter(r => {
-                    const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
+                    const d = r.pay_period_start || r.Pay_period_start || r.start_date || '';
                     if (!d) return false;
                     const dateStr = d.toString().slice(0, 7);
                     return dateStr === monthFilter;
