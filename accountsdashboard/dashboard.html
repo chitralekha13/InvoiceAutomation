@@ -1451,8 +1451,8 @@
                 <td>${row.resource_name || ''}</td>
                 <td>${row.business_unit || ''}</td>
                 <td>${row.project_name || ''}</td>
-                <td>${row.start_date || ''}</td>
-                <td>${row.end_date || ''}</td>
+                <td>${row.start_date ? new Date(row.start_date).toLocaleDateString('en-GB', {day: '2-digit', month: 'short',year: 'numeric'}) : ''} </td>
+                <td>${row.end_date ? new Date(row.end_date).toLocaleDateString('en-GB', {day: '2-digit', month: 'short',year: 'numeric'}) : ''} </td>
                 <td>${row.payment_terms || ''}</td>
                 <td>${row.vendor_hours || ''}</td>
                 <td>${row.approved_hours || ''}</td>
