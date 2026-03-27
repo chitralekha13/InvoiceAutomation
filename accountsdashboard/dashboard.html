@@ -1464,7 +1464,7 @@
             // Month filter based on pay period start
             if (monthFilter) {
                 filteredRows = filteredRows.filter(r => {
-                    const d = r.pay_period_start || r.Pay_period_start || r.start_date || '';
+                    const d = r.created_at || r.Created_at || '';
                     if (!d) return false;
                     const dateStr = d.toString().slice(0, 7); // Format: YYYY-MM
                     return dateStr === monthFilter;
@@ -1491,7 +1491,7 @@
             // Month filter based on pay period start
             if (monthFilter) {
                 filtered = filtered.filter(r => {
-                    const d = r.pay_period_start || r.Pay_period_start || r.start_date || '';
+                    const d = r.created_at || r.Created_at || '';
                     if (!d) return false;
                     const dateStr = d.toString().slice(0, 7);
                     return dateStr === monthFilter;
