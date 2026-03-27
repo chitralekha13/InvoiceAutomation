@@ -109,7 +109,7 @@
         .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
         .metrics-row {
             display: grid;
-            grid-template-columns: repeat(9, 1fr);
+            grid-template-columns: repeat(10, 1fr);
             gap: 8px;
             margin-bottom: 16px;
         }
@@ -209,6 +209,19 @@
         }
         #tilePaymentInitiated:hover .value, #tilePaymentInitiated:hover .label { 
             color: white; 
+        }
+
+        #tileInvalid {
+            background: #fde7e9;
+        }
+        #tileInvalid:hover {
+            background: #d13438;
+        }
+        #tileInvalid .value, #tileInvalid .label {
+            color: #a4262c;
+        }
+        #tileInvalid:hover .value, #tileInvalid:hover .label {
+            color: white;
         }
 
 
@@ -1071,13 +1084,13 @@
                 <div class="value" id="mNeedApproval">0</div>
                 <div class="label">Need Approval</div>
             </div>
-            <div class="metric-card clickable" id="tilePaymentInitiated" data-filter="payment_initiated" onclick="filterByTile('payment_initiated')">
-                <div class="value" id="mPaymentInitiated">0</div>
-                <div class="label">Payment Initiated</div>
-            </div>
             <div class="metric-card clickable" id="tileInvalid" data-filter="invalid" onclick="filterByTile('invalid')">
                 <div class="value" id="mInvalid">0</div>
                 <div class="label">Invalid</div>
+            </div>
+            <div class="metric-card clickable" id="tilePaymentInitiated" data-filter="payment_initiated" onclick="filterByTile('payment_initiated')">
+                <div class="value" id="mPaymentInitiated">0</div>
+                <div class="label">Payment Initiated</div>
             </div>
             <div class="metric-card amount">
                 <div class="value" id="mTotalAmount">$0.00</div>
@@ -1093,8 +1106,8 @@
             </div>
             <div class="metric-card past-months-summary" id="pastMonthsSummaryCard" onclick="openPastMonthsSummary()" style="background: linear-gradient(135deg, #7C3AED 0%, #9f5afd 100%); color: white; cursor: pointer;">
                 <div class="value" id="pastMonthsSummaryCount">0</div>
-                <div class="label">Past Months</div>
-                <div class="date-display" id="pastMonthsSummaryDate">Excluding Current</div>
+                <div class="label">Past Months (Excl Current)</div>
+                <div class="date-display" id="pastMonthsSummaryDate">Non-Payment Initiated</div>
                 <div class="time-toggle" style="font-size: 10px; color: rgba(255,255,255,0.7); margin-top: 2px;">
                     Non-Payment Initiated
                 </div>
@@ -2726,14 +2739,14 @@
     </div>
 
     <!-- Past Months Summary Modal -->
-<div id="pastMonthsSummaryModal" class="monthly-summary-modal" onclick="if(event.target===this)closePastMonthsSummary()">
-    <div class="monthly-summary-content">
-        <div class="monthly-summary-header">
+<div id="pastMonthsSummaryModal" class="daily-summary-modal" onclick="if(event.target===this)closePastMonthsSummary()">
+    <div class="daily-summary-content">
+        <div class="daily-summary-header">
             <div class="monthly-summary-title">📅 Past Months Summary - <span id="modalPastMonthsDate">All Previous Months</span></div>
             <button type="button" class="payment-modal-close icon-btn" onclick="closePastMonthsSummary()" data-tooltip="Close"><i class="fas fa-times"></i></button>
         </div>
         
-        <div class="monthly-summary-stats">
+        <div class="daily-summary-stats">
             <div class="daily-stat-box">
                 <div class="daily-stat-value" id="modalPastMonthsTotalCount">0</div>
                 <div class="daily-stat-label">Total Invoices</div>
