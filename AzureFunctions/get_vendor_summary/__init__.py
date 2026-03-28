@@ -31,7 +31,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         summary = get_vendor_summary(vendor_name)
         resources = get_vendor_resources(vendor_name)
         return func.HttpResponse(
-            json.dumps({"summary": summary}, default=_json_default),
+            json.dumps({"summary": summary, "resources": resources}, default=_json_default),
             status_code=200,
             mimetype="application/json",
             headers={"Access-Control-Allow-Origin": "*"}
