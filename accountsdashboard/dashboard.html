@@ -1401,8 +1401,9 @@
             if (!res.ok) {
                 console.log("Vendor summary Failed:", res.status);
                  return;
+            }
 
-            ]
+            
             const data = await res.json().catch(() => ({}));
             console.log("Vendor summary log", data);
             renderConsultancyTable(data.rows || []);
