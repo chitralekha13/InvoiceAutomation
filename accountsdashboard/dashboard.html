@@ -1381,31 +1381,34 @@
         }
         async function applyConsultancyFilter() {
             const vendorName = document.getElementById('consultancyDropdown').value;
+            console.log("applyConsultancyFilter called, vendor:", vendorName); 
             if (!vendorName) {
             alert('Please select a consultancy');
             return;
             }
             const selectedResources = [...document.querySelectorAll('.resource-checkbox:checked')]
             .map(cb => cb.value);
+            console.log("selected resources:", selectedResources); 
 
             let url = API_BASE + '/api/consultancy/invoices?vendor_name=' + encodeURIComponent(vendorName);
             if (selectedResources.length > 0) {
                 url += '&resources=' + encodeURIComponent(selectedResources.join(','));
             }
-
+            console.log("fetch url:", url); 
             try {
                 const res = await fetch(url, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
              });
+             console.log("consultancy invoices status:", res.status);
             if (!res.ok) {
-                console.log("Vendor summary Failed:", res.status);
+                console.log("Consultancy invoices Failed:", res.status);
                  return;
             }
 
             
             const data = await res.json().catch(() => ({}));
-            console.log("Vendor summary log", data);
+            console.log("Consultancy invoices data", data);
             renderConsultancyTable(data.rows || []);
             } catch (_) { }
        }   
@@ -1425,6 +1428,7 @@
                 console.log("vendor summary status:", res.status);
                 if (!res.ok) return;
                     const data = await res.json().catch(() => ({}));
+                    console.log("Vendor summary data log", data);
                     container.innerHTML = '';
                     (data.summary || []).forEach(resource => {
                     const label = document.createElement('label');
@@ -1436,6 +1440,7 @@
             `
                     container.appendChild(label);
             });
+            console.log("resources container innerHTML:", container.innerHTML);
                 // Auto load all invoices for this vendor when consultancy is selected
                 applyConsultancyFilter();
             } catch (_) { }
