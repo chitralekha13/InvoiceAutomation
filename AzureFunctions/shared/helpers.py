@@ -596,6 +596,26 @@ def get_all_vendors() -> list:
         cursor.close()
         conn.close()
 
+def get_vendor_resources(vendor_name: str):
+    """Get all unique resource names for a vendor"""
+    if not os.environ.get('SQL_CONNECTION_STRING'):
+        return []
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT DISTINCT resource_name 
+            FROM invoices
+            WHERE vendor_name = %s
+            AND resource_name IS NOT NULL
+            ORDER BY resource_name
+        """, (vendor_name,))
+        rows = cursor.fetchall()
+        return [dict(row)["resource_name"] for row in rows]
+    finally:
+        cursor.close()
+        conn.close()
+
 def get_vendor_summary(vendor_name: str):
     """Get summary of total invoice amounts and hours by vendor from PostgreSQL"""
     conn = get_sql_connection()
