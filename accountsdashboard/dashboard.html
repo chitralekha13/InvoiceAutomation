@@ -1422,6 +1422,7 @@
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
                 });
+                console.log("vendor summary status:", res.status);
                 if (!res.ok) return;
                     const data = await res.json().catch(() => ({}));
                     container.innerHTML = '';
