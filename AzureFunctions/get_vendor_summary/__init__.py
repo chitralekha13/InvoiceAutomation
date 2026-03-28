@@ -19,7 +19,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         sys_path = os.path.join(os.path.dirname(__file__), '..')
         if sys_path not in __import__('sys').path:
             __import__('sys').path.insert(0, sys_path)
-        from shared.helpers import get_vendor_summary
+        from shared.helpers import get_vendor_summary, get_vendor_resources
         vendor_name = req.params.get("vendor_name")
         if not vendor_name:
             return func.HttpResponse(
@@ -29,6 +29,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 headers={"Access-Control-Allow-Origin": "*"}
             )
         summary = get_vendor_summary(vendor_name)
+        resources = get_vendor_resources(vendor_name)
         return func.HttpResponse(
             json.dumps({"summary": summary}, default=_json_default),
             status_code=200,
