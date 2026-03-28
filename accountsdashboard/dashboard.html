@@ -1435,8 +1435,8 @@
                     label.style.display = 'block';
                     label.style.marginBottom = '4px';
                     label.innerHTML = `
-                    <input type="checkbox" value="${resource.resource_name}" class="resource-checkbox" onchange="applyConsultancyFilter()">
-                    ${resource.resource_name};
+                    <input type="checkbox" value="${resource}" class="resource-checkbox" onchange="applyConsultancyFilter()">
+                    ${resource};
             `
                     container.appendChild(label);
             });
