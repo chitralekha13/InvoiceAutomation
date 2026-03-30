@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - main
+      - InvoiceAutomationMadhu
+      - InvoiceUS_PV
+      
   pull_request:
-    types: [synchronize, reopened, closed]
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
 
