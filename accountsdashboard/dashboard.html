@@ -2878,10 +2878,11 @@
             const currentMonth = now.toISOString().slice(0, 7); // Current month YYYY-MM
             //Switch to consultancy filter if active, otherwise use all rows
             const isConsultancyActive = document.getElementById('pane-consultancy').classList.contains('active');
+            console.log('Consultancy filter active:', isConsultancyActive);
             // If consultancy filter is active and has rows, use those; otherwise use all rows
             const toggleRows = isConsultancyActive && consultancyRows.length > 0 ? consultancyRows : allRows;
             // Filter: previous months only (before current month), excluding payment_initiated status
-            const pastMonthsData = allRows.filter(r => {
+            const pastMonthsData = toggleRows.filter(r => {
                 const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
                 if (!d) return false;
                 
