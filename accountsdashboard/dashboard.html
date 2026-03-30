@@ -1235,15 +1235,15 @@
                     <!-- Filters -->
                     <div style="display:flex; gap:16px; align-items:flex-start; padding:12px 24px; border-bottom:1px solid #dee2e6;">
                         <div>
-                            <label style="font-weight:600; display:block; margin-bottom:4px;">Consultancy Name</label>
+                            <label style="font-weight:600; display:block; margin-bottom:4px; width:200px;">Consultancy Name</label>
                             <select id="consultancyDropdown" class="column-filter" onchange="loadResources(this.value)">
                                 <option value="">Select Consultancy</option>
                             </select>
                         </div>
                         <div>
                             <label style="font-weight:600; display:block; margin-bottom:4px;">Resources</label>
-                            <div id="resourceCheckboxes" style="max-height:150px; overflow-y:auto; border:1px solid #ccc; padding:8px; border-radius:4px; min-width:200px;">
-                                <span style="color:#999;">Select a consultancy first</span>
+                            <div id="resourceCheckboxes" class="column-filter" style="max-height:150px; overflow-y:auto; border:1px solid #ccc; padding:5px 8px; border-radius:4px; width:200px; height:30px; font-size:14px;">
+                                <span style="font-size:14px; color:#999;">Select a consultancy first</span>
                             </div>
                         </div>
                     </div>
@@ -1412,6 +1412,15 @@
             renderConsultancyTable(data.rows || []);
             } catch (_) { }
        }   
+       function clearConsultancyFilters() {
+            console.log("clearConsultancyFilters called");
+            // Reset consultancy dropdown
+            document.getElementById('consultancyDropdown').value = '';
+            // Clear resource checkboxes
+            document.getElementById('resourceCheckboxes').innerHTML = '<span style="font-size:12px; color:#757575;">Select a consultancy first</span>';
+            // Clear table
+            document.getElementById('consultancyTableBody').innerHTML = '<tr><td colspan="25" style="text-align:center; color:#999; padding:40px;">Select a consultancy to view invoices</td></tr>';
+        }
         async function loadResources(vendorName) {
             console.log("loadResources called with:", vendorName);
             const container = document.getElementById('resourceCheckboxes');
@@ -1434,15 +1443,42 @@
                     const label = document.createElement('label');
                     label.style.display = 'block';
                     label.style.marginBottom = '4px';
+                    label.style.fontSize = '14px';
                     label.innerHTML = `
                     <input type="checkbox" value="${resource}" class="resource-checkbox" onchange="applyConsultancyFilter()">
-                    ${resource};
+                    ${resource}
             `
                     container.appendChild(label);
             });
             console.log("resources container innerHTML:", container.innerHTML);
                 // Auto load all invoices for this vendor when consultancy is selected
                 applyConsultancyFilter();
+                loadVendorSummary(vendorName); //Show vendor summary metrics when consultancy is selected
+            } catch (_) { }
+        }
+        async function loadVendorSummary(vendorName) {
+            console.log("loadVendorSummary called");
+            if (!vendorName || !API_BASE) return;
+            try {
+                const res = await fetch(API_BASE + '/api/vendor/summary?vendor_name=' + encodeURIComponent(vendorName), {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+                });
+                console.log("vendor summary status:", res.status);
+                if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                console.log("Vendor summary data log", data.summary);
+                const summary = data.summary || {};
+
+                document.getElementById('mTotal').textContent = summary.total_invoices || 0;
+                document.getElementById('mPending').textContent = summary.pending || 0;
+                document.getElementById('mApproved').textContent = summary.approved || 0;
+                document.getElementById('mNeedApproval').textContent = summary.need_approval || 0;
+                document.getElementById('mPaymentInitiated').textContent = summary.payment_initiated || 0;
+                document.getElementById('mInvalid').textContent = summary.invalid || 0;
+                document.getElementById('mTotalAmount').textContent = '$' + (parseFloat(summary.total_amount) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                document.getElementById('dailySummaryCount').textContent = summary.due_today || 0;
+                document.getElementById('pastMonthsSummaryCount').textContent = summary.unpaid_invoices || 0;
             } catch (_) { }
         }
         function renderConsultancyTable(rows) {
@@ -1506,8 +1542,8 @@
                 <td>${row.approved_hours || ''}</td>
                 <td>${row.approval_status || ''}</td>
                 <td>${row.notes || ''}</td>
-                <td>${row.hourly_rate ? '₹' + row.hourly_rate : ''}</td>
-                <td>${row.invoice_amount ? '₹' + row.invoice_amount : ''}</td>
+                <td>${row.hourly_rate ? '$' + row.hourly_rate : ''}</td>
+                <td>${row.invoice_amount ? '$' + row.invoice_amount : ''}</td>
                 <td>${row.invoice_date || ''}</td>
                 <td>${row.due_date || ''}</td>
                 <td>${row.project_name || ''}</td>
@@ -1587,6 +1623,11 @@
             //Load consultacies to filter data by consultancy name
             if (paneId === 'consultancy') {
                 loadConsultancies();
+            }
+            //Summary displayed while switching between invoices and consultancy view
+            if (paneId === 'invoices') {
+                clearConsultancyFilters();
+                updateMetricsForFilter(document.getElementById('filterAll').value, document.getElementById('dueBy').value, monthFilter);
             }
         }
 

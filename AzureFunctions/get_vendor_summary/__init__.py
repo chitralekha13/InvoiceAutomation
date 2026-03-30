@@ -28,8 +28,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json",
                 headers={"Access-Control-Allow-Origin": "*"}
             )
+        logger.info("get_vendor_summary called with vendor_name: %s", vendor_name)
         summary = get_vendor_summary(vendor_name)
+        logger.info("get_vendor_summary result: %s", summary)
         resources = get_vendor_resources(vendor_name)
+        logger.info("get_vendor_resources result: %s", resources)
         return func.HttpResponse(
             json.dumps({"summary": summary, "resources": resources}, default=_json_default),
             status_code=200,

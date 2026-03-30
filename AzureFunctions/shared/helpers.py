@@ -617,6 +617,7 @@ def get_vendor_resources(vendor_name: str):
         conn.close()
 
 def get_vendor_summary(vendor_name: str):
+    logger.info("Getting vendor summary for %s", vendor_name)
     """Get summary of total invoice amounts and hours by vendor from PostgreSQL"""
     conn = get_sql_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -626,11 +627,13 @@ def get_vendor_summary(vendor_name: str):
             SELECT 
                 COUNT(invoice_id) as total_invoices,
                 SUM(invoice_amount) as total_amount,
-                COUNT(CASE WHEN approval_status = 'Pending' THEN 1 END) as pending,
-                COUNT(CASE WHEN approval_status = 'Complete' THEN 1 END) as approved,
-                COUNT(CASE WHEN approval_status = 'NEED APPROVAL' THEN 1 END) as need_approval,
-                COUNT(CASE WHEN approval_status = 'Ready for Payment' THEN 1 END) as payment_initiated,
+                COUNT(CASE WHEN LOWER(approval_status) = 'pending' THEN 1 END) as pending,
+                COUNT(CASE WHEN LOWER(approval_status) = 'approved' THEN 1 END) as approved,
+                COUNT(CASE WHEN LOWER(approval_status) = 'need approval' THEN 1 END) as need_approval,
+                COUNT(CASE WHEN LOWER(approval_status) = 'invalid' THEN 1 END) as invalid,
+                COUNT(CASE WHEN bill_pay_initiated_on IS NOT NULL THEN 1 END) as payment_initiated,
                 COUNT(CASE WHEN due_date = CURRENT_DATE THEN 1 END) as due_today,
+                COUNT(CASE WHEN bill_pay_initiated_on IS NULL AND LOWER(approval_status) != 'invalid' THEN 1 END) as unpaid_invoices,
                 COUNT(CASE WHEN approval_status != 'Ready for Payment' THEN 1 END) as open_cases
             FROM invoices
             WHERE vendor_name = %s
@@ -642,6 +645,7 @@ def get_vendor_summary(vendor_name: str):
         for key, value in result.items():
             if hasattr(value, 'isoformat'):
                 result[key] = value.isoformat()
+        logger.info("Vendor summary for %s: %s", vendor_name, result)
         return result
         
     finally:
