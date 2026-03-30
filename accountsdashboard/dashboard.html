@@ -1338,6 +1338,9 @@
         let currentDocName = null;
         let currentBlobUrl = null;
 
+        let consultancyRows = [];
+
+
         let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
         API_BASE = (API_BASE || '').trim().replace(/\/+$/, '');
         // Force https to avoid Mixed Content and bad configs
@@ -1414,6 +1417,7 @@
        }   
        function clearConsultancyFilters() {
             console.log("clearConsultancyFilters called");
+            consultancyRows = [];
             // Reset consultancy dropdown
             document.getElementById('consultancyDropdown').value = '';
             // Clear resource checkboxes
@@ -1482,6 +1486,7 @@
             } catch (_) { }
         }
         function renderConsultancyTable(rows) {
+            consultancyRows = rows;
             const tbody = document.getElementById('consultancyTableBody');
             tbody.innerHTML = '';
             if (!rows || rows.length === 0) {
@@ -1602,6 +1607,8 @@
         let filteredRows = [];
         let excelUrl = '';
         let isEditMode = false;
+
+
 
         // Set default month filter to current month
         window.addEventListener('load', () => { 
@@ -2863,13 +2870,16 @@
             if (s === 'invalid') return 'invalid';
             return '';
         }
-
+        
         // Past Months Summary - shows all data except payment initiated for previous calendar months
         function getPastMonthsSummaryData() {
             const now = new Date();
             //const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
             const currentMonth = now.toISOString().slice(0, 7); // Current month YYYY-MM
-            
+            //Switch to consultancy filter if active, otherwise use all rows
+            const isConsultancyActive = document.getElementById('pane-consultancy').classList.contains('active');
+            // If consultancy filter is active and has rows, use those; otherwise use all rows
+            const toggleRows = isConsultancyActive && consultancyRows.length > 0 ? consultancyRows : allRows;
             // Filter: previous months only (before current month), excluding payment_initiated status
             const pastMonthsData = allRows.filter(r => {
                 const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
