@@ -202,7 +202,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             fields["status"] = "Pending"
         logger.info(f"Extracted fields from iGentic: {fields}")
 
-        _priv_upload_any_org = str(vendor_id).strip().lower() == "chitra.sura@ilink-systems.com", "lakshmib@ilink-systems.com", "melanie@ilink-systems.com"
+        _priv_upload_any_org = str(vendor_id).strip().lower() == "chitra.sura@ilink-systems.com", "lakshmib@ilink-systems.com", "melanie@ilink-systems.com", "chitra2000lekha13@gmail.com"
         if use_db and fields:
             if not _priv_upload_any_org:
                 # Vendor org check: vendor can only upload invoices for their own org/company
