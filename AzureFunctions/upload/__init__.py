@@ -1,0 +1,454 @@
+"""
+Upload invoice: validate JWT (optional), upload PDF to SharePoint, insert SQL,
+run Document Intelligence, run iGentic, update SQL, save JSON log.
+"""
+import azure.functions as func
+import logging
+import json
+import os
+import uuid
+import io
+import re
+from datetime import datetime
+from shared.helpers import (invalid_invoice, insert_credit_invoice,update_due_date)  # Ensure these are imported for use in the code below
+
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_multipart(body: bytes, content_type: str):
+    """Parse multipart/form-data and return (file_content, filename) or (None, None)."""
+    if not body or "multipart/form-data" not in content_type.lower():
+        return None, None
+    match = re.search(r'boundary=([^;\s]+)', content_type, re.I)
+    boundary = (match.group(1).strip().strip('"') if match else "").encode()
+    if not boundary:
+        return None, None
+    parts = body.split(b"--" + boundary)
+    for part in parts:
+        if b'Content-Disposition' not in part or b'name="file"' not in part and b"name='file'" not in part:
+            continue
+        lines = part.split(b'\r\n')
+        filename = None
+        for line in lines:
+            if line.lower().startswith(b'content-disposition:'):
+                m = re.search(rb'filename="([^"]+)"', line, re.I)
+                if m:
+                    filename = m.group(1).decode('utf-8', errors='replace')
+                break
+        # Content starts after first blank line
+        idx = part.find(b'\r\n\r\n')
+        if idx == -1:
+            idx = part.find(b'\n\n')
+        if idx != -1:
+            file_content = part[idx + 4:].rstrip(b'\r\n- ')
+            if file_content and filename:
+                return file_content, filename
+    return None, None
+
+
+def _extract_from_orchestrator(resp: dict) -> dict:
+    """Extract fields from iGentic response (CSV + JSON block + status) for SQL/Excel update."""
+    if not isinstance(resp, dict):
+        return {}
+    try:
+        from shared.helpers import extract_fields_from_igentic, _extract_payment_details_from_igentic_response
+        fields = extract_fields_from_igentic(resp)
+        # Payment agent outputs "payment summary and payment details in JSON format" — extract and store
+        payment_details = _extract_payment_details_from_igentic_response(resp)
+        if payment_details:
+            fields["payment_details"] = payment_details
+            logger.info("Extracted payment details from iGentic orchestration response")
+        return fields
+    except Exception as e:
+        logger.warning("iGentic field extraction failed: %s", e)
+        return {}
+
+
+def _as_float(value):
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def main(req: func.HttpRequest) -> func.HttpResponse:
+    logger.info("Upload function processed a request.")
+    try:
+        # Optional: validate JWT and get vendor identity (email)
+        vendor_id = "unknown"
+        vendor_org = None
+        token = None
+        auth = req.headers.get("Authorization")
+        if auth and auth.startswith("Bearer "):
+            token = auth.split(" ", 1)[1]
+            try:
+                import sys
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+                from shared.helpers import decode_token
+                decoded = decode_token(token)
+                vendor_id = (
+                    decoded.get("email") or decoded.get("upn") or
+                    decoded.get("preferred_username") or decoded.get("sub") or "unknown"
+                )
+            except Exception as e:
+                logger.warning("Token decode failed, using vendor_id=unknown: %s", e)
+
+        body = req.get_body()
+        content_type = req.headers.get("Content-Type", "") or ""
+        file_content, filename = _parse_multipart(body, content_type)
+        if not file_content or not filename:
+            return func.HttpResponse(
+                json.dumps({"error": "No file provided. Send multipart/form-data with key 'file'."}),
+                status_code=400,
+                mimetype="application/json",
+            )
+
+        # Validate file type and size (e.g. PDF, max 10MB)
+        ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext not in ("pdf", "png", "jpg", "jpeg"):
+            return func.HttpResponse(
+                json.dumps({"error": "Invalid file type. Allowed: PDF, PNG, JPG."}),
+                status_code=400,
+                mimetype="application/json",
+            )
+        if len(file_content) > 10 * 1024 * 1024:
+            return func.HttpResponse(
+                json.dumps({"error": "File too large (max 10MB)."}),
+                status_code=400,
+                mimetype="application/json",
+            )
+
+        sys_path = os.path.join(os.path.dirname(__file__), '..')
+        if sys_path not in __import__('sys').path:
+            __import__('sys').path.insert(0, sys_path)
+        from shared.helpers import (
+            upload_file_to_sharepoint,
+            analyze_invoice_bytes,
+            process_with_igentic,
+            save_complete_log,
+            _parse_hours_from_text,
+            get_org_for_user,
+        )
+        use_db = bool(os.environ.get('SQL_CONNECTION_STRING'))
+        if use_db:
+            from shared.helpers import (
+                insert_invoice,
+                update_invoice,
+                get_invoice,
+                save_complete_log,
+                find_duplicate_invoice,
+                get_matching_sow,
+                merge_sow_into_invoice_fields,
+                get_cached_timesheet_fields_for_invoice,
+                get_timesheet_fields_from_sharepoint_for_pay_month,
+                refresh_monthly_sync_report_with_invoice_update,
+            )
+            try:
+                vendor_org = get_org_for_user(vendor_id)
+            except Exception as e:
+                logger.warning("Could not resolve vendor org from users table for %s: %s", vendor_id, e)
+
+        invoice_id = str(uuid.uuid4())
+        safe_name = (filename or "invoice.pdf").replace(" ", "_")
+        if not safe_name.lower().endswith((".pdf", ".png", ".jpg", ".jpeg")):
+            safe_name = safe_name + ".pdf"
+
+        # 1) Document Intelligence (extract from file only – no SharePoint yet)
+        invoice_data = analyze_invoice_bytes(file_content, safe_name)
+        if not invoice_data:
+            invoice_data = {
+                "full_text": "",
+                "extracted_text": [],
+                "structured_fields": {},
+                "timestamp": __import__('datetime').datetime.now().isoformat(),
+                "status": "no_di",
+            }
+
+        # 2) iGentic – get structured fields for duplicate check
+        # Prefer full_text for parsing; keep extracted_text minimal to avoid payload bloat.
+        try:
+            ig_full_text_limit = int(os.environ.get("IGENTIC_FULL_TEXT_LIMIT", "200000") or "200000")
+        except Exception:
+            ig_full_text_limit = 200000
+        if ig_full_text_limit <= 0:
+            ig_full_text_limit = 200000
+        user_input_for_igentic = {
+            "invoice_processing": {
+                "timestamp": invoice_data.get("timestamp"),
+                "file_path": safe_name,
+                "extracted_text": [],
+                "full_text": (invoice_data.get("full_text") or "")[:ig_full_text_limit],
+                "structured_fields": invoice_data.get("structured_fields") or {},
+                "status": invoice_data.get("status", "success"),
+            },
+            "uploaded_file": safe_name,
+        }
+        orchestration_response = process_with_igentic(user_input_for_igentic, invoice_id, invoice_id)
+
+        # 3) Extract fields; enrich hours; Pending status; org gate (non-privileged only); duplicate check (always)
+        fields = _extract_from_orchestrator(orchestration_response)
+        if not fields.get("invoice_hours") and invoice_data.get("structured_fields", {}).get("invoice_hours") is not None:
+            fields["invoice_hours"] = invoice_data["structured_fields"]["invoice_hours"]
+        if not fields.get("invoice_hours") and invoice_data.get("full_text"):
+            _hrs = _parse_hours_from_text(invoice_data["full_text"])
+            if _hrs is not None:
+                fields["invoice_hours"] = _hrs
+        # Business rule: as soon as an invoice is uploaded, status should start as Pending.
+        if use_db:
+            fields.setdefault("approval_status", "Pending")
+            fields["status"] = "Pending"
+        logger.info(f"Extracted fields from iGentic: {fields}")
+
+        _priv_upload_any_org = str(vendor_id).strip().lower() == "chitra.sura@ilink-systems.com", "lakshmib@ilink-systems.com", "melanie@ilink-systems.com"
+        if use_db and fields:
+            if not _priv_upload_any_org:
+                # Vendor org check: vendor can only upload invoices for their own org/company
+                inv_vendor_name = (fields.get("vendor_name") or "").strip()
+                if vendor_org and inv_vendor_name:
+                    inv_vendor_lower = inv_vendor_name.lower()
+                    vendor_org_lower = str(vendor_org).lower()
+                    belongs_to_org = (
+                        vendor_org_lower in inv_vendor_lower or
+                        inv_vendor_lower in vendor_org_lower
+                    )
+                    if not belongs_to_org:
+                        logger.info(
+                            "Vendor org mismatch: token org=%s, invoice vendor_name=%s. Rejecting upload.",
+                            vendor_org, inv_vendor_name
+                        )
+                        return func.HttpResponse(
+                            json.dumps({"error": "Invoice doesn't belong to this org."}),
+                            status_code=403,
+                            mimetype="application/json",
+                        )
+
+            # Same-to-same duplicate check for everyone (including privileged uploaders)
+            existing_id = find_duplicate_invoice(fields)
+            if existing_id:
+                logger.info(f"Duplicate invoice detected (matches {existing_id}), rejecting – not saved to SharePoint or DB")
+                return func.HttpResponse(
+                    json.dumps({
+                        "message": "Duplicate invoice - rejected, not saved anywhere",
+                        "filename": safe_name,
+                        "invoice_uuid": invoice_id,
+                        "duplicate_of": existing_id,
+                        "data": {"invoice_processing": invoice_data, "agent_orchestration": orchestration_response},
+                    }),
+                    status_code=200,
+                    mimetype="application/json",
+                )
+
+        # 4) Not a duplicate: upload to SharePoint and save
+        now = __import__('datetime').datetime.now()
+        folder_path = f"Invoices/{now.year}/{now.month:02d}_{now.strftime('%B')}"
+
+        logger.info(f"Using folder path based on utc time now: {folder_path}")
+        try:
+            server_url = upload_file_to_sharepoint(file_content, safe_name, folder_path)
+        except Exception as e:
+            logger.exception("SharePoint upload failed")
+            return func.HttpResponse(
+                json.dumps({"error": f"SharePoint upload failed: {str(e)}"}),
+                status_code=500,
+                mimetype="application/json",
+            )
+
+        site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
+        pdf_url = f"{site_url.split('/sites/')[0]}{server_url}" if server_url and not server_url.startswith("http") else (server_url or "")
+
+        # 5) Insert into SQL and update with extracted fields
+        if use_db:
+            try:
+                insert_invoice(invoice_id, vendor_id, safe_name, pdf_url)
+            except Exception as e:
+                logger.exception("SQL insert failed")
+                return func.HttpResponse(
+                    json.dumps({"error": f"Database insert failed: {str(e)}"}),
+                    status_code=500,
+                    mimetype="application/json",
+                )
+            # Validate against SOW when a matching SOW exists (due date, net terms, comments only; status unchanged)
+            try:
+                sow = get_matching_sow(fields.get("resource_name"), fields.get("vendor_name"))
+                upload_date = datetime.utcnow().date()
+                if sow:
+                    merge_sow_into_invoice_fields(fields, sow, upload_date=upload_date)
+                    logger.info("Merged matching SOW into invoice fields for invoice %s", invoice_id)
+                else:
+                    # No matching SOW: record in comments column
+                    existing = (fields.get("comments") or "").strip()
+                    no_match = "No match invoice"
+                    combined = existing + (" " if existing else "") + no_match
+                    fields["comments"] = combined
+                    logger.info("No matching SOW for invoice %s; comments set to '%s'", invoice_id, no_match)
+            except Exception as e:
+                logger.warning("SOW merge skipped: %s", e)
+
+            # Timesheet look-back: month comes from invoice pay period (start/end) only.
+            # 1) PostgreSQL timesheet_hours_cache from prior sync-excel runs.
+            # 2) SharePoint canonical file timesheet_YYYY_MM.xlsx for that same month (e.g. Feb invoice in May).
+            try:
+                pay_start = fields.get("start_date") or fields.get("pay_period_start")
+                pay_end = fields.get("end_date") or fields.get("pay_period_end")
+                cached_ts = get_cached_timesheet_fields_for_invoice(
+                    employee_id=fields.get("employee_id"),
+                    resource_name=fields.get("resource_name"),
+                    invoice_date=None,
+                    start_date=pay_start,
+                    end_date=pay_end,
+                ) or {}
+                sp_ts = get_timesheet_fields_from_sharepoint_for_pay_month(
+                    start_date=pay_start,
+                    end_date=pay_end,
+                    employee_id=fields.get("employee_id"),
+                    resource_name=fields.get("resource_name"),
+                ) or {}
+                merged = {}
+                for key in ("approved_hours", "division", "client_name", "project_name_excel"):
+                    cv, sv = cached_ts.get(key), sp_ts.get(key)
+                    if key == "approved_hours":
+                        merged[key] = cv if cv is not None else sv
+                    else:
+                        merged[key] = cv if cv not in (None, "", "null") else sv
+                if fields.get("approved_hours") in (None, "", "null") and merged.get("approved_hours") is not None:
+                    fields["approved_hours"] = merged["approved_hours"]
+                    src = "timesheet cache" if cached_ts.get("approved_hours") is not None else "SharePoint timesheet"
+                    logger.info(
+                        "Backfilled approved_hours=%.2f from %s for invoice %s",
+                        fields["approved_hours"],
+                        src,
+                        invoice_id,
+                    )
+                for dim in ("division", "client_name", "project_name_excel"):
+                    if fields.get(dim) in (None, "", "null") and merged.get(dim) not in (None, "", "null"):
+                        fields[dim] = merged[dim]
+                        logger.info("Backfilled %s from timesheet look-back for invoice %s", dim, invoice_id)
+            except Exception as e:
+                logger.warning("Timesheet look-back backfill skipped: %s", e)
+
+            # If timesheet approved_hours is available, enforce status from hour comparison.
+            approved_hours = _as_float(fields.get("approved_hours"))
+            invoice_hours = _as_float(fields.get("invoice_hours"))
+            if invoice_hours is None:
+                invoice_hours = _as_float(fields.get("vendor_hours"))
+            if approved_hours is not None and invoice_hours is not None:
+                if abs(approved_hours - invoice_hours) <= 0.01:
+                    fields["approval_status"] = "Approved"
+                    fields["status"] = "Approved"
+                    logger.info("Auto-approved invoice %s from timesheet backfill (approved_hours=%.2f invoice_hours=%.2f)", invoice_id, approved_hours, invoice_hours)
+                else:
+                    fields["approval_status"] = "Need Approval"
+                    fields["status"] = "Need Approval"
+                    logger.info(
+                        "Marked invoice %s as Need Approval from timesheet mismatch (approved_hours=%.2f invoice_hours=%.2f)",
+                        invoice_id,
+                        approved_hours,
+                        invoice_hours,
+                    )
+            if fields:
+                try:
+                    update_invoice(invoice_id, **fields)
+                    update_due_date(invoice_id)
+                    logger.info(f"Updated PostgreSQL with CSV fields for invoice {invoice_id}")
+                    try:
+                        refreshed = refresh_monthly_sync_report_with_invoice_update(
+                            start_date=fields.get("start_date") or fields.get("pay_period_start"),
+                            end_date=fields.get("end_date") or fields.get("pay_period_end"),
+                            employee_id=fields.get("employee_id"),
+                            resource_name=fields.get("resource_name"),
+                            approval_status=fields.get("approval_status") or fields.get("status"),
+                        )
+                        if refreshed:
+                            logger.info("Updated existing monthly sync report after invoice upload for invoice %s", invoice_id)
+                    except Exception as report_err:
+                        logger.warning("Could not refresh monthly sync report for invoice %s: %s", invoice_id, report_err)
+                except Exception as e:
+                    logger.warning("SQL update after iGentic failed: %s", e)
+            else:
+                logger.warning(f"No CSV fields extracted from iGentic response for invoice {invoice_id}. iGentic response: {json.dumps(orchestration_response)[:500]}")
+            # Save JSON log to PostgreSQL (invoice row must exist first)
+            try:
+                save_complete_log(invoice_id, invoice_data, orchestration_response, "upload")
+            except Exception as e:
+                logger.warning("Save JSON log failed: %s", e)
+        
+        # 5B) Check if the data is Credit Note based on invoice_amount:
+        if fields and fields.get("invoice_amount") is not None:
+            try:
+                amount = float(fields["invoice_amount"])
+                if amount < 0:
+
+                    vendor_name = fields.get("vendor_name")
+                    pay_period_start = fields.get("pay_period_start") or fields.get("start_date")
+                    pay_period_end = fields.get("pay_period_end") or fields.get("end_date")
+                    resource_name = fields.get("resource_name")
+                    invalid_invoice(vendor_name, resource_name,pay_period_start, pay_period_end)
+                    insert_credit_invoice(vendor_name, resource_name, pay_period_start, pay_period_end)
+
+                    #update_invoice(invoice_id, is_credit_note=True)
+                    logger.info(f"Marked invoice {invoice_id} as credit note based on negative amount: {amount}")
+            except Exception as e:
+                logger.warning(f"Failed to determine if invoice {invoice_id} is a credit note: {e}")
+
+        # 5C) Update Due Date
+        
+        '''if fields and fields.get("invoice_id") is not None:
+            try:
+                update_due_date(fields.get("invoice_id"))
+            except:
+                logger.warning(f"Failed to update due date for invoice {invoice_id}: {e}")
+        '''
+
+        # 6) Update Excel file in SharePoint (always - uses CSV data from iGentic)
+        if fields:  # Only update Excel if we extracted CSV fields
+            try:
+                from shared.helpers import update_excel_file
+                # Merge invoice data with CSV-extracted fields for Excel
+                excel_data = {}
+                if use_db:
+                    try:
+                        inv = get_invoice(invoice_id)
+                        excel_data.update(inv or {})
+                    except Exception:
+                        pass
+                excel_data.update(fields)  # CSV fields from iGentic
+                excel_data['invoice_id'] = invoice_id
+                excel_data['pdf_url'] = pdf_url
+                excel_data['vendor_id'] = vendor_id
+                
+                update_excel_file(invoice_id, excel_data)
+                logger.info(
+                    "Updated Excel file with CSV data for invoice %s (path=%s)",
+                    invoice_id,
+                    os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx",
+                )
+            except Exception as e:
+                logger.warning("Excel update skipped: %s", e)
+        else:
+            logger.warning(f"Skipping Excel update - no CSV fields extracted from iGentic for invoice {invoice_id}")
+
+        return func.HttpResponse(
+            json.dumps({
+                "message": "File uploaded and processed successfully",
+                "filename": safe_name,
+                "invoice_uuid": invoice_id,
+                "data": {"invoice_processing": invoice_data, "agent_orchestration": orchestration_response},
+                "workflow": {
+                    "sessionId": invoice_id,
+                    "display_text": (orchestration_response.get("result") or orchestration_response.get("display_text") or ""),
+                    "next_participant": None,
+                },
+            }),
+            status_code=200,
+            mimetype="application/json",
+        )
+    except Exception as e:
+        logger.exception("Upload failed")
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json",
+        )

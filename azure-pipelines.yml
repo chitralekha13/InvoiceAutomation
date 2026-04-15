@@ -1,0 +1,153 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  - group: InvoiceAutomationSecrets
+  # Must match Stack settings → Python version (InvoiceAutomation uses Python 3.12).
+  # If wrong: ModuleNotFoundError: No module named 'psycopg2._psycopg'
+  - name: FUNCTIONS_PYTHON_VERSION
+    value: '3.12'
+
+stages:
+
+- stage: DeployFunctions
+  displayName: 'Deploy Azure Functions'
+  jobs:
+  - job: DeployFunctionsJob
+    displayName: 'Build and Deploy Functions'
+    pool:
+      name: 'ChitraPool'
+    steps:
+    # Linux Function App + Windows agent: install manylinux wheels into .python_packages (not Windows wheels).
+    # Plain "pip install" on Windows breaks psycopg2 on Linux; remote/Oryx build often leaves deps missing.
+    - powershell: |
+        $ErrorActionPreference = "Stop"
+        $ver = "$(FUNCTIONS_PYTHON_VERSION)".Trim()
+        if (-not $ver) { $ver = "3.12" }
+        $vparts = $ver -split '\.'
+        if ($vparts.Length -lt 2) { throw "FUNCTIONS_PYTHON_VERSION must look like 3.10 or 3.11" }
+        $abi = "$($vparts[0])$($vparts[1])"
+        Write-Host "Targeting Linux cp$abi manylinux wheels (FUNCTIONS_PYTHON_VERSION=$ver)"
+        $pp = Join-Path "AzureFunctions" ".python_packages"
+        if (Test-Path $pp) { Remove-Item -Recurse -Force $pp }
+        $target = Join-Path $pp "lib\site-packages"
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        python -m pip install --upgrade pip
+        # Pip requires --only-binary=:all: when using --platform/--python-version (or use --no-deps).
+        python -m pip install -r "AzureFunctions/requirements.txt" `
+          --target $target `
+          --platform manylinux2014_x86_64 `
+          --implementation cp `
+          --python-version $abi `
+          --only-binary=:all: `
+          --upgrade
+        $pg = Join-Path $target "psycopg2"
+        $sos = @(Get-ChildItem -Path $pg -Filter "*.so" -ErrorAction SilentlyContinue)
+        if ($sos.Count -eq 0) { throw "No psycopg2 *.so under $pg — pip wheel may be wrong. Check FUNCTIONS_PYTHON_VERSION and pip log." }
+        Write-Host "psycopg2 native modules:" ($sos.Name -join ", ")
+      displayName: 'Install Linux-compatible deps into .python_packages (manylinux on Windows agent)'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: 'AzureFunctions'
+        includeRootFolder: false
+        archiveFile: '$(Build.ArtifactStagingDirectory)/functions.zip'
+      displayName: 'Zip AzureFunctions folder'
+
+    - task: AzureFunctionApp@2
+      inputs:
+        azureSubscription: 'AzureServiceConnection'
+        appType: 'functionAppLinux'
+        appName: 'VendorAutomationFuncApp'
+        package: '$(Build.ArtifactStagingDirectory)/functions.zip'
+        deploymentMethod: 'zipDeploy'
+        # Dependencies are pre-bundled as Linux wheels above; Oryx remote build not required
+        enableRemoteBuild: false
+      displayName: 'Deploy to VendorAutomationFuncApp'
+
+- stage: DeployVendorPortal
+  displayName: 'Deploy Vendor Portal'
+  dependsOn: DeployFunctions
+  jobs:
+  - job: DeployVendorJob
+    displayName: 'Deploy Vendor Portal'
+    pool:
+      name: 'ChitraPool'
+    steps:
+    - powershell: |
+        $config = @"
+        window.APP_CONFIG = {
+            apiBaseUrl: "$(FUNCTION_APP_URL)",
+            clientId: "$(CLIENT_ID)",
+            tenantId: "$(TENANT_ID)",
+            redirectUri: window.location.origin + "/index.html"
+        };
+        "@
+        Set-Content -Path "frontend1\config.js" -Value $config
+        Write-Host "Config written:"
+        Get-Content "frontend1\config.js"
+      displayName: 'Inject config values'
+
+    - powershell: |
+        $ErrorActionPreference = "Stop"
+        $maxAttempts = 3
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Deploying VendorApp with SWA CLI (attempt $attempt/$maxAttempts)..."
+            npx @azure/static-web-apps-cli@2.0.8 deploy ./frontend1 --env production --deployment-token "$(VENDOR_APP_TOKEN)"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "VendorApp deployment succeeded."
+                break
+            }
+            if ($attempt -eq $maxAttempts) {
+                throw "VendorApp deployment failed after $maxAttempts attempts."
+            }
+            $waitSeconds = 15 * $attempt
+            Write-Host "VendorApp deployment failed. Retrying in $waitSeconds seconds..."
+            Start-Sleep -Seconds $waitSeconds
+        }
+      displayName: 'Deploy to VendorApp'
+
+- stage: DeployAccountsDashboard
+  displayName: 'Deploy Accounts Dashboard'
+  dependsOn: DeployFunctions
+  jobs:
+  - job: DeployAccountsJob
+    displayName: 'Deploy Accounts Dashboard'
+    pool:
+      name: 'ChitraPool'
+    steps:
+    - powershell: |
+        $config = @"
+        window.APP_CONFIG = {
+            apiBaseUrl: "$(FUNCTION_APP_URL)",
+            clientId: "$(ACCOUNTS_CLIENT_ID)",
+            tenantId: "$(TENANT_ID)",
+            redirectUri: window.location.origin + "/index.html",
+            sharePointSiteUrl: "$(SHAREPOINT_SITE_URL)"
+        };
+        "@
+        Set-Content -Path "accountsdashboard\config.js" -Value $config
+        Write-Host "Config written:"
+        Get-Content "accountsdashboard\config.js"
+      displayName: 'Inject config values'
+
+    - powershell: |
+        $ErrorActionPreference = "Stop"
+        $maxAttempts = 3
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Deploying AccountsApp with SWA CLI (attempt $attempt/$maxAttempts)..."
+            npx @azure/static-web-apps-cli@2.0.8 deploy ./accountsdashboard --env production --deployment-token "$(ACCOUNTS_APP_TOKEN)"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "AccountsApp deployment succeeded."
+                break
+            }
+            if ($attempt -eq $maxAttempts) {
+                throw "AccountsApp deployment failed after $maxAttempts attempts."
+            }
+            $waitSeconds = 15 * $attempt
+            Write-Host "AccountsApp deployment failed. Retrying in $waitSeconds seconds..."
+            Start-Sleep -Seconds $waitSeconds
+        }
+      displayName: 'Deploy to AccountsApp'

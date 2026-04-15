@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOW Management - Accounts Portal</title>
+    <script src="config.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (/^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname)) {
+        var s = document.createElement('script'); s.src = 'config.local.js'; s.onerror = function() { this.remove(); }; document.head.appendChild(s);
+      }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: #1e3a5f;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title { color: white; font-size: 20px; font-weight: 600; }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .btn-hamburger {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.6);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            display: flex; flex-direction: column; justify-content: center; gap: 4px;
+        }
+        .btn-hamburger:hover { background: rgba(255,255,255,0.15); }
+        .btn-hamburger span { display: block; width: 22px; height: 2px; background: white; }
+        .header-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            min-width: 220px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        .header-dropdown.show { display: block; }
+        .header-dropdown button {
+            display: block; width: 100%; padding: 12px 16px; text-align: left; border: none; background: none; color: #333; font-size: 14px; cursor: pointer; font-family: inherit;
+        }
+        .header-dropdown button:hover { background: #f0f4f8; }
+        .header-dropdown-wrap { position: relative; }
+        .dropdown-divider { border: none; border-top: 1px solid #eee; margin: 4px 0; }
+
+        .filter-bar {
+            background: #e8e9ec;
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .filter-left { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; flex: 1; min-width: 0; }
+        .filter-left span { font-size: 14px; color: #555; }
+        .filter-right { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+        .btn-refresh {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-refresh:hover { background: #005a9e; }
+        .btn-upload {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-upload:hover { background: #0e6b0e; }
+        .btn-upload:disabled { background: #90b8d8; cursor: not-allowed; }
+        .btn-add-row {
+            background: #5c2d91;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-add-row:hover { background: #4a2475; }
+        .btn-add-row:disabled { opacity: 0.6; cursor: not-allowed; }
+        #sowFileInput { display: none; }
+
+        #manualSowModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1100;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        #manualSowModal.show { display: flex; }
+        .manual-sow-dialog {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            max-width: 560px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .manual-sow-dialog h2 {
+            margin: 0;
+            padding: 16px 20px;
+            font-size: 17px;
+            font-weight: 600;
+            border-bottom: 1px solid #e0e0e0;
+            background: #f8f9fa;
+        }
+        .manual-sow-body {
+            padding: 16px 20px;
+            overflow-y: auto;
+        }
+        .manual-sow-hint { font-size: 13px; color: #666; margin-bottom: 14px; line-height: 1.4; }
+        .manual-sow-grid { display: grid; gap: 12px; }
+        .manual-sow-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 4px;
+        }
+        .manual-sow-field input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .manual-sow-field .req { color: #c00; }
+        .manual-sow-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 20px;
+            border-top: 1px solid #e0e0e0;
+            background: #fafafa;
+        }
+        .manual-sow-actions button {
+            padding: 10px 18px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+        }
+        .manual-sow-cancel { background: #e0e0e0; color: #333; }
+        .manual-sow-cancel:hover { background: #d0d0d0; }
+        .manual-sow-save { background: #107c10; color: white; }
+        .manual-sow-save:hover { background: #0e6b0e; }
+        .manual-sow-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
+        .edit-mode-indicator {
+            position: fixed;
+            top: 70px;
+            right: 24px;
+            background: #d13438;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 999;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .edit-mode-indicator.show { display: block; }
+
+        .table-section {
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .table-wrapper { overflow-x: auto; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: #f8f9fa;
+            padding: 12px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #dee2e6;
+        }
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #eee;
+            color: #444;
+        }
+        tr:hover { background: #f8f9fa; }
+        .column-filter {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        @keyframes cellSaved {
+            0% { background: #d4edda; }
+            100% { background: transparent; }
+        }
+        .cell-saved { animation: cellSaved 1.5s ease-out; }
+        .editable { padding: 2px 4px; border-radius: 2px; }
+        .editable.edit-enabled {
+            cursor: pointer;
+        }
+        .editable.edit-enabled:hover {
+            background: #e7f3ff;
+            outline: 1px dashed #0078d4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .user-name { color: rgba(255,255,255,0.9); font-size: 14px; }
+
+        .error-msg { padding: 16px; background: #fff0f0; color: #c00; border-radius: 4px; margin-bottom: 16px; }
+        .success-msg { padding: 16px; background: #f0fff0; color: #0a0; border-radius: 4px; margin-bottom: 16px; }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-bottom: 6px;
+        }
+        .icon-btn:hover::after { opacity: 1; visibility: visible; }
+        .btn-logout.icon-btn { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.6); }
+        .btn-logout.icon-btn:hover { background: rgba(255,255,255,0.15); }
+        .btn-logout.icon-btn::after { bottom: auto; top: 100%; margin-top: 6px; }
+        .btn-refresh.icon-btn { background: #0078d4; color: white; }
+        .btn-refresh.icon-btn:hover { background: #005a9e; }
+        .btn-view.icon-btn { background: #28a745; color: white; }
+        .btn-view.icon-btn:hover { background: #218838; }
+        .btn-view.icon-btn::after { bottom: auto; top: 100%; margin-top: 6px; }
+
+        .btn-delete {
+            background: #d83b01;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: none;
+        }
+        .btn-delete.show { display: inline-block; }
+
+        #viewerOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: flex-end; align-items: stretch; }
+        #viewerPanel { width: 60%; background: #fff; display: flex; flex-direction: column; box-shadow: -4px 0 24px rgba(0,0,0,0.2); }
+        #viewerHeader { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #dee2e6; background: #f8f9fa; gap: 12px; flex-shrink: 0; }
+        #viewerFileName { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #viewerActions { display: flex; gap: 8px; flex-shrink: 0; }
+        .viewer-btn { padding: 8px 12px; border-radius: 5px; border: none; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; }
+        .viewer-btn-download { background: #0078d4; color: #fff; }
+        .viewer-btn-close { background: #fff; color: #333; border: 1px solid #ccc; }
+        #pdfContainer { flex: 1; overflow-y: auto; background: #525659; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="header-dropdown-wrap">
+                <button type="button" class="btn-hamburger" id="btnHamburger" onclick="toggleHeaderMenu()" aria-label="Menu">
+                    <span></span><span></span><span></span>
+                </button>
+                <div class="header-dropdown" id="headerDropdown">
+                    <button type="button" onclick="window.open('users.html','_self'); closeHeaderMenu();">Manage users</button>
+                    <button type="button" onclick="window.open('dashboard.html','_self'); closeHeaderMenu();">Invoice Dashboard</button>
+                    <button type="button" onclick="openManualSowModal(); closeHeaderMenu();">Add SOW row (no file)</button>
+                    <button type="button" onclick="document.getElementById('sowFileInput').click(); closeHeaderMenu();">Upload SOW</button>
+                    <hr class="dropdown-divider">
+                    <button type="button" onclick="window.open('dashboard.html','_self'); closeHeaderMenu();">TimeSheet Upload (Invoice Dashboard)</button>
+                </div>
+            </div>
+            <span class="header-title">SOW Management</span>
+        </div>
+        <div class="user-info">
+            <span class="user-name" id="userName"></span>
+            <button type="button" class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout"><i class="fas fa-sign-out-alt"></i></button>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-left">
+        </div>
+        <div class="filter-right">
+            <button type="button" class="btn-add-row" id="btnAddSowRow"><i class="fas fa-plus"></i> Add row (no file)</button>
+            <button type="button" class="btn-upload" id="btnUploadSow"><i class="fas fa-upload"></i> Upload SOW</button>
+            <input type="file" id="sowFileInput" accept=".pdf,.png,.jpg,.jpeg" />
+            <button type="button" class="btn-refresh icon-btn" onclick="loadSows()" data-tooltip="Refresh"><i class="fas fa-sync-alt"></i></button>
+        </div>
+    </div>
+
+    <div class="edit-mode-indicator" id="editModeIndicator">✏️ EDIT MODE ACTIVE</div>
+
+    <div class="main">
+        <div id="messageArea" style="display:none;"></div>
+        <div class="table-section" id="pane-sows">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Resource name</th>
+                            <th>Employee ID</th>
+                            <th>Consultancy name</th>
+                            <th>SOW start date</th>
+                            <th>SOW end date</th>
+                            <th>Net terms</th>
+                            <th>Max SOW hours</th>
+                            <th>Rate per hour</th>
+                            <th>Project role</th>
+                            <th>SOW project duration</th>
+                            <th>Document</th>
+                            <th>
+                                <button type="button" id="btnToggleEdit" onclick="toggleEditMode()"
+                                    style="background:#0078d4;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </th>
+                        </tr>
+                        <tr class="filter-row">
+                            <th><input type="text" id="filterResource" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterEmployeeId" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterConsultancy" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterStart" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterEnd" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterNet" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterMaxHrs" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterRate" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterRole" class="column-filter" placeholder="Filter…"></th>
+                            <th><input type="text" id="filterDuration" class="column-filter" placeholder="Filter…"></th>
+                            <th></th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sowTableBody">
+                        <tr><td colspan="12" style="text-align:center;padding:40px;color:#666;">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="manualSowModal" role="dialog" aria-labelledby="manualSowTitle" aria-modal="true">
+        <div class="manual-sow-dialog">
+            <h2 id="manualSowTitle">Add SOW row</h2>
+            <div class="manual-sow-body">
+                <p class="manual-sow-hint">Enter the same fields as the table. No PDF is required. At least <strong>resource name</strong> or <strong>employee ID</strong> must be filled.</p>
+                <div class="manual-sow-grid">
+                    <div class="manual-sow-field">
+                        <label for="m_resource_name">Resource name</label>
+                        <input type="text" id="m_resource_name" autocomplete="off" placeholder="e.g. Jane Smith" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_employee_id">Employee ID</label>
+                        <input type="text" id="m_employee_id" autocomplete="off" placeholder="e.g. 1099-12" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_consultancy_name">Consultancy name</label>
+                        <input type="text" id="m_consultancy_name" autocomplete="off" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_sow_start_date">SOW start date</label>
+                        <input type="text" id="m_sow_start_date" autocomplete="off" placeholder="YYYY-MM-DD" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_sow_end_date">SOW end date</label>
+                        <input type="text" id="m_sow_end_date" autocomplete="off" placeholder="YYYY-MM-DD" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_net_terms">Net terms</label>
+                        <input type="text" id="m_net_terms" autocomplete="off" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_max_sow_hours">Max SOW hours</label>
+                        <input type="text" id="m_max_sow_hours" autocomplete="off" inputmode="decimal" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_rate_per_hour">Rate per hour</label>
+                        <input type="text" id="m_rate_per_hour" autocomplete="off" inputmode="decimal" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_project_role">Project role</label>
+                        <input type="text" id="m_project_role" autocomplete="off" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_sow_project_duration">SOW project duration</label>
+                        <input type="text" id="m_sow_project_duration" autocomplete="off" />
+                    </div>
+                    <div class="manual-sow-field">
+                        <label for="m_doc_name">Row label <span style="font-weight:400;color:#666;">(optional, shown instead of document)</span></label>
+                        <input type="text" id="m_doc_name" autocomplete="off" placeholder="Defaults to (manual entry)" />
+                    </div>
+                </div>
+            </div>
+            <div class="manual-sow-actions">
+                <button type="button" class="manual-sow-cancel" id="manualSowCancel">Cancel</button>
+                <button type="button" class="manual-sow-save" id="manualSowSave">Save to database</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="viewerOverlay">
+        <div id="viewerPanel">
+            <div id="viewerHeader">
+                <span id="viewerFileName"></span>
+                <div id="viewerActions">
+                    <button type="button" class="viewer-btn viewer-btn-download" id="btnDownload" title="Download"><i class="fas fa-download"></i></button>
+                    <button type="button" class="viewer-btn viewer-btn-close" id="btnClose" title="Close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div id="pdfContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').trim().replace(/\/+$/, '');
+        if (API_BASE && !/^https?:\/\//i.test(API_BASE)) API_BASE = 'https://' + API_BASE;
+        if (API_BASE && API_BASE.startsWith('http://')) API_BASE = 'https://' + API_BASE.slice(7);
+
+        const userEmail = sessionStorage.getItem('userEmail');
+        const userName = sessionStorage.getItem('userName');
+        const loggedIn = sessionStorage.getItem('loggedIn');
+        const accessToken = sessionStorage.getItem('accessToken');
+        let isEditMode = false;
+        let allSows = [];
+
+        if (!loggedIn && !userName) {
+            window.location.href = 'index.html';
+        }
+        document.getElementById('userName').textContent = userName || userEmail || '';
+
+        function toggleHeaderMenu() {
+            document.getElementById('headerDropdown').classList.toggle('show');
+        }
+        function closeHeaderMenu() {
+            document.getElementById('headerDropdown').classList.remove('show');
+        }
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.header-dropdown-wrap')) closeHeaderMenu();
+        });
+
+        function escapeHtml(s) {
+            if (s == null || s === '') return '';
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+        function escapeAttrDq(s) {
+            return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        }
+
+        function showMessage(text, isError) {
+            const el = document.getElementById('messageArea');
+            el.className = isError ? 'error-msg' : 'success-msg';
+            el.textContent = text;
+            el.style.display = 'block';
+            setTimeout(function() { el.style.display = 'none'; }, 6000);
+        }
+
+        function applySowFilters(list) {
+            const rF = (document.getElementById('filterResource') || {}).value || '';
+            const eF = (document.getElementById('filterEmployeeId') || {}).value || '';
+            const cF = (document.getElementById('filterConsultancy') || {}).value || '';
+            const sF = (document.getElementById('filterStart') || {}).value || '';
+            const endF = (document.getElementById('filterEnd') || {}).value || '';
+            const nF = (document.getElementById('filterNet') || {}).value || '';
+            const mF = (document.getElementById('filterMaxHrs') || {}).value || '';
+            const rateF = (document.getElementById('filterRate') || {}).value || '';
+            const roleF = (document.getElementById('filterRole') || {}).value || '';
+            const durF = (document.getElementById('filterDuration') || {}).value || '';
+            const inc = function(hay, needle) {
+                if (!needle) return true;
+                return String(hay || '').toLowerCase().includes(String(needle).toLowerCase());
+            };
+            return list.filter(function(s) {
+                return inc(s.resource_name, rF) && inc(s.employee_id, eF) && inc(s.consultancy_name, cF)
+                    && inc(s.sow_start_date, sF) && inc(s.sow_end_date, endF) && inc(s.net_terms, nF)
+                    && inc(s.max_sow_hours != null ? s.max_sow_hours : '', mF)
+                    && inc(s.rate_per_hour != null ? s.rate_per_hour : '', rateF)
+                    && inc(s.project_role, roleF) && inc(s.sow_project_duration, durF);
+            });
+        }
+
+        function renderSowRows(sows) {
+            const tbody = document.getElementById('sowTableBody');
+            if (sows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;color:#666;">No SOWs match filters.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = sows.map(function(s) {
+                const sowId = (s.sow_id || '').replace(/"/g, '&quot;');
+                const canView = !!s.pdf_url;
+                const doc = canView
+                    ? '<button type="button" class="btn-view icon-btn" data-url="' + escapeAttrDq(s.pdf_url) + '" data-name="' + escapeAttrDq(s.doc_name || 'Document') + '" data-tooltip="View Document"><i class="fas fa-file-alt"></i></button>'
+                    : escapeHtml(s.doc_name || '—');
+                const cell = function(field, val) {
+                    const display = val != null && val !== '' ? val : '—';
+                    return '<td class="editable" data-field="' + field + '" data-id="' + sowId + '">' + escapeHtml(display === '—' ? '—' : String(display)) + '</td>';
+                };
+                return '<tr>' +
+                    cell('resource_name', s.resource_name) +
+                    cell('employee_id', s.employee_id) +
+                    cell('consultancy_name', s.consultancy_name) +
+                    cell('sow_start_date', s.sow_start_date) +
+                    cell('sow_end_date', s.sow_end_date) +
+                    cell('net_terms', s.net_terms) +
+                    cell('max_sow_hours', s.max_sow_hours != null ? s.max_sow_hours : '') +
+                    cell('rate_per_hour', s.rate_per_hour != null ? s.rate_per_hour : '') +
+                    cell('project_role', s.project_role) +
+                    cell('sow_project_duration', s.sow_project_duration) +
+                    '<td>' + doc + '</td>' +
+                    '<td><button type="button" class="btn-delete" data-sow-id="' + sowId + '">Delete</button></td>' +
+                    '</tr>';
+            }).join('');
+
+            tbody.querySelectorAll('.btn-delete').forEach(function(btn) {
+                btn.addEventListener('click', function() { deleteSow(this.getAttribute('data-sow-id')); });
+            });
+            tbody.querySelectorAll('.btn-view').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const url = this.getAttribute('data-url');
+                    const name = this.getAttribute('data-name');
+                    if (url) viewDocument(url, name);
+                });
+            });
+            if (isEditMode) {
+                document.querySelectorAll('.editable').forEach(function(c) { c.classList.add('edit-enabled'); });
+                document.querySelectorAll('.btn-delete').forEach(function(b) { b.classList.add('show'); });
+            }
+            bindEditableCells();
+        }
+
+        function refreshFilteredSows() {
+            renderSowRows(applySowFilters(allSows));
+        }
+
+        async function loadSows() {
+            const tbody = document.getElementById('sowTableBody');
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;color:#666;">Loading…</td></tr>';
+            try {
+                const headers = {};
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/list', { method: 'GET', headers });
+                const data = await res.json().catch(function() { return { sows: [] }; });
+                allSows = data.sows || [];
+                if (allSows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;color:#666;">No SOWs yet. Use <strong>Add row</strong> or <strong>Upload SOW</strong>.</td></tr>';
+                    return;
+                }
+                refreshFilteredSows();
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;color:#c00;">Failed to load: ' + escapeHtml(e.message) + '</td></tr>';
+            }
+        }
+
+        ['filterResource','filterEmployeeId','filterConsultancy','filterStart','filterEnd','filterNet','filterMaxHrs','filterRate','filterRole','filterDuration'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', refreshFilteredSows);
+        });
+
+        function openManualSowModal() {
+            document.getElementById('manualSowModal').classList.add('show');
+            document.getElementById('m_resource_name').focus();
+        }
+        function closeManualSowModal() {
+            document.getElementById('manualSowModal').classList.remove('show');
+        }
+        function clearManualSowForm() {
+            ['m_resource_name','m_employee_id','m_consultancy_name','m_sow_start_date','m_sow_end_date','m_net_terms','m_max_sow_hours','m_rate_per_hour','m_project_role','m_sow_project_duration','m_doc_name'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+        }
+
+        document.getElementById('btnAddSowRow').onclick = openManualSowModal;
+        document.getElementById('manualSowCancel').onclick = function() { closeManualSowModal(); };
+        document.getElementById('manualSowModal').addEventListener('click', function(e) {
+            if (e.target === this) closeManualSowModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && document.getElementById('manualSowModal').classList.contains('show')) {
+                closeManualSowModal();
+            }
+        });
+
+        document.getElementById('manualSowSave').onclick = async function() {
+            var rn = (document.getElementById('m_resource_name').value || '').trim();
+            var eid = (document.getElementById('m_employee_id').value || '').trim();
+            if (!rn && !eid) {
+                showMessage('Enter at least resource name or employee ID.', true);
+                return;
+            }
+            var payload = {
+                resource_name: rn || null,
+                employee_id: eid || null,
+                consultancy_name: (document.getElementById('m_consultancy_name').value || '').trim() || null,
+                sow_start_date: (document.getElementById('m_sow_start_date').value || '').trim() || null,
+                sow_end_date: (document.getElementById('m_sow_end_date').value || '').trim() || null,
+                net_terms: (document.getElementById('m_net_terms').value || '').trim() || null,
+                max_sow_hours: (document.getElementById('m_max_sow_hours').value || '').trim() || null,
+                rate_per_hour: (document.getElementById('m_rate_per_hour').value || '').trim() || null,
+                project_role: (document.getElementById('m_project_role').value || '').trim() || null,
+                sow_project_duration: (document.getElementById('m_sow_project_duration').value || '').trim() || null,
+                doc_name: (document.getElementById('m_doc_name').value || '').trim() || null
+            };
+            var btn = document.getElementById('manualSowSave');
+            btn.disabled = true;
+            try {
+                var headers = { 'Content-Type': 'application/json' };
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                var res = await fetch(API_BASE + '/api/sow/manual', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
+                var data = await res.json().catch(function() { return {}; });
+                if (!res.ok) {
+                    showMessage(data.error || data.detail || 'Save failed', true);
+                    return;
+                }
+                showMessage('SOW row saved.', false);
+                clearManualSowForm();
+                closeManualSowModal();
+                loadSows();
+            } catch (err) {
+                showMessage('Save failed: ' + err.message, true);
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        document.getElementById('btnUploadSow').onclick = function() {
+            document.getElementById('sowFileInput').click();
+        };
+        document.getElementById('sowFileInput').onchange = async function() {
+            const file = this.files && this.files[0];
+            if (!file) return;
+            const btn = document.getElementById('btnUploadSow');
+            btn.disabled = true;
+            try {
+                const form = new FormData();
+                form.append('file', file);
+                const headers = {};
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/upload', {
+                    method: 'POST',
+                    headers: headers,
+                    body: form
+                });
+                const data = await res.json().catch(function() { return {}; });
+                if (!res.ok) {
+                    showMessage(data.error || data.detail || 'Upload failed', true);
+                    return;
+                }
+                showMessage('SOW uploaded and processed successfully.', false);
+                loadSows();
+            } catch (e) {
+                showMessage('Upload failed: ' + e.message, true);
+            } finally {
+                btn.disabled = false;
+                this.value = '';
+            }
+        };
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('btnToggleEdit');
+            document.getElementById('editModeIndicator').classList.toggle('show', isEditMode);
+            if (isEditMode) {
+                btn.innerHTML = '<i class="fas fa-lock"></i>';
+                document.querySelectorAll('.editable').forEach(function(c) { c.classList.add('edit-enabled'); });
+                document.querySelectorAll('.btn-delete').forEach(function(b) { b.classList.add('show'); });
+            } else {
+                btn.innerHTML = '<i class="fas fa-edit"></i>';
+                document.querySelectorAll('.editable').forEach(function(c) { c.classList.remove('edit-enabled'); });
+                document.querySelectorAll('.btn-delete').forEach(function(b) { b.classList.remove('show'); });
+            }
+        }
+
+        function bindEditableCells() {
+            document.querySelectorAll('.editable').forEach(function(cell) {
+                cell.replaceWith(cell.cloneNode(true));
+            });
+            document.querySelectorAll('.editable').forEach(function(cell) {
+                cell.addEventListener('click', function() {
+                    if (!isEditMode) return;
+                    const field = this.dataset.field;
+                    const sowId = this.dataset.id;
+                    if (!field || !sowId) return;
+                    const original = this.textContent.trim();
+                    const current = original === '—' ? '' : original;
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = current;
+                    input.style.cssText = 'width:100%;padding:4px;font-size:inherit;border:2px solid #0078d4;';
+                    this.textContent = '';
+                    this.appendChild(input);
+                    input.focus();
+                    const cellRef = this;
+                    function cancel() {
+                        cellRef.textContent = original;
+                        if (isEditMode) cellRef.classList.add('edit-enabled');
+                    }
+                    input.addEventListener('blur', function() {
+                        saveSowEdit(sowId, field, input.value, cellRef, original);
+                    });
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') input.blur();
+                        if (e.key === 'Escape') cancel();
+                    });
+                });
+            });
+        }
+
+        async function saveSowEdit(sowId, field, value, cell, originalValue) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/' + encodeURIComponent(sowId) + '/update', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ field: field, value: value })
+                });
+                const data = await res.json().catch(function() { return {}; });
+                if (!res.ok || data.error) {
+                    cell.textContent = originalValue;
+                    showMessage(data.error || 'Save failed', true);
+                    return;
+                }
+                const display = (value || '').trim() ? value.trim() : '—';
+                cell.textContent = display;
+                cell.classList.add('cell-saved');
+                setTimeout(function() { cell.classList.remove('cell-saved'); }, 1600);
+                if (isEditMode) cell.classList.add('edit-enabled');
+                const idx = allSows.findIndex(function(x) { return String(x.sow_id) === String(sowId); });
+                if (idx >= 0) {
+                    if (display === '—') allSows[idx][field] = '';
+                    else allSows[idx][field] = value.trim();
+                }
+                showMessage(field === 'employee_id' ? 'SOW updated; matching invoices updated when applicable.' : 'SOW updated.', false);
+            } catch (e) {
+                cell.textContent = originalValue;
+                showMessage('Save failed: ' + e.message, true);
+            }
+        }
+
+        async function deleteSow(sowId) {
+            if (!sowId) return;
+            if (!confirm('Delete this SOW? This cannot be undone.')) return;
+            try {
+                const headers = {};
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                const res = await fetch(API_BASE + '/api/sow/' + encodeURIComponent(sowId), { method: 'DELETE', headers });
+                const data = await res.json().catch(function() { return {}; });
+                if (!res.ok) {
+                    showMessage(data.error || 'Delete failed', true);
+                    return;
+                }
+                showMessage('SOW deleted.', false);
+                loadSows();
+            } catch (e) {
+                showMessage('Delete failed: ' + e.message, true);
+            }
+        }
+
+        function logout() {
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        let currentBlobUrl = null;
+
+        async function viewDocument(url, fileName) {
+            document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('pdfContainer').innerHTML = '<p style="color:#fff;padding:40px;text-align:center;">Loading...</p>';
+            document.getElementById('viewerOverlay').style.display = 'flex';
+            try {
+                const response = await fetch(API_BASE + '/api/getdata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pdf_url: url, fileName: fileName, action: 'stream' })
+                });
+                if (!response.ok) throw new Error('Failed to fetch document');
+                const blob = await response.blob();
+                const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = URL.createObjectURL(pdfBlob);
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                await renderPDF(arrayBuffer);
+            } catch (err) {
+                console.error('viewDocument error:', err);
+                document.getElementById('pdfContainer').innerHTML =
+                    '<p style="color:#ffcccc;padding:40px;text-align:center;">Failed to load: ' + escapeHtml(err.message) + '</p>';
+            }
+        }
+
+        async function renderPDF(arrayBuffer) {
+            const container = document.getElementById('pdfContainer');
+            container.innerHTML = '<p style="color:#fff;padding:40px;text-align:center;">Rendering pages...</p>';
+            try {
+                pdfjsLib.GlobalWorkerOptions.workerSrc =
+                    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                container.innerHTML = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 1.5 });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.4);max-width:100%;display:block;';
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                    container.appendChild(canvas);
+                }
+            } catch (err) {
+                console.error('renderPDF error:', err);
+                container.innerHTML =
+                    '<p style="color:#ffcccc;padding:40px;text-align:center;">Failed to render PDF: ' + escapeHtml(err.message) + '</p>';
+            }
+        }
+
+        function closeViewer() {
+            document.getElementById('viewerOverlay').style.display = 'none';
+            document.getElementById('pdfContainer').innerHTML = '';
+            if (currentBlobUrl) {
+                URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = null;
+            }
+        }
+
+        document.getElementById('btnClose').addEventListener('click', closeViewer);
+        document.getElementById('btnDownload').addEventListener('click', function() {
+            if (!currentBlobUrl) return;
+            const a = document.createElement('a');
+            a.href = currentBlobUrl;
+            a.download = document.getElementById('viewerFileName').textContent || 'document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+        document.getElementById('viewerOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeViewer();
+        });
+
+        loadSows();
+    </script>
+</body>
+</html>

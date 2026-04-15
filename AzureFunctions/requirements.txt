@@ -1,0 +1,6 @@
+azure-functions
+requests
+psycopg2-binary
+PyJWT
+openpyxl
+msal

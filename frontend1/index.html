@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Portal - Login</title>
+
+    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
+    <script src="config.js"></script>
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #eaebef;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            padding: 50px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .logo { font-size: 48px; margin-bottom: 10px; }
+        h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+        p  { color: #666; margin-bottom: 30px; font-size: 14px; }
+
+        .btn-login {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-login:hover    { background: #005a9e; }
+        .btn-login:disabled { background: #ccc; cursor: not-allowed; }
+
+        .btn-google {
+            background: white;
+            color: #444;
+            border: 1px solid #ddd;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-google:hover    { background: #f5f5f5; }
+        .btn-google:disabled { background: #ccc; cursor: not-allowed; }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #ddd;
+        }
+
+        .error  { color: #d13438; margin-top: 20px; font-size: 14px; display: none; }
+        .loading { display: none; margin-top: 20px; }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0078d4;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📄</div>
+        <h1>Invoice Portal</h1>
+        <p>Secure document management system</p>
+
+        <br>
+
+        <button id="loginMicrosoft" class="btn-login">
+            <svg width="20" height="20" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft
+        </button>
+
+        <div class="divider">or</div>
+
+        <button id="loginGoogle" class="btn-google">
+            <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Sign in with Google
+        </button>
+
+        <br>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Signing in...</p>
+        </div>
+        <div class="error" id="error"></div>
+    </div>
+
+    <script>
+        const appConfig   = window.APP_CONFIG || {};
+        const clientId    = appConfig.clientId    || '';
+        const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
+
+        // ── Authorities ────────────────────────────────────────────────────────
+        // Single-tenant org app: use tenant-specific authority (not /common).
+        const tenantId = (appConfig.tenantId && appConfig.tenantId.trim())
+            ? appConfig.tenantId.trim()
+            : 'a8e5d571-43e8-4c3c-96be-344156cf6887';
+        const tenantAuthority = `https://login.microsoftonline.com/${tenantId}`;
+
+        const microsoftLoginRequest = {
+            scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
+            prompt: "login"
+        };
+
+        const googleLoginRequest = {
+            scopes: ['openid', 'offline_access', 'profile'],
+            prompt: "login"
+        };
+
+        let msalInstance;
+        let loginInProgress = false;
+
+        function createMsalInstance(authority) {
+            return new msal.PublicClientApplication({
+                auth: {
+                    clientId:    clientId,
+                    authority:   authority,
+                    redirectUri: redirectUri
+                },
+                cache: {
+                    cacheLocation:          "sessionStorage",
+                    storeAuthStateInCookie: false
+                }
+            });
+        }
+
+        function clearMsalCache() {
+            [sessionStorage, localStorage].forEach(store => {
+                Object.keys(store)
+                    .filter(k => k.startsWith("msal.") || k.startsWith("msal|"))
+                    .forEach(k => store.removeItem(k));
+            });
+        }
+
+        function assertValidJwt(token, source) {
+            if (!token || token.trim() === '') {
+                throw new Error(`${source} returned an empty token.`);
+            }
+            if (token.split('.').length !== 3) {
+                throw new Error(`${source} returned a malformed token (${token.split('.').length} segments).`);
+            }
+        }
+
+        async function validateUserEmail(email) {
+            let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || "";
+            let base = API_BASE.trim().replace(/\/+$/, "");
+            if (base.startsWith("http://")) base = "https://" + base.slice(7);
+
+            if (!base) throw new Error("apiBaseUrl not configured in config.js");
+
+            const token = sessionStorage.getItem("accessToken");
+            const url   = base + "/api/validate-email";
+
+            const res = await fetch(url, {
+                method:  "POST",
+                headers: {
+                    "Content-Type":  "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ email })
+            });
+
+            if (!res.ok) throw new Error(`validate-email returned HTTP ${res.status}`);
+
+            const result = await res.json();
+
+            if (!result.allowed) {
+                sessionStorage.setItem("denied_email", email);
+                window.location.href = "access-denied.html";
+                return false;
+            }
+
+            sessionStorage.setItem("org", result.org);
+            return true;
+        }
+
+        function handleLoginError(e) {
+            console.error("Login error — code:", e.errorCode, "| message:", e.message);
+
+            if (e.errorCode === "interaction_in_progress") {
+                clearMsalCache();
+                showError("Login conflict detected. Please click the button again.");
+            } else if (e.errorCode === "user_cancelled") {
+                showError("Login was cancelled. Please try again.");
+            } else if (e.errorCode === "consent_required" || e.errorCode === "interaction_required") {
+                showError("Additional permissions required. Please try signing in again.");
+            } else {
+                showError("Login failed: " + (e.message || "Please try again."));
+            }
+        }
+
+        async function loginFlow(authority, type, loginRequest) {
+            if (!clientId)       { showError("Client ID missing in config.js"); return; }
+            if (loginInProgress) return;
+
+            loginInProgress = true;
+            document.getElementById("loading").style.display = "block";
+            document.getElementById("error").style.display   = "none";
+
+            clearMsalCache();
+
+            try {
+                msalInstance = createMsalInstance(authority);
+                await msalInstance.initialize();
+
+                const loginResponse = await msalInstance.loginPopup(loginRequest);
+
+                console.log("Login success:", loginResponse.account.username);
+
+                assertValidJwt(loginResponse.idToken, "ID token");
+
+                sessionStorage.setItem("loginType",   type);
+                sessionStorage.setItem("userEmail",   loginResponse.account.username);
+                sessionStorage.setItem("userName",    loginResponse.account.name);
+                sessionStorage.setItem("accessToken", loginResponse.idToken);
+
+                // Validate email against your Function App then redirect
+                const allowed = await validateUserEmail(loginResponse.account.username);
+                if (!allowed) return;
+
+                window.location.href = "retrieveupload.html";
+
+            } catch (e) {
+                handleLoginError(e);
+            } finally {
+                document.getElementById("loading").style.display = "none";
+                loginInProgress = false;
+            }
+        }
+
+        // Microsoft: tenant-specific authority (single-tenant app registration)
+        document.getElementById("loginMicrosoft").onclick = () =>
+            loginFlow(tenantAuthority, "microsoft", microsoftLoginRequest);
+
+        // Google: tenant-specific (external identity federation configured in the tenant)
+        document.getElementById("loginGoogle").onclick = () =>
+            loginFlow(tenantAuthority, "google", googleLoginRequest);
+
+        function showError(msg) {
+            const div = document.getElementById("error");
+            div.textContent = msg;
+            div.style.display = "block";
+        }
+    </script>
+</body>
+</html>

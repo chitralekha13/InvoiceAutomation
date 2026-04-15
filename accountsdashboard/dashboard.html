@@ -1,0 +1,3561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Management - Accounts Portal</title>
+    <script src="config.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+      if (/^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname)) {
+        var s = document.createElement('script'); s.src = 'config.local.js'; s.onerror = function() { this.remove(); }; document.head.appendChild(s);
+      }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: #1e3a5f;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title { color: white; font-size: 20px; font-weight: 600; }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .btn-hamburger {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.6);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            display: flex; flex-direction: column; justify-content: center; gap: 4px;
+        }
+        .btn-hamburger:hover { background: rgba(255,255,255,0.15); }
+        .btn-hamburger span { display: block; width: 22px; height: 2px; background: white; }
+        .header-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            min-width: 200px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        .header-dropdown.show { display: block; }
+        .header-dropdown a, .header-dropdown button, .header-dropdown label { display: block; width: 100%; padding: 12px 16px; text-align: left; border: none; background: none; color: #333; font-size: 14px; cursor: pointer; font-family: inherit; box-sizing: border-box; }
+        .header-dropdown a:hover, .header-dropdown button:hover, .header-dropdown label:hover { background: #f0f4f8; }
+        .header-dropdown-wrap { position: relative; }
+        .dropdown-divider { border: none; border-top: 1px solid #eee; margin: 4px 0; }
+
+        /* Upload option in dropdown */
+        .dropdown-upload-label { display: flex !important; align-items: center; gap: 8px; cursor: pointer; width: 100%; padding: 12px 16px; color: #333; font-size: 14px; box-sizing: border-box; }
+        .dropdown-upload-label:hover { background: #f0f4f8; }
+        .dropdown-upload-label input[type="file"] { display: none; }
+        .upload-icon { font-size: 16px; }
+
+        .btn-logout {
+            background: transparent;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.6);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-right: 12px;
+        }
+        .btn-logout:hover { background: rgba(255,255,255,0.1); }
+
+        .filter-bar {
+            background: #e8e9ec;
+            padding: 12px 20px;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .filter-left {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 14px 18px;
+            width: 100%;
+            min-width: min-content;
+            box-sizing: border-box;
+        }
+        /* Refresh (+ clear when visible) at end of same toolbar row */
+        .filter-bar-trailing {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .filter-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .filter-item > label {
+            font-size: 14px;
+            color: #555;
+            margin: 0;
+            white-space: nowrap;
+        }
+        .filter-left select,
+        .filter-left input[type="date"],
+        .filter-left input[type="month"] {
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .filter-left input[type="month"] {
+            width: 9.75rem;
+            min-width: 0;
+        }
+        #filterAll {
+            min-width: 7.5rem;
+        }
+
+        #consultancyFilters {
+            display: none;
+            flex-direction: row;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+        }
+        #consultancyFilters.consultancy-filters-visible {
+            display: inline-flex;
+        }
+        #consultancyTopVendor {
+            width: 12rem;
+            max-width: min(12rem, 30vw);
+            min-width: 0;
+        }
+        #consultancyTopResource {
+            width: 10rem;
+            max-width: min(10rem, 26vw);
+            min-width: 0;
+        }
+        .btn-refresh {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-refresh:hover { background: #005a9e; }
+        .btn-refresh:disabled { background: #90b8d8; cursor: not-allowed; }
+
+        .main { padding: 24px; max-width: 1800px; margin: 0 auto; }
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 60px;
+        }
+
+        .metric-card .value {
+            font-size: 22px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .metric-card .label {
+            font-size: 14px;
+            color: #888;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .metric-card.amount .value { color: #0078d4; }
+        .metric-card.clickable {
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .metric-card.clickable:hover {
+            background: #f0f4f8;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .metric-card.clickable.active {
+            background: #1e3a5f;
+            color: white;
+        }
+        .metric-card.clickable.active .value,
+        .metric-card.clickable.active .label { color: white; }
+
+
+        #tilePending { 
+            background: #dcfce7; 
+        }
+        #tilePending:hover { 
+            background: #16A34A; 
+        }
+        #tilePending .value, #tilePending .label { 
+            color: #16A34A; 
+        }
+        #tilePending:hover .value, #tilePending:hover .label { 
+            color: white; 
+        }
+
+        #tileApproved { 
+            background: #ede9fe; 
+        }
+        #tileApproved:hover { 
+            background: #7C3AED; 
+        }
+        #tileApproved .value, #tileApproved .label { 
+            color: #7C3AED; 
+        }
+        #tileApproved:hover .value, #tileApproved:hover .label { 
+            color: white; 
+        }
+
+
+        #tileNeedApproval { 
+            background: #dbeafe; 
+        }
+        #tileNeedApproval:hover { 
+            background: #2563EB; 
+        }
+        #tileNeedApproval .value, #tileNeedApproval .label { 
+            color: #2563EB; 
+        }
+        #tileNeedApproval:hover .value, #tileNeedApproval:hover .label { 
+            color: white; 
+        }
+
+
+        #tilePaymentInitiated { 
+            background: #ede9fe; 
+        }
+        #tilePaymentInitiated:hover { 
+            background: #7C3AED; 
+        }
+        #tilePaymentInitiated .value, #tilePaymentInitiated .label { 
+            color: #7C3AED; 
+        }
+        #tilePaymentInitiated:hover .value, #tilePaymentInitiated:hover .label { 
+            color: white; 
+        }
+
+        #tileInvalid {
+            background: #fde7e9;
+        }
+        #tileInvalid:hover {
+            background: #d13438;
+        }
+        #tileInvalid .value, #tileInvalid .label {
+            color: #a4262c;
+        }
+        #tileInvalid:hover .value, #tileInvalid:hover .label {
+            color: white;
+        }
+
+
+        .edit-mode-indicator {
+            position: fixed;
+            top: 70px;
+            right: 24px;
+            background: #d13438;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 999;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .edit-mode-indicator.show {
+            display: block;
+        }
+        .metric-card.daily-summary {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8f 100%);
+            color: white;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card.daily-summary:hover {
+            background: linear-gradient(135deg, #152a45 0%, #1e3a5f 100%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .metric-card.daily-summary .value {
+            color: white;
+            font-size: 24px;
+        }
+        .metric-card.daily-summary .label {
+            color: rgba(255,255,255,0.9);
+        }
+        .metric-card.daily-summary .date-display {
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 4px;
+        }
+        .metric-card.daily-summary .time-toggle {
+            font-size: 10px;
+            color: rgba(255,255,255,0.7);
+            margin-top: 2px;
+            cursor: pointer;
+        }
+        .metric-card.daily-summary .time-toggle:hover {
+            color: white;
+            text-decoration: underline;
+        }
+
+
+
+        .pane-headers {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0;
+            margin-bottom: 0;
+            background: #f8f9fa;
+            border-radius: 6px 6px 0 0;
+            overflow: hidden;
+            border: 1px solid #dee2e6;
+            border-bottom: none;
+        }
+        .pane-header {
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #495057;
+            text-align: center;
+            cursor: pointer;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            transition: background 0.2s, color 0.2s;
+        }
+        .pane-header:last-child { border-right: none; }
+        .pane-header:hover { background: #e9ecef; color: #1e3a5f; }
+        .pane-header.active {
+            background: white;
+            color: #1e3a5f;
+            border-bottom: 2px solid white;
+            margin-bottom: -1px;
+        }
+        .panes-wrapper { border: 1px solid #dee2e6; border-top: none; border-radius: 0 0 6px 6px; overflow: hidden; }
+        .pane {
+            background: white;
+            box-shadow: none;
+            border-radius: 0;
+            display: none;
+            overflow: hidden;
+        }
+        .pane.active { display: block; }
+        .pane-title {
+            padding: 16px 24px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        .pane-body { padding: 20px 24px; }
+
+        .sow-placeholder { color: #666; font-size: 14px; }
+
+        .table-section {
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .table-title {
+            padding: 16px 24px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        .table-wrapper {
+            position: relative;
+            overflow-x: auto;
+        }
+        .table-top-scrollbar {
+            display: none;
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 10px;
+            background: transparent;
+            border: 0;
+            position: sticky;
+            top: 0;
+            z-index: 8;
+            margin: 0;
+            padding: 0;
+        }
+        .table-top-scrollbar-track { height: 1px; }
+        .table-top-scrollbar::-webkit-scrollbar { height: 8px; }
+        .table-top-scrollbar::-webkit-scrollbar-thumb {
+            background: #bfc7d1;
+            border-radius: 6px;
+        }
+        .table-top-scrollbar::-webkit-scrollbar-track { background: #eef1f4; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: #f8f9fa;
+            padding: 12px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #dee2e6;
+        }
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #eee;
+            color: #444;
+        }
+        tr:hover { background: #f8f9fa; }
+
+        @keyframes cellSaved {
+            0% { background: #d4edda; }
+            100% { background: transparent; }
+        }
+        .cell-saved {
+            animation: cellSaved 1.5s ease-out;
+        }
+
+        .editable {
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+        .editable.edit-enabled {
+            cursor: pointer;
+        }
+        .editable.edit-enabled:hover { 
+            background: #e7f3ff; 
+            outline: 1px dashed #0078d4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .user-name { color: rgba(255,255,255,0.9); font-size: 14px; }
+
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1e3a5f;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .checkbox-col { width: 90px; text-align: left; padding-left: 8px; }
+        .checkbox-col .row-delete-btn {
+            margin-left: 8px;
+            background: none;
+            border: none;
+            color: #d13438;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0 4px;
+            display: none;
+        }
+        .checkbox-col .row-delete-btn.show { display: inline; }
+        .checkbox-col .row-delete-btn:hover { text-decoration: underline; }
+        .actions-col { width: 180px; text-align: center; white-space: nowrap; }
+
+        .btn-view-payment {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 4px;
+        }
+        .btn-view-payment:hover { background: #0e6b0e; }
+        .btn-payment-done {
+            background: #d83b01;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 4px;
+        }
+        .btn-payment-done.done {
+            background: #0078d4;
+        }
+
+        tr.row-payment-done {
+            background-color: #e0f5e0 !important;
+        }
+        tr.row-invalid {
+            background-color: #fde7e9 !important;
+        }
+
+        .payment-modal-close {
+            position: relative;
+            float: right;
+            background: #d13438;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 2001;
+        }
+        .payment-modal-close i,
+        .payment-modal-close .fa-times {
+            color: #fff !important;
+        }
+        .payment-modal-close.icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-bottom: 6px;
+            z-index: 2002;
+            pointer-events: none;
+        }
+        .payment-modal-close.icon-btn:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .payment-modal-close:hover {
+            background: #666;
+        }
+            .payment-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .payment-modal-content {
+            background: white;
+            padding: 36px;
+            border-radius: 8px;
+            max-width: 1000px;
+            max-height: 80vh;
+            overflow: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .payment-modal h3 { margin-bottom: 12px; color: #333; }
+        .payment-modal-body { background: #f8f9fa; padding: 20px; border-radius: 4px; overflow-x: auto; font-size: 15px; }
+        .payment-details-table { width: 100%; border-collapse: collapse; }
+        .payment-details-table td { padding: 12px 16px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+        .payment-details-table .payment-label { font-weight: 600; color: #444; width: 40%; font-size: 15px; }
+        .payment-details-table .payment-value { color: #333; font-size: 15px;}
+        .payment-details-table .payment-section { font-weight: 600; color: #1e3a5f; padding-top: 16px; font-size: 15px; }
+        .payment-pre { white-space: pre-wrap; margin: 0; font-family: inherit; }
+        .payment-modal-close { float: right; background: #666; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;}
+        .daily-summary-header .payment-modal-close { float: none; }
+        .payment-modal-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;text-align: right; }
+        .payment-modal-close:hover { background: #666; }
+        .btn-payment-done-modal {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-payment-done-modal:hover { background: #0e6b0e; }
+        .btn-payment-done-modal.done { background: #2e7d32; cursor: default; }
+        .btn-view {
+            background: #28a745; 
+            color: white; 
+            border: none;
+            padding: 8px 15px; 
+            border-radius: 3px; 
+            cursor: pointer; 
+            font-size: 12px;
+        }
+
+        .btn-view:hover { 
+            background: #218838; 
+        }
+
+        #currentTimeDisplay {
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.5px;
+}
+
+        #viewerOverlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: flex-end;
+            align-items: stretch;
+        }
+
+        #viewerPanel {
+            width: 60%;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+        }
+
+        #viewerHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        #viewerFileName {
+            font-size: 14px; font-weight: 600;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        #viewerActions { display: flex; gap: 8px; flex-shrink: 0; }
+
+        .viewer-btn {
+            padding: 7px 16px; border-radius: 5px;
+            border: none; cursor: pointer; font-size: 13px; font-weight: 500;
+        }
+
+        .viewer-btn-download { background: #0078d4; color: #fff; }
+        .viewer-btn-download:hover { background: #006cbf; }
+        .viewer-btn-close { background: #fff; color: #333; border: 1px solid #ccc; }
+        .viewer-btn-close:hover { background: #f0f0f0; }
+
+        #pdfContainer {
+            flex: 1;
+            overflow-y: auto;
+            background: #525659;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Status Badge Styles */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-badge.pending {
+            background: #dcfce7;
+            color: #16A34A;
+        }
+        .status-badge.approved {
+            background: #ede9fe;
+            color: #7C3AED;
+        }
+        .status-badge.need-approval {
+            background: #dbeafe;
+            color: #2563EB;
+        }
+        .status-badge.payment-initiated {
+            background: #ede9fe;
+            color: #7C3AED;
+        }
+        .status-badge.invalid {
+            background: #fde7e9;
+            color: #a4262c;
+        }
+
+
+        /* Excel Upload progress toast */
+        .toast { position: fixed; bottom: 24px; right: 24px; background: #1e3a5f; color: white; padding: 14px 20px; border-radius: 6px; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 3000; display: none; max-width: 360px; }
+        .toast.show { display: block; }
+        .toast-title { font-weight: 600; margin-bottom: 6px; }
+        .toast-body { opacity: 0.85; font-size: 13px; line-height: 1.5; }
+        .toast-close { float: right; cursor: pointer; font-size: 16px; line-height: 1; margin-left: 12px; opacity: 0.7; }
+        .toast-close:hover { opacity: 1; }
+        .toast.success { background: #107c10; }
+        .toast.error   { background: #d13438; }
+        .toast.warning { background: #ca5010; }
+
+        /* Column filters in table header */
+        .filter-row th {
+            padding: 8px;
+            background: #e9ecef;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .column-filter {
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+        .column-filter:focus {
+            border-color: #0078d4;
+            outline: none;
+        }
+
+        /* Daily Summary Modal */
+        .daily-summary-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .daily-summary-modal.show {
+            display: flex;
+        }
+        .daily-summary-content {
+            background: white;
+            padding: 24px;
+            border-radius: 0px;
+            max-width: 90%;
+            max-height: 85vh;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            width: 800px;
+            display: flex;
+            flex-direction: column;
+        }
+        .daily-summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #fff;
+        }
+        .daily-summary-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1e3a5f;
+        }
+        .daily-summary-stats {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .daily-stat-box {
+            background: #f8f9fa;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        /* Total */
+        .daily-stat-box:first-child { 
+            background: #f3f4f6; 
+        }
+        .daily-stat-box:first-child:hover {
+            background: #e5e7eb;
+        }
+        .daily-stat-box:first-child .daily-stat-value,
+        .daily-stat-box:first-child .daily-stat-label {
+            color: #333;
+        }
+
+        /* Pending - Green */
+        .daily-stat-box.pending { 
+            background: #dcfce7; 
+        }
+        .daily-stat-box.pending:hover { 
+            background: #16A34A; 
+        }
+        .daily-stat-box.pending .daily-stat-value,
+        .daily-stat-box.pending .daily-stat-label { 
+            color: #16A34A; 
+        }
+        .daily-stat-box.pending:hover .daily-stat-value,
+        .daily-stat-box.pending:hover .daily-stat-label { 
+            color: white; 
+        }
+
+        /* Approved - Purple */
+        .daily-stat-box.approved { 
+            background: #ede9fe; 
+        }
+        .daily-stat-box.approved:hover { 
+            background: #7C3AED; 
+        }
+        .daily-stat-box.approved .daily-stat-value,
+        .daily-stat-box.approved .daily-stat-label { 
+            color: #7C3AED; 
+        }
+        .daily-stat-box.approved:hover .daily-stat-value,
+        .daily-stat-box.approved:hover .daily-stat-label { 
+            color: white; 
+        }
+
+        /* Need Approval - Blue */
+        .daily-stat-box.need-approval { 
+            background: #dbeafe; 
+        }
+        .daily-stat-box.need-approval:hover { 
+            background: #2563EB; 
+        }
+        .daily-stat-box.need-approval .daily-stat-value,
+        .daily-stat-box.need-approval .daily-stat-label { 
+            color: #2563EB; 
+        }
+        .daily-stat-box.need-approval:hover .daily-stat-value,
+        .daily-stat-box.need-approval:hover .daily-stat-label { 
+            color: white; 
+        }
+
+        /* Payment Done - Purple */
+        .daily-stat-box.payment-done { 
+            background: #ede9fe; 
+        }
+        .daily-stat-box.payment-done:hover { 
+            background: #7C3AED; 
+        }
+        .daily-stat-box.payment-done .daily-stat-value,
+        .daily-stat-box.payment-done .daily-stat-label { 
+            color: #7C3AED; 
+        }
+        .daily-stat-box.payment-done:hover .daily-stat-value,
+        .daily-stat-box.payment-done:hover .daily-stat-label { 
+            color: white; 
+        }
+
+
+        .daily-stat-value {
+            font-size: 32px;
+            font-weight: 600;
+            color: #333;
+        }
+        .daily-stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+        .daily-summary-table-wrapper {
+            max-height: 400px;
+            overflow: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0px;
+        }
+        .daily-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .daily-summary-table th {
+            background: #1e3a5f;
+            color: white;
+            padding: 10px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+        .daily-summary-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .daily-summary-table tr:hover {
+            background: #f8f9fa;
+        }
+        .daily-summary-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            background: #fff;
+            padding-top: 8px;
+        }
+        .btn-download-excel {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        .btn-download-excel:hover {
+            background: #0e6b0e;
+        }
+
+        .sort-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .sort-btn:hover {
+            color: #0078d4;
+        }
+
+        .sort-icon {
+            font-size: 10px;
+            color: #666;
+        }
+
+        .editable.edit-disabled {
+            cursor: not-allowed;
+            background-color: #f0f0f0;
+            color: #999;
+        }
+
+        .editable.cell-disabled.edit-enabled {
+            cursor: not-allowed !important;
+            background-color: #e0e0e0 !important;
+            color: #999 !important;
+        }
+        .editable.cell-disabled.edit-enabled:hover {
+            background: #e0e0e0 !important;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-bottom: 6px;
+        }
+
+        .icon-btn:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .btn-logout.icon-btn { background: transparent; color: white; }
+        .btn-logout.icon-btn:hover { background: rgba(255,255,255,0.15); }
+        .btn-logout.icon-btn::after { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px;
+}
+
+
+        .btn-refresh.icon-btn { background: #0078d4; color: white; }
+        .btn-refresh.icon-btn:hover { background: #005a9e; }
+
+        .btn-view.icon-btn { background: #28a745; color: white; }
+        .btn-view.icon-btn:hover { background: #218838; }
+        .btn-view.icon-btn::after { 
+            bottom: auto; 
+            top: 100%; 
+            margin-bottom: 0; 
+            margin-top: 6px;
+        }
+
+
+        .btn-view-payment.icon-btn { background: #107c10; color: white; }
+        .btn-view-payment.icon-btn:hover { background: #0e6b0e; }
+
+        .row-delete-btn.icon-btn { color: #d13438; background: none; }
+        .row-delete-btn.icon-btn:hover { transform: scale(1.2); }
+
+        .viewer-btn.icon-btn { padding: 7px 16px; }
+        .viewer-btn-download.icon-btn { background: #0078d4; color: #fff; }
+        .viewer-btn-download.icon-btn:hover { background: #006cbf; }
+        .viewer-btn-close.icon-btn { background: #fff; color: #333; border: 1px solid #ccc; }
+        .viewer-btn-close.icon-btn:hover { background: #f0f0f0; }
+
+        .metric-card.past-months-summary {
+            background: #ede9fe;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card.past-months-summary:hover {
+            background: #7C3AED;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .metric-card.past-months-summary .value {
+            color: #7C3AED;
+        }
+        .metric-card.past-months-summary .label {
+            color: #7C3AED;
+        }
+        .metric-card.past-months-summary .date-display {
+            font-size: 12px;
+            color: #7C3AED;
+            margin-top: 4px;
+        }
+        .metric-card.past-months-summary:hover .value,
+        .metric-card.past-months-summary:hover .label,
+        .metric-card.past-months-summary:hover .date-display {
+            color: white;
+        }
+        .daily-stat-box.total-amount {
+            background: #e3f2fd;
+            border: 2px solid #1976d2;
+        }
+        .daily-stat-box.total-amount .daily-stat-value {
+            color: #1976d2;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="header-dropdown-wrap">
+                <button type="button" class="btn-hamburger" id="btnHamburger"
+                        onclick="toggleHeaderMenu()" aria-label="Menu">
+                    <span></span><span></span><span></span>
+                </button>
+                <div class="header-dropdown" id="headerDropdown">
+                    <button type="button" onclick="window.open('users.html','_self'); closeHeaderMenu();">
+                        Manage users
+                    </button>
+                    <button type="button" onclick="downloadExcel(); closeHeaderMenu();">
+                        Download Dashboard
+                    </button>
+                    <button type="button" onclick="downloadExcelcur(); closeHeaderMenu();">
+                        Download Current Summary
+                    </button>
+                    <button type="button" onclick="generateDailySummary(); closeHeaderMenu();">
+                        Generate Daily Summary
+                    </button>
+                    <button type="button" onclick="window.open('sow.html','_self'); closeHeaderMenu();">
+                        SOW Management
+                    </button>
+                    <hr class="dropdown-divider">
+                    <input type="file" id="syncExcelInput" accept=".xlsx,.xls"
+                        style="display:none" onchange="onSyncFileChosen(this)">
+                    <button type="button" onclick="document.getElementById('syncExcelInput').click();">
+                        TimeSheet Upload
+                    </button>
+                    <button type="button" onclick="openSyncReportsFolder(); closeHeaderMenu();">
+                        View Sync Reports
+                    </button>
+                    <button type="button" onclick="openTimeConverter(); closeHeaderMenu();">
+                        UTC/Local Time Converter
+                    </button>
+
+
+                </div>
+            </div>
+            <span class="header-title">Accounts Invoice Dashboard</span>
+        </div>
+        <div class="user-info">
+            <span class="user-name" id="userName"></span>
+            <button type="button" class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout"><i class="fas fa-sign-out-alt"></i></button>
+        </div>
+
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-left">
+            <span class="filter-item">
+                <label for="filterAll">All</label>
+                <select id="filterAll">
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="need_approval">Need Approval</option>
+                    <option value="payment_initiated">Payment Initiated</option>
+                    <option value="invalid">Invalid</option>
+                </select>
+            </span>
+
+            <span class="filter-item">
+                <label for="dueBy">Due by</label>
+                <input type="date" id="dueBy" placeholder="mm/dd/yyyy">
+            </span>
+
+            <span class="filter-item">
+                <label for="filterMonth">Month</label>
+                <input type="month" id="filterMonth">
+            </span>
+
+            <!-- Consultancy View: same row as other filters when pane is active -->
+            <div id="consultancyFilters" class="consultancy-filters" aria-hidden="true">
+                <span class="filter-item">
+                    <label for="consultancyTopVendor">Consultancy</label>
+                    <select id="consultancyTopVendor">
+                        <option value="">All Consultancies</option>
+                    </select>
+                </span>
+                <span class="filter-item">
+                    <label for="consultancyTopResource">Resource</label>
+                    <select id="consultancyTopResource">
+                        <option value="">All Resources</option>
+                    </select>
+                </span>
+            </div>
+
+            <span class="filter-bar-trailing">
+                <button class="btn-refresh icon-btn" type="button" onclick="loadDashboard()" data-tooltip="Refresh"><i class="fas fa-sync-alt"></i></button>
+                <button type="button" id="clearFilterBtn" class="btn-refresh" onclick="clearAllFilters()" style="background: #f32a0b; display: none;">Clear Filters</button>
+            </span>
+        </div>
+
+    </div>
+
+    <div class="edit-mode-indicator" id="editModeIndicator">
+        ✏️ EDIT MODE ACTIVE
+    </div>
+
+    <div class="main">
+        <div class="metrics-row">
+            <div class="metric-card clickable" id="tileTotal" data-filter="all" onclick="filterByTile('all')">
+                <div class="value" id="mTotal">0</div>
+                <div class="label">Total</div>
+            </div>
+            <div class="metric-card clickable" id="tilePending" data-filter="pending" onclick="filterByTile('pending')">
+                <div class="value" id="mPending">0</div>
+                <div class="label">Pending</div>
+            </div>
+            <div class="metric-card clickable" id="tileApproved" data-filter="approved" onclick="filterByTile('approved')">
+                <div class="value" id="mApproved">0</div>
+                <div class="label">Approved</div>
+            </div>
+            <div class="metric-card clickable" id="tileNeedApproval" data-filter="need_approval" onclick="filterByTile('need_approval')">
+                <div class="value" id="mNeedApproval">0</div>
+                <div class="label">Need Approval</div>
+            </div>
+            <div class="metric-card clickable" id="tileInvalid" data-filter="invalid" onclick="filterByTile('invalid')">
+                <div class="value" id="mInvalid">0</div>
+                <div class="label">Invalid</div>
+            </div>
+            <div class="metric-card clickable" id="tilePaymentInitiated" data-filter="payment_initiated" onclick="filterByTile('payment_initiated')">
+                <div class="value" id="mPaymentInitiated">0</div>
+                <div class="label">Payment Initiated</div>
+            </div>
+            <div class="metric-card amount">
+                <div class="value" id="mTotalAmount">$0.00</div>
+                <div class="label">Total Amount</div>
+            </div>
+            <div class="metric-card daily-summary" id="dailySummaryCard" onclick="openDailySummary()">
+                <div class="value" id="dailySummaryCount">0</div>
+                <div class="label">Due Today</div>
+                <div class="date-display" id="dailySummaryDate">--/--/----</div>
+                <div class="time-toggle" id="dailySummaryTimeToggle" onclick="event.stopPropagation(); toggleDailySummaryTimeFormat()">
+                    Show Local Time
+                </div>
+            </div>
+            <div class="metric-card past-months-summary" id="pastMonthsSummaryCard" onclick="openPastMonthsSummary()">
+                <div class="value" id="pastMonthsSummaryCount">0</div>
+                <div class="label">Unpaid Invoices</div>
+                <div class="date-display" id="pastMonthsSummaryDate">Click for Details</div>
+            </div>
+            <div class="metric-card" id="toastArea" style="cursor: default; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div class="value" id="toastAreaContent" style="font-size: 14px; color: #666; text-align: center; line-height: 1.4; padding: 8px;">No recent activity</div>
+            </div>
+        </div>
+
+        <div class="sync-results" id="syncResultsPanel" style="display:none"></div>
+        
+        <div class="pane-headers">
+            <div class="pane-header active" data-pane="invoices" onclick="switchPane('invoices')">Invoice Management Table</div>
+            <div class="pane-header" data-pane="consultancy" onclick="switchPane('consultancy')">Consultancy View</div>
+        </div>
+        
+        <div class="panes-wrapper">
+            <div class="pane table-section active" id="pane-invoices">
+             <!--   <div class="table-title">Invoice Management Table</div>-->
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;" class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                <th style="width: 50px;">S.No</th>
+                                <th style="width: 100px;">ID (UUID)</th>
+                                <th style="width: 120px;">Doc Name</th>
+                                <th style="width: 100px;">Invoice No</th>
+                                <th style="width: 120px;">Consultancy Name</th>
+                                <th style="width: 120px;">Resource Name</th>
+                                <th style="width: 100px;">Employee ID</th>
+                                <th style="width: 50px;">Division</th>
+                                <th style="width: 120px;">Client Name</th>
+                                <th style="width: 100px;">
+                                    <button type="button" class="sort-btn" data-sort="pay_period_start" onclick="sortTable('pay_period_start')">
+                                        Pay Period Start <span class="sort-icon">↕</span>
+                                    </button>
+                                </th>
+                                <th style="width: 100px;">
+                                    <button type="button" class="sort-btn" data-sort="pay_period_end" onclick="sortTable('pay_period_end')">
+                                        Pay Period End <span class="sort-icon">↕</span>
+                                    </button>
+                                </th>
+                                <th style="width: 80px;">Net Terms</th>
+                                <th style="width: 100px;">Vendor Hours</th>
+                                <th style="width: 100px;">Approved Hours</th>
+                                <th style="width: 100px;">Status</th>
+                                <th style="width: 120px;">Comments</th>
+                                <th style="width: 100px;">Pay Rate</th>
+                                <th style="width: 120px;">Invoice Amount</th>
+                                <th style="width: 120px;">
+                                    <button type="button" class="sort-btn" data-sort="pay_period_start" onclick="sortTable('pay_period_start')">
+                                        Date Inv Recd <span class="sort-icon">↕</span>
+                                    </button>
+                                </th>
+                                <th style="width: 120px;">
+                                    <button type="button" class="sort-btn" data-sort="pay_period_start" onclick="sortTable('pay_period_start')">
+                                        Due Date <span class="sort-icon">↕</span>
+                                    </button>
+                                </th>
+                                <th style="width: 120px;">Project Name</th>
+                                <th style="width: 120px;">Project Name (Excel)</th>
+                                <th style="width: 120px;">Payment initiated on</th>
+                                <th style="width: 120px;">Payment Details</th>
+                                <th style="width: 120px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                                        <button type="button" id="btnToggleEdit" onclick="toggleEditMode()" 
+                                                style="background: #0078d4; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                            <i class="fas fa-edit" data-tooltip="Enable Edit"></i>
+                                        </button>
+                                        <!-- <span style="font-size: 11px; font-weight: normal;">View / Download</span> -->
+                                    </div>
+                                </th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th style="width: 40px;"><!-- Checkbox column - no filter --></th>
+                                <th style="width: 50px;"><!-- S.No - no filter --></th>
+                                <th style="width: 100px;"><!-- ID - no filter --></th>
+                                <th style="width: 120px;"><input type="text" id="filterDocName" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><input type="text" id="filterInvoiceNo" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><input type="text" id="filterConsultancy" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><input type="text" id="filterResource" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><input type="text" id="filterEmployeeId" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 50px;"><input type="text" id="filterDivision" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><input type="text" id="filterClient" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><!-- Pay Period Start - date range if needed --></th>
+                                <th style="width: 100px;"><!-- Pay Period End - date range if needed --></th>
+                                <th style="width: 80px;"><!-- Net Terms - no filter --></th>
+                                <th style="width: 100px;"><!-- Vendor Hours - no filter --></th>
+                                <th style="width: 100px;"><!-- Approved Hours - no filter --></th>
+                                <th style="width: 100px;"><!-- Status - already filtered by dropdown --></th>
+                                <th style="width: 120px;"><input type="text" id="filterComments" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 100px;"><!-- Pay Rate - no filter --></th>
+                                <th style="width: 120px;"><!-- Invoice Amount - no filter --></th>
+                                <th style="width: 120px;"><!-- Date Inv Recd - no filter --></th>
+                                <th style="width: 120px;"><!-- Due Date - already filtered --></th>
+                                <th style="width: 120px;"><input type="text" id="filterProject" placeholder="Filter..." class="column-filter"></th>
+                                <th style="width: 120px;"><!-- Project Name Excel - no filter --></th>
+                                <th style="width: 120px;"><!-- Payment initiated - no filter --></th>
+                                <th style="width: 120px;"><!-- Payment Details - no filter --></th>
+                                <th style="width: 120px;"><!-- Enable Edit - no filter --></th>
+                            </tr>
+
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="pane table-section" id="pane-consultancy">
+                <!--<div class="table-title">Consultancy View</div>-->
+                <div class="pane-body">
+                    <!-- Legacy in-pane filters (hidden); Consultancy + Resource are in the top filter bar when this pane is active. -->
+                    <div id="oldConsultancyFilters" style="display:none; gap:16px; align-items:flex-start; padding:12px 24px; border-bottom:1px solid #dee2e6;">
+                        <div>
+                            <label style="font-weight:600; display:block; margin-bottom:4px; width:200px;">Consultancy Name</label>
+                            <select id="consultancyDropdown" class="column-filter" onchange="loadResources(this.value)">
+                                <option value="">Select Consultancy</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-weight:600; display:block; margin-bottom:4px;">Resources</label>
+                            <div id="resourceCheckboxes" class="column-filter" style="max-height:150px; overflow-y:auto; border:1px solid #ccc; padding:5px 8px; border-radius:4px; width:200px; height:30px; font-size:14px;">
+                                <span style="font-size:14px; color:#999;">Select a consultancy first</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox"></th>
+                                <th style="width: 50px;">S.No</th>
+                                <th style="width: 100px;">ID (UUID)</th>
+                                <th style="width: 120px;">Doc Name</th>
+                                <th style="width: 100px;">Invoice No</th>
+                                <th style="width: 120px;">Consultancy Name</th>
+                                <th style="width: 120px;">Resource Name</th>
+                                <th style="width: 100px;">Employee ID</th>
+                                <th style="width: 50px;">Division</th>
+                                <th style="width: 120px;">Client Name</th>
+                                <th style="width: 100px;">Pay Period Start</th>
+                                <th style="width: 100px;">Pay Period End</th>
+                                <th style="width: 80px;">Net Terms</th>
+                                <th style="width: 100px;">Vendor Hours</th>
+                                <th style="width: 100px;">Approved Hours</th>
+                                <th style="width: 100px;">Status</th>
+                                <th style="width: 120px;">Comments</th>
+                                <th style="width: 100px;">Pay Rate</th>
+                                <th style="width: 120px;">Invoice Amount</th>
+                                <th style="width: 120px;">Date Inv Recd</th>
+                                <th style="width: 120px;">Due Date</th>
+                                <th style="width: 120px;">Project Name</th>
+                                <th style="width: 120px;">Project Name (Excel)</th>
+                                <th style="width: 120px;">Payment Initiated On</th>
+                                <th style="width: 120px;">Payment Details</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consultancyTableBody">
+                            <tr>
+                                <td colspan="26" style="text-align:center; color:#999; padding:40px;">
+                                    Select a consultancy to view invoices
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>            
+            
+        
+    
+
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="toast" id="toast">
+        <span class="toast-close" onclick="hideToast()">✕</span>
+        <div class="toast-title" id="toastTitle"></div>
+        <div class="toast-body"  id="toastBody"></div>
+    </div>
+
+    <div id="paymentModal" class="payment-modal" style="display:none" onclick="if(event.target===this)closePaymentModal()">
+        <div class="payment-modal-content">
+            <button type="button" class="payment-modal-close icon-btn" onclick="closePaymentModal()" data-tooltip="Close"><i class="fas fa-times"></i></button>
+            <h3>Payment Information</h3>
+            <div id="paymentModalContent" class="payment-modal-body"></div>
+            <div class="payment-modal-footer">
+                <button type="button" id="btnModalPaymentDone" class="btn-payment-done-modal" onclick="markPaymentDoneFromModal()" style="display:none">Payment Done</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="viewerOverlay">
+    <div id="viewerPanel">
+        <div id="viewerHeader">
+            <span id="viewerFileName"></span>
+            <div id="viewerActions">
+                <button class="viewer-btn viewer-btn-download icon-btn" id="btnDownload"><i class="fas fa-download" data-tooltip="Download"></i></button>
+                <button class="viewer-btn viewer-btn-close icon-btn"    id="btnClose">	<i class="fas fa-times" data-tooltip="Close"></i></button>
+            </div>
+        </div>
+        <div id="pdfContainer"></div>
+    </div>
+</div>
+
+    <script>
+        const accessToken = sessionStorage.getItem('accessToken');
+        let currentDocId   = null;
+        let currentDocName = null;
+        let currentBlobUrl = null;
+
+        let consultancyRows = [];
+
+
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').trim().replace(/\/+$/, '');
+        // Force https to avoid Mixed Content and bad configs
+        if (API_BASE && !/^https?:\/\//i.test(API_BASE)) API_BASE = 'https://' + API_BASE;
+        if (API_BASE && API_BASE.startsWith('http://')) API_BASE = 'https://' + API_BASE.slice(7);
+
+        const userEmail = sessionStorage.getItem('userEmail');
+        const userName = sessionStorage.getItem('userName');
+        const loggedIn = sessionStorage.getItem('loggedIn');
+
+        if (!loggedIn && !userName) {
+            window.location.href = 'index.html';
+        }
+
+        function setDisplayName(firstLast) {
+            const el = document.getElementById('userName');
+            if (el) el.textContent = firstLast || userEmail || '';
+        }
+
+        setDisplayName(userName && userName !== userEmail ? userName : userEmail);
+        loadDisplayNameFromUsers();
+
+        async function loadDisplayNameFromUsers() {
+            const email = sessionStorage.getItem('userEmail');
+            if (!email || !API_BASE) return;
+            try {
+                const res = await fetch(API_BASE + '/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'list' })
+                });
+                if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                const users = data.users || [];
+                const me = users.find(u => (u.email || '').toLowerCase() === (email || '').toLowerCase());
+                if (me && (me.firstname != null || me.lastname != null)) {
+                    const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
+                    if (full) setDisplayName(full);
+                }
+            } catch (_) { }
+        }
+        function appendConsultancyApiFilters(url) {
+            const statusFilter = document.getElementById('filterAll').value;
+            const dueBy = document.getElementById('dueBy').value;
+            const monthFilterVal = document.getElementById('filterMonth').value;
+            if (statusFilter && statusFilter !== 'all') {
+                url += '&status=' + encodeURIComponent(statusFilter);
+            }
+            if (dueBy) {
+                url += '&due_by=' + encodeURIComponent(dueBy);
+            }
+            if (monthFilterVal) {
+                url += '&month=' + encodeURIComponent(monthFilterVal);
+            }
+            return url;
+        }
+
+        async function applyConsultancyFilter() {
+            const vendorName = document.getElementById('consultancyDropdown').value;
+            if (!vendorName) {
+                alert('Please select a consultancy');
+                return;
+            }
+            const selectedResources = [...document.querySelectorAll('.resource-checkbox:checked')].map(cb => cb.value);
+            try {
+                let url = API_BASE + '/api/consultancy/invoices?vendor_name=' + encodeURIComponent(vendorName);
+                if (selectedResources.length > 0) {
+                    url += '&resources=' + encodeURIComponent(selectedResources.join(','));
+                }
+                url = appendConsultancyApiFilters(url);
+                const res = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) throw new Error('Failed to load consultancy invoices');
+                const data = await res.json().catch(() => ({}));
+                const rows = data.rows || [];
+                renderConsultancyTable(rows);
+                loadVendorSummary(
+                    vendorName,
+                    selectedResources,
+                    document.getElementById('filterAll').value,
+                    document.getElementById('dueBy').value,
+                    document.getElementById('filterMonth').value
+                );
+            } catch (err) {
+                renderConsultancyTable([]);
+            }
+        }
+
+        function clearConsultancyFilters() {
+            consultancyRows = [];
+            const topVendor = document.getElementById('consultancyTopVendor');
+            const topRes = document.getElementById('consultancyTopResource');
+            if (topVendor) topVendor.value = '';
+            if (topRes) topRes.innerHTML = '<option value="">All Resources</option>';
+            document.getElementById('consultancyDropdown').value = '';
+            document.getElementById('resourceCheckboxes').innerHTML = '<span style="font-size:12px; color:#757575;">Select a consultancy first</span>';
+            document.getElementById('consultancyTableBody').innerHTML = '<tr><td colspan="26" style="text-align:center; color:#999; padding:40px;">Select a consultancy to view invoices</td></tr>';
+            refreshTopTableScrollbars();
+        }
+
+        async function loadResources(vendorName) {
+            const container = document.getElementById('resourceCheckboxes');
+            if (!vendorName) {
+                container.innerHTML = '<span style="color:#999;">Select a consultancy first</span>';
+                renderConsultancyTable([]);
+                return;
+            }
+            if (!API_BASE) {
+                container.innerHTML = '<span style="font-size:14px; color:#999;">API not configured</span>';
+                return;
+            }
+            try {
+                const res = await fetch(API_BASE + '/api/vendor/summary?vendor_name=' + encodeURIComponent(vendorName), {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) throw new Error('Failed to load resources: ' + res.status);
+                const data = await res.json().catch(() => ({}));
+                const resources = data.resources || [];
+                container.innerHTML = '';
+                if (resources.length === 0) {
+                    container.innerHTML = '<span style="font-size:14px; color:#999;">No resources found</span>';
+                } else {
+                    resources.forEach(resource => {
+                        const label = document.createElement('label');
+                        label.style.display = 'block';
+                        label.style.marginBottom = '4px';
+                        label.style.fontSize = '14px';
+                        label.innerHTML = `
+                        <input type="checkbox" value="${resource}" class="resource-checkbox" onchange="applyConsultancyFilter()">
+                        ${resource}
+                    `;
+                        container.appendChild(label);
+                    });
+                }
+                applyConsultancyFilter();
+            } catch (err) {
+                container.innerHTML = '<span style="font-size:14px; color:#999;">Failed to load resources</span>';
+            }
+        }
+
+        async function loadVendorSummary(vendorName, selectedResources, statusFilter, dueBy, monthFilterVal) {
+            if (selectedResources === undefined) selectedResources = [];
+            if (!vendorName || !API_BASE) return;
+            try {
+                let url = API_BASE + '/api/vendor/summary?vendor_name=' + encodeURIComponent(vendorName);
+                if (selectedResources && selectedResources.length > 0) {
+                    const rparam = Array.isArray(selectedResources) ? selectedResources.join(',') : String(selectedResources);
+                    url += '&resources=' + encodeURIComponent(rparam);
+                }
+                if (dueBy) {
+                    url += '&due_by=' + encodeURIComponent(dueBy);
+                }
+                if (monthFilterVal) {
+                    url += '&month=' + encodeURIComponent(monthFilterVal);
+                }
+                const res = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                const summary = data.summary || {};
+                document.getElementById('mTotal').textContent = summary.total_invoices || 0;
+                document.getElementById('mPending').textContent = summary.pending || 0;
+                document.getElementById('mApproved').textContent = summary.approved || 0;
+                document.getElementById('mNeedApproval').textContent = summary.need_approval || 0;
+                document.getElementById('mPaymentInitiated').textContent = summary.payment_initiated || 0;
+                document.getElementById('mInvalid').textContent = summary.invalid || 0;
+                document.getElementById('mTotalAmount').textContent = '$' + (parseFloat(summary.total_amount) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                document.getElementById('dailySummaryCount').textContent = summary.due_today || 0;
+                document.getElementById('pastMonthsSummaryCount').textContent = summary.unpaid_invoices || 0;
+            } catch (_) { }
+            if (typeof updatePastMonthsSummaryCard === 'function') updatePastMonthsSummaryCard();
+        }
+
+        function renderConsultancyTable(rows) {
+            consultancyRows = rows;
+            const tbody = document.getElementById('consultancyTableBody');
+            tbody.innerHTML = '';
+            if (!rows || rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="26" style="text-align:center; color:#999; padding:40px;">No invoices found</td></tr>';
+                refreshTopTableScrollbars();
+                return;
+            }
+            rows.forEach((row, index) => {
+                const id = row.invoice_uuid || row.invoice_id || row.id || '';
+                const tr = document.createElement('tr');
+                const isPaymentInitiated = !!row.bill_pay_initiated_on;
+                const statusValue = (row.approval_status || row.status || '').toLowerCase().replace(/\s/g, '_');
+                const isInvalid = statusValue === 'invalid';
+                const isNonEditable = isPaymentInitiated || isInvalid;
+                const disabledClass = isNonEditable ? 'cell-disabled' : '';
+                tr.innerHTML = `
+                    <td class="checkbox-col">
+                        <input type="checkbox" class="row-select" data-id="${id}">
+                    </td>
+                    <td>${index + 1}</td>
+                    <td title="${id}">${id ? id.slice(0, 8) + '...' : ''}</td>
+                    <td>${escapeHtml(row.doc_name || row.document_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_number" data-id="${id}">${escapeHtml(row.invoice_number || '')}</td>
+                    <td>${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
+                    <td>${escapeHtml(row.resource_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="employee_id" data-id="${id}">${escapeHtml(row.employee_id || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="division" data-id="${id}">${escapeHtml(row.division || row.business_unit || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="client_name" data-id="${id}">${escapeHtml(row.client_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_period_start" data-id="${id}">${formatDate(row.pay_period_start || row.start_date)}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_period_end" data-id="${id}">${formatDate(row.pay_period_end || row.end_date)}</td>
+                    <td class="editable ${disabledClass}" data-field="net_terms" data-id="${id}">${escapeHtml(row.net_terms || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="vendor_hours" data-id="${id}">${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
+                    <td class="editable ${disabledClass}" data-field="approved_hours" data-id="${id}">${row.approved_hours ?? ''}</td>
+                    <td class="editable ${disabledClass}" data-field="approval_status" data-id="${id}" data-type="select">
+                        <span class="status-badge ${getStatusClass(row.approval_status || row.status || 'Pending')}">${escapeHtml(row.approval_status || row.status || 'Pending')}</span>
+                    </td>
+                    <td class="editable ${disabledClass}" data-field="comments" data-id="${id}">${escapeHtml(row.comments || row.notes || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_rate" data-id="${id}">${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : (row.hourly_rate != null ? '$' + formatNumber(row.hourly_rate) : '')}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_amount" data-id="${id}">${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_received_date" data-id="${id}">${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
+                    <td class="editable ${disabledClass}" data-field="due_date" data-id="${id}">${formatDate(row.due_date || row.dueDate)}</td>
+                    <td class="editable ${disabledClass}" data-field="project_name" data-id="${id}">${escapeHtml(row.project_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="project_name_excel" data-id="${id}">${escapeHtml(row.project_name_excel || '')}</td>
+                    <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
+                    <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
+                        ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment icon-btn" data-tooltip="View Payment"><i class="fas fa-credit-card"></i></button>' : ''}
+                    </td>
+                    <td>
+                        <button class="btn-view icon-btn"
+                            data-id="${escapeAttr(row.invoice_uuid || row.invoice_id || row.id || '')}"
+                            data-name="${escapeAttr(row.doc_name || row.name || '')}"
+                            data-tooltip="View Document">
+                            <i class="fas fa-file-alt"></i>
+                        </button>
+                    </td>
+                `;
+                if (row.bill_pay_initiated_on) {
+                    tr.classList.add('row-payment-done');
+                }
+                if (isInvalid) {
+                    tr.classList.add('row-invalid');
+                }
+                tbody.appendChild(tr);
+            });
+            bindEditableCells(document.getElementById('consultancyTableBody'));
+            bindActionButtons();
+            if (isEditMode) {
+                document.querySelectorAll('#consultancyTableBody .editable').forEach(cell => {
+                    const rowEl = cell.closest('tr');
+                    if (rowEl && (rowEl.classList.contains('row-payment-done') || rowEl.classList.contains('row-invalid'))) {
+                        cell.classList.add('edit-disabled');
+                    } else {
+                        cell.classList.add('edit-enabled');
+                    }
+                });
+            }
+            refreshTopTableScrollbars();
+        }
+
+        async function loadConsultancies() {
+            if (!API_BASE) return;
+            try {
+                const res = await fetch(API_BASE + '/api/vendors', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) throw new Error('Failed to load vendors: ' + res.status);
+                const data = await res.json().catch(() => ({}));
+                const vendors = data.vendors || [];
+                const dropdown = document.getElementById('consultancyDropdown');
+                const topVendor = document.getElementById('consultancyTopVendor');
+                dropdown.innerHTML = '<option value="">Select Consultancy</option>';
+                if (topVendor) {
+                    topVendor.innerHTML = '<option value="">All Consultancies</option>';
+                }
+                vendors.forEach(vendor => {
+                    const option = document.createElement('option');
+                    option.value = vendor;
+                    option.textContent = vendor;
+                    dropdown.appendChild(option);
+                    if (topVendor) {
+                        const filterOption = document.createElement('option');
+                        filterOption.value = vendor;
+                        filterOption.textContent = vendor;
+                        topVendor.appendChild(filterOption);
+                    }
+                });
+            } catch (err) {
+                console.error('loadConsultancies error:', err);
+                alert('Failed to load consultancies: ' + (err.message || String(err)));
+            }
+        }
+
+        async function loadResourcesForFilter(vendorName) {
+            const topRes = document.getElementById('consultancyTopResource');
+            const hiddenDd = document.getElementById('consultancyDropdown');
+            if (hiddenDd) hiddenDd.value = vendorName || '';
+            if (!vendorName) {
+                if (topRes) topRes.innerHTML = '<option value="">All Resources</option>';
+                applyConsultancyFilterFromTopFilter();
+                return;
+            }
+            if (!API_BASE) return;
+            const url = API_BASE + '/api/vendor/summary?vendor_name=' + encodeURIComponent(vendorName);
+            try {
+                const res = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) throw new Error('Failed to load resources: ' + res.status);
+                const data = await res.json().catch(() => ({}));
+                const resources = data.resources || [];
+                if (!topRes) return;
+                topRes.innerHTML = '<option value="">All Resources</option>';
+                resources.forEach(resource => {
+                    const option = document.createElement('option');
+                    option.value = resource;
+                    option.textContent = resource;
+                    topRes.appendChild(option);
+                });
+                applyConsultancyFilterFromTopFilter();
+            } catch (err) {
+                console.error('loadResourcesForFilter:', err);
+            }
+        }
+
+        async function applyConsultancyFilterFromTopFilter() {
+            const vendorEl = document.getElementById('consultancyTopVendor');
+            const vendorName = vendorEl ? vendorEl.value : '';
+            const resourceEl = document.getElementById('consultancyTopResource');
+            const resourceName = resourceEl ? resourceEl.value : '';
+            const statusFilter = document.getElementById('filterAll').value;
+            const dueBy = document.getElementById('dueBy').value;
+            const monthFilterVal = document.getElementById('filterMonth').value;
+            if (!vendorName) {
+                document.getElementById('consultancyTableBody').innerHTML = '<tr><td colspan="26" style="text-align:center; color:#999; padding:40px;">Select a consultancy to view invoices</td></tr>';
+                refreshTopTableScrollbars();
+                return;
+            }
+            try {
+                let url = API_BASE + '/api/consultancy/invoices?vendor_name=' + encodeURIComponent(vendorName);
+                if (resourceName) {
+                    url += '&resources=' + encodeURIComponent(resourceName);
+                }
+                url = appendConsultancyApiFilters(url);
+                const res = await fetch(url, { method: 'GET' });
+                if (!res.ok) throw new Error('Failed to load consultancy invoices');
+                const data = await res.json().catch(() => ({}));
+                const rows = data.rows || [];
+                renderConsultancyTable(rows);
+                loadVendorSummary(vendorName, resourceName ? [resourceName] : [], statusFilter, dueBy, monthFilterVal);
+            } catch (err) {
+                renderConsultancyTable([]);
+            }
+        }
+
+        function toggleHeaderMenu() {
+            document.getElementById('headerDropdown').classList.toggle('show');
+        }
+        function closeHeaderMenu() {
+            document.getElementById('headerDropdown').classList.remove('show');
+        }
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.header-dropdown-wrap')) closeHeaderMenu();
+        });
+
+
+        document.getElementById('filterMonth').addEventListener('change', function() {
+            monthFilter = document.getElementById('filterMonth').value;
+            applyFilters();
+            renderTable();
+            updateTileActiveState();
+            const paneC = document.getElementById('pane-consultancy');
+            const topV = document.getElementById('consultancyTopVendor');
+            if (paneC && paneC.classList.contains('active') && topV && topV.value) {
+                applyConsultancyFilterFromTopFilter();
+            }
+        });
+
+        let monthFilter = '';
+        let allRows = [];
+        let filteredRows = [];
+        let excelUrl = '';
+        let isEditMode = false;
+
+
+
+        // Set default month filter to current month
+        window.addEventListener('load', () => { 
+            const now = new Date();
+            const currentMonth = now.toISOString().slice(0, 7);
+            document.getElementById('filterMonth').value = currentMonth;
+            monthFilter = currentMonth;
+            loadDashboard();
+            displayCurrentTime();
+        });
+
+        function switchPane(paneId) {
+            document.querySelectorAll('.pane-header').forEach(h => h.classList.remove('active'));
+            document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+            const header = document.querySelector('.pane-header[data-pane="' + paneId + '"]');
+            const pane = document.getElementById('pane-' + paneId);
+            if (header) header.classList.add('active');
+            if (pane) pane.classList.add('active');
+
+            document.querySelectorAll('.column-filter').forEach(input => { input.value = ''; });
+
+            const consultancyFilters = document.getElementById('consultancyFilters');
+            if (paneId === 'consultancy') {
+                if (consultancyFilters) {
+                    consultancyFilters.classList.add('consultancy-filters-visible');
+                    consultancyFilters.setAttribute('aria-hidden', 'false');
+                }
+                loadConsultancies();
+                document.getElementById('filterMonth').value = '';
+                monthFilter = '';
+                document.getElementById('mTotal').textContent = '0';
+                document.getElementById('mPending').textContent = '0';
+                document.getElementById('mApproved').textContent = '0';
+                document.getElementById('mNeedApproval').textContent = '0';
+                document.getElementById('mInvalid').textContent = '0';
+                document.getElementById('mPaymentInitiated').textContent = '0';
+                document.getElementById('mTotalAmount').textContent = '$0.00';
+                document.getElementById('dailySummaryCount').textContent = '0';
+                document.getElementById('pastMonthsSummaryCount').textContent = '0';
+                document.getElementById('filterAll').value = 'all';
+                updateTileActiveState();
+            } else {
+                if (consultancyFilters) {
+                    consultancyFilters.classList.remove('consultancy-filters-visible');
+                    consultancyFilters.setAttribute('aria-hidden', 'true');
+                }
+                const now = new Date();
+                const currentMonth = now.toISOString().slice(0, 7);
+                document.getElementById('filterMonth').value = currentMonth;
+                monthFilter = currentMonth;
+            }
+
+            if (paneId === 'invoices') {
+                clearConsultancyFilters();
+                const topV = document.getElementById('consultancyTopVendor');
+                const topR = document.getElementById('consultancyTopResource');
+                if (topV) topV.value = '';
+                if (topR) topR.innerHTML = '<option value="">All Resources</option>';
+                document.getElementById('consultancyDropdown').value = '';
+                document.getElementById('mTotal').textContent = '0';
+                document.getElementById('mPending').textContent = '0';
+                document.getElementById('mApproved').textContent = '0';
+                document.getElementById('mNeedApproval').textContent = '0';
+                document.getElementById('mInvalid').textContent = '0';
+                document.getElementById('mPaymentInitiated').textContent = '0';
+                document.getElementById('mTotalAmount').textContent = '$0.00';
+                document.getElementById('dailySummaryCount').textContent = '0';
+                document.getElementById('pastMonthsSummaryCount').textContent = '0';
+                updateMetricsForFilter(document.getElementById('filterAll').value, document.getElementById('dueBy').value, monthFilter);
+                if (typeof updatePastMonthsSummaryCard === 'function') updatePastMonthsSummaryCard();
+                applyFilters();
+                renderTable();
+            }
+            refreshTopTableScrollbars();
+        }
+
+        function refreshTopTableScrollbars() {
+            document.querySelectorAll('.table-wrapper').forEach(function(wrapper) {
+                const table = wrapper.querySelector('table');
+                if (!table) return;
+
+                let topBar = wrapper.querySelector(':scope > .table-top-scrollbar');
+                if (!topBar) {
+                    topBar = document.createElement('div');
+                    topBar.className = 'table-top-scrollbar';
+                    const track = document.createElement('div');
+                    track.className = 'table-top-scrollbar-track';
+                    topBar.appendChild(track);
+                    wrapper.insertBefore(topBar, table);
+
+                    let syncing = false;
+                    topBar.addEventListener('scroll', function() {
+                        if (syncing) return;
+                        syncing = true;
+                        wrapper.scrollLeft = topBar.scrollLeft;
+                        syncing = false;
+                    });
+                    wrapper.addEventListener('scroll', function() {
+                        if (syncing) return;
+                        syncing = true;
+                        topBar.scrollLeft = wrapper.scrollLeft;
+                        syncing = false;
+                    });
+                }
+
+                const track = topBar.firstElementChild;
+                track.style.width = table.scrollWidth + 'px';
+                topBar.style.display = table.scrollWidth > wrapper.clientWidth ? 'block' : 'none';
+                topBar.scrollLeft = wrapper.scrollLeft;
+            });
+        }
+        window.addEventListener('resize', refreshTopTableScrollbars);
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+        }
+
+        function updatePastMonthsSummaryCard() {
+            const pastMonthsData = getPastMonthsSummaryData();
+            document.getElementById('pastMonthsSummaryCount').textContent = pastMonthsData.length;
+        }
+
+        async function loadDashboard() {
+            showLoading(true);
+            try {
+                if (!API_BASE) {
+                    throw new Error('API base URL not configured (config.js missing or apiBaseUrl empty)');
+                }
+                const res = await fetch(API_BASE + '/api/dashboard/data', {
+                    method: 'GET'
+                });
+                const contentType = res.headers.get('Content-Type') || '';
+                const isJson = contentType.toLowerCase().includes('application/json');
+                const data = isJson ? await res.json().catch(() => ({})) : {};
+                if (!res.ok) {
+                    const msg = data.error || res.statusText || 'Failed to load dashboard data';
+                    throw new Error(msg);
+                }
+                if (!isJson || (data.rows === undefined && !data.error)) {
+                    throw new Error('API did not return JSON. Check that ' + API_BASE + ' is the correct Function App URL and CORS is enabled.');
+                }
+                allRows = data.rows || [];
+                excelUrl = data.excelUrl || '';
+                applyFilters();
+                renderMetrics(data.metrics || {});
+                renderTable();
+                updateTileActiveState();
+                updateDailySummaryCard();
+                updatePastMonthsSummaryCard();
+                const paneC = document.getElementById('pane-consultancy');
+                const topV = document.getElementById('consultancyTopVendor');
+                if (paneC && paneC.classList.contains('active') && topV && topV.value) {
+                    await applyConsultancyFilterFromTopFilter();
+                }
+            } catch (err) {
+                console.error('Dashboard load error:', err);
+                alert('Dashboard failed: ' + (err.message || 'Check API URL and network.'));
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function renderMetrics(m) {
+            document.getElementById('mTotal').textContent = m.total ?? 0;
+            document.getElementById('mPending').textContent = m.pending ?? 0;
+            document.getElementById('mApproved').textContent = m.approved ?? 0;
+            document.getElementById('mNeedApproval').textContent = m.need_approval ?? 0;
+            document.getElementById('mPaymentInitiated').textContent = m.payment_initiated ?? 0;
+            document.getElementById('mInvalid').textContent = (m.invalid ?? allRows.filter(r => {
+                const s = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                return s === 'invalid';
+            }).length);
+            const totalAmountExcludingInvalid = allRows.reduce((sum, r) => {
+                const normalizedStatus = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                if (normalizedStatus === 'invalid') return sum;
+                return sum + (parseFloat(r.invoice_amount) || 0);
+            }, 0);
+            document.getElementById('mTotalAmount').textContent = '$' + totalAmountExcludingInvalid.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+        
+        function clearAllFilters() {
+            document.getElementById('filterAll').value = 'all';
+            document.getElementById('dueBy').value = '';
+            // Set default back to current month
+            const now = new Date();
+            const currentMonth = now.toISOString().slice(0, 7);
+            document.getElementById('filterMonth').value = currentMonth;
+            monthFilter = currentMonth;
+            const topV = document.getElementById('consultancyTopVendor');
+            const topR = document.getElementById('consultancyTopResource');
+            if (topV) topV.value = '';
+            if (topR) topR.innerHTML = '<option value="">All Resources</option>';
+            document.getElementById('clearFilterBtn').style.display = 'none';
+            document.getElementById('dailySummaryCard').style.opacity = '1';
+            document.getElementById('dailySummaryCard').style.pointerEvents = 'auto';
+            document.querySelectorAll('.column-filter').forEach(input => input.value = '');
+            updateTileActiveState();
+            applyFilters();
+            renderTable();
+            const paneC = document.getElementById('pane-consultancy');
+            if (paneC && paneC.classList.contains('active')) {
+                loadConsultancies();
+                document.getElementById('consultancyTableBody').innerHTML = '<tr><td colspan="26" style="text-align:center; color:#999; padding:40px;">Select a consultancy to view invoices</td></tr>';
+                refreshTopTableScrollbars();
+            }
+        }
+
+
+        function filterByTile(filterValue) {
+            document.getElementById('filterAll').value = filterValue;
+            updateTileActiveState();
+            applyFilters();
+            renderTable();
+            const paneC = document.getElementById('pane-consultancy');
+            const topV = document.getElementById('consultancyTopVendor');
+            if (paneC && paneC.classList.contains('active') && topV && (topV.value || document.getElementById('consultancyDropdown').value)) {
+                applyConsultancyFilterFromTopFilter();
+            }
+        }
+
+        function updateTileActiveState() {
+            const statusFilter = document.getElementById('filterAll').value;
+            document.querySelectorAll('.metric-card.clickable').forEach(el => {
+                el.classList.toggle('active', el.dataset.filter === statusFilter);
+            });
+        }
+
+        function applyFilters() {
+            if (document.getElementById('pane-consultancy')?.classList.contains('active')) {
+                filteredRows = [...allRows];
+                return;
+            }
+
+            filteredRows = [...allRows];
+            const statusFilter = document.getElementById('filterAll').value;
+            const dueBy = document.getElementById('dueBy').value;
+            
+            if (statusFilter === 'payment_initiated') {
+                filteredRows = filteredRows.filter(r => r.bill_pay_initiated_on);
+            } else if (statusFilter !== 'all') {
+                filteredRows = filteredRows.filter(r => {
+                    const s = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                    return s === statusFilter;
+                });
+            }
+            
+            if (dueBy) {
+                filteredRows = filteredRows.filter(r => {
+                    const d = r.due_date || r.dueDate || '';
+                    return d && d.toString().slice(0, 10) <= dueBy;
+                });
+            }
+
+            // Month filter based on pay period start
+            if (monthFilter) {
+                filteredRows = filteredRows.filter(r => {
+                    const d = r.created_at || r.Created_at || '';
+                    if (!d) return false;
+                    const dateStr = d.toString().slice(0, 7); // Format: YYYY-MM
+                    return dateStr === monthFilter;
+                });
+            }
+            
+            // Update metrics to show filtered counts
+            updateMetricsForFilter(statusFilter, dueBy, monthFilter);
+            
+            // Apply column filters
+            applyColumnFilters();
+        }
+
+        function updateMetricsForFilter(statusFilter, dueBy, monthFilter) { // Add monthFilter parameter
+            let filtered = [...allRows];
+            
+            if (dueBy) {
+                filtered = filtered.filter(r => {
+                    const d = r.due_date || r.dueDate || '';
+                    return d && d.toString().slice(0, 10) <= dueBy;
+                });
+            }
+            
+            // Month filter based on pay period start
+            if (monthFilter) {
+                filtered = filtered.filter(r => {
+                    const d = r.created_at || r.Created_at || '';
+                    if (!d) return false;
+                    const dateStr = d.toString().slice(0, 7);
+                    return dateStr === monthFilter;
+                });
+            }
+            
+            // Calculate counts based on filtered data
+            const total = filtered.length;
+            const pending = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'pending').length;
+            const approved = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'approved').length;
+            const needApproval = filtered.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'need approval').length;
+            const paymentInitiated = filtered.filter(r => r.bill_pay_initiated_on).length;
+            const invalid = filtered.filter(r => {
+                const s = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                return s === 'invalid';
+            }).length;
+            const totalAmount = filtered.reduce((sum, r) => {
+                const normalizedStatus = (r.approval_status || r.status || '').toLowerCase().replace(/\s/g, '_');
+                if (normalizedStatus === 'invalid') return sum;
+                return sum + (parseFloat(r.invoice_amount) || 0);
+            }, 0);
+            
+            document.getElementById('mTotal').textContent = total;
+            document.getElementById('mPending').textContent = pending;
+            document.getElementById('mApproved').textContent = approved;
+            document.getElementById('mNeedApproval').textContent = needApproval;
+            document.getElementById('mPaymentInitiated').textContent = paymentInitiated;
+            document.getElementById('mInvalid').textContent = invalid;
+            document.getElementById('mTotalAmount').textContent = '$' + totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+
+        // Column filter state
+        const columnFilters = {
+            docName: '',
+            invoiceNo: '',
+            consultancy: '',
+            resource: '',
+            division: '',
+            client: '',
+            project: ''
+        };
+
+        function applyColumnFilters() {
+            const docNameFilter = document.getElementById('filterDocName')?.value.toLowerCase() || '';
+            const invoiceNoFilter = document.getElementById('filterInvoiceNo')?.value.toLowerCase() || '';
+            const consultancyFilter = document.getElementById('filterConsultancy')?.value.toLowerCase() || '';
+            const resourceFilter = document.getElementById('filterResource')?.value.toLowerCase() || '';
+            const employeeIdFilter = document.getElementById('filterEmployeeId')?.value.toLowerCase() || '';
+            const divisionFilter = document.getElementById('filterDivision')?.value.toLowerCase() || '';
+            const clientFilter = document.getElementById('filterClient')?.value.toLowerCase() || '';
+            const projectFilter = document.getElementById('filterProject')?.value.toLowerCase() || '';
+            const commentsFilter = document.getElementById('filterComments')?.value.toLowerCase() || '';
+            
+            filteredRows = filteredRows.filter(r => {
+                const matchesDocName = !docNameFilter || (r.doc_name || '').toLowerCase().includes(docNameFilter);
+                const matchesInvoiceNo = !invoiceNoFilter || (r.invoice_number || '').toLowerCase().includes(invoiceNoFilter);
+                const matchesConsultancy = !consultancyFilter || ((r.vendor_name || r.consultancy_name || '').toLowerCase().includes(consultancyFilter));
+                const matchesResource = !resourceFilter || (r.resource_name || '').toLowerCase().includes(resourceFilter);
+                const matchesEmployeeId = !employeeIdFilter || String(r.employee_id || '').toLowerCase().includes(employeeIdFilter);
+                const matchesDivision = !divisionFilter || (r.division || '').toLowerCase().includes(divisionFilter);
+                const matchesClient = !clientFilter || (r.client_name || '').toLowerCase().includes(clientFilter);
+                const matchesProject = !projectFilter || ((r.project_name || '').toLowerCase().includes(projectFilter));
+                const matchesComments = !commentsFilter || ((r.comments || r.notes || '').toLowerCase().includes(commentsFilter));
+                
+                return matchesDocName && matchesInvoiceNo && matchesConsultancy && 
+                    matchesResource && matchesEmployeeId && matchesDivision && matchesClient && matchesProject && matchesComments;
+            });
+        }
+
+        
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            if (filteredRows.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="26" style="text-align:center;padding:24px;color:#666;">No invoices to display.</td>';
+                tbody.appendChild(tr);
+                refreshTopTableScrollbars();
+                return;
+            }
+            filteredRows.forEach((row, idx) => {
+                const id = row.invoice_uuid || row.invoice_id || '';
+                const tr = document.createElement('tr');
+                const isPaymentInitiated = !!row.bill_pay_initiated_on;
+                const statusValue = (row.approval_status || row.status || '').toLowerCase().replace(/\s/g, '_');
+                const isInvalid = statusValue === 'invalid';
+                const isNonEditable = isPaymentInitiated || isInvalid;
+                const disabledClass = isNonEditable ? 'cell-disabled' : '';
+                const disabledReason = isInvalid ? 'Invalid Invoice' : 'Cannot edit - Payment Initiated';
+                const disabledDataAttr = isNonEditable ? `data-tooltip="${disabledReason}"` : '';
+                const disabledTitleAttr = isNonEditable ? `title="${disabledReason}"` : '';
+                tr.innerHTML = `
+                    <td class="checkbox-col">
+                        <input type="checkbox" class="row-select" data-id="${id}">
+                        <button type="button" class="row-delete-btn icon-btn" data-id="${id}" data-tooltip="Delete"><i class="fas fa-trash-alt"></i></button>
+                    </td>
+                    <td>${idx + 1}</td>
+                    <td title="${id}">${id ? id.slice(0, 8) + '...' : ''}</td>
+                    <td>${escapeHtml(row.doc_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_number" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.invoice_number || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="consultancy_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="resource_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.resource_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="employee_id" data-id="${id}">${escapeHtml(row.employee_id || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="division" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.division || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="client_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.client_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_period_start" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDate(row.pay_period_start)}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_period_end" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDate(row.pay_period_end)}</td>
+                    <td class="editable ${disabledClass}" data-field="net_terms" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.net_terms || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="vendor_hours" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.vendor_hours ?? row.invoice_hours ?? ''}</td>
+                    <td class="editable ${disabledClass}" data-field="approved_hours" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.approved_hours ?? ''}</td>
+                    <td class="editable ${disabledClass}" data-field="approval_status" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr} data-type="select">
+                        <span class="status-badge ${getStatusClass(row.approval_status || row.status || 'Pending')}">${escapeHtml(row.approval_status || row.status || 'Pending')}</span>
+                    </td>
+                    <td class="editable ${disabledClass}" data-field="comments" data-id="${id}" ${disabledDataAttr} title="${isNonEditable ? disabledReason : escapeHtml((row.comments || row.notes || '').slice(0, 200))}">${escapeHtml(row.comments || row.notes || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="pay_rate" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.pay_rate != null ? '$' + formatNumber(row.pay_rate) : ''}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_amount" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                    <td class="editable ${disabledClass}" data-field="invoice_received_date" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDateTime(row.invoice_received_date || row.date_inv_recd || row.created_at)}</td>
+                    <td class="editable ${disabledClass}" data-field="due_date" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${formatDate(row.due_date || row.dueDate)}</td>
+                    <td class="editable ${disabledClass}" data-field="project_name" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.project_name || '')}</td>
+                    <td class="editable ${disabledClass}" data-field="project_name_excel" data-id="${id}" ${disabledDataAttr} ${disabledTitleAttr}>${escapeHtml(row.project_name_excel || '')}</td>
+                    <td>${row.bill_pay_initiated_on ? formatDateTime(row.bill_pay_initiated_on) : '—'}</td>
+                    <td class="actions-col" data-invoice-id="${escapeHtml(id)}">
+                        ${isCompleteRow(row) ? '<button type="button" class="btn-view-payment icon-btn" data-tooltip="View Payment"><i class="fas fa-credit-card"></i></button>' : ''}
+                    </td>
+                    <td>
+                        <button class="btn-view icon-btn"
+                            data-id="${escapeAttr(row.invoice_uuid || row.invoice_id || row.id || '')}"
+                            data-name="${escapeAttr(row.doc_name || row.name || '')}"
+                            data-tooltip="View Document">
+                            <i class="fas fa-file-alt"></i>
+                        </button>
+                    </td>
+                `;
+                if (row.bill_pay_initiated_on) {
+                tr.classList.add('row-payment-done');
+            }
+            if (isInvalid) {
+                tr.classList.add('row-invalid');
+            }
+            // Apply current edit mode state to newly rendered cells
+            if (isEditMode) {
+                tr.querySelectorAll('.editable').forEach(cell => {
+                    const rowEl = cell.closest('tr');
+                    if (rowEl && (rowEl.classList.contains('row-payment-done') || rowEl.classList.contains('row-invalid'))) {
+                        cell.classList.add('edit-disabled');
+                    } else {
+                        cell.classList.add('edit-enabled');
+                    }
+                });
+            }
+
+                tbody.appendChild(tr);
+            });
+            bindEditableCells(tbody);
+            // Apply current edit mode state to newly rendered cells
+            if (isEditMode) {
+                tbody.querySelectorAll('.editable').forEach(cell => cell.classList.add('edit-enabled'));
+            }
+
+            bindActionButtons();
+            bindRowSelectDelete();
+            refreshTopTableScrollbars();
+        }
+
+        /** View Payment only when iGentic has confirmed approved hours match vendor hours (status from iGentic). */
+        function isCompleteRow(row) {
+            const s = (row.approval_status || row.status || '').toLowerCase();
+            return s === 'complete' || s === 'ready for payment' || s === 'approved' || s == 'payment initiated' ;
+        }
+
+        function formatPaymentLabel(key) {
+            return String(key)
+                .replace(/_/g, ' ')
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^\s+|\s+$/g, '')
+                .replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        }
+
+        function renderPaymentDetailsAsHtml(details) {
+            if (details == null || typeof details !== 'object') return '';
+            const rows = [];
+            function add(obj, prefix) {
+                for (const [k, v] of Object.entries(obj)) {
+                    if (v == null) continue;
+                    const label = formatPaymentLabel(k);
+                    if (typeof v === 'object' && v !== null && !Array.isArray(v) && (typeof v.getMonth !== 'function')) {
+                        rows.push('<tr><td colspan="2" class="payment-section">' + escapeHtml(label) + '</td></tr>');
+                        add(v, prefix + k + '.');
+                    } else {
+                        const val = Array.isArray(v) ? v.join(', ') : String(v);
+                        rows.push('<tr><td class="payment-label">' + escapeHtml(label) + '</td><td class="payment-value">' + escapeHtml(val) + '</td></tr>');
+                    }
+                }
+            }
+            add(details, '');
+            return rows.length ? '<table class="payment-details-table">' + rows.join('') + '</table>' : '';
+        }
+
+        let currentPaymentModalInvoiceId = null;
+
+        function viewPaymentInfo(invoiceId) {
+            currentPaymentModalInvoiceId = invoiceId;
+            const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId)
+                || consultancyRows.find(r => (r.invoice_uuid || r.invoice_id || r.id) === invoiceId);
+            const el = document.getElementById('paymentModalContent');
+            const btnDone = document.getElementById('btnModalPaymentDone');
+            if (!el) return;
+            if (!row) {
+                el.innerHTML = '<p>Invoice not found.</p>';
+                if (btnDone) btnDone.style.display = 'none';
+            } else if (row.payment_details && String(row.payment_details).trim()) {
+                const raw = row.payment_details.trim();
+                let html = '';
+                try {
+                    const parsed = typeof raw === 'string' && (raw.startsWith('{') || raw.startsWith('[')) ? JSON.parse(raw) : raw;
+                    if (typeof parsed === 'object' && parsed !== null) {
+                        html = renderPaymentDetailsAsHtml(parsed);
+                    }
+                } catch (_) {}
+                if (html) {
+                    el.innerHTML = html;
+                } else {
+                    el.innerHTML = '<pre class="payment-pre">' + escapeHtml(raw) + '</pre>';
+                }
+                if (btnDone) {
+                    btnDone.style.display = 'inline-block';
+                    btnDone.textContent = row.bill_pay_initiated_on ? 'Done' : 'Payment Done';
+                    btnDone.classList.toggle('done', !!row.bill_pay_initiated_on);
+                    btnDone.disabled = !!row.bill_pay_initiated_on;
+                }
+            } else {
+                el.innerHTML = '<p>No payment details stored yet. Payment details are generated when approved hours are submitted and verified via iGentic (hours match).</p>';
+                if (btnDone) btnDone.style.display = 'none';
+            }
+            document.getElementById('paymentModal').style.display = 'flex';
+        }
+
+        function closePaymentModal() {
+            const modal = document.getElementById('paymentModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function bindActionButtons() {
+            document.querySelectorAll('.btn-view-payment').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    const td = this.closest('.actions-col');
+                    const id = td && td.dataset.invoiceId;
+                    if (id) viewPaymentInfo(id);
+                };
+            });
+        }
+
+        async function markPaymentDoneFromModal() {
+            const id = currentPaymentModalInvoiceId;
+            if (!id) return;
+            const btn = document.getElementById('btnModalPaymentDone');
+            if (btn && btn.disabled) return;
+            try {
+                const res = await fetch(API_BASE + '/api/fcfigures_new/' + encodeURIComponent(id) + '/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_done: true })
+                });
+                const data = res.ok ? await res.json().catch(() => ({})) : {};
+                if (res.ok && data.invoice) {
+                    const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === id)
+                        || consultancyRows.find(r => (r.invoice_uuid || r.invoice_id || r.id) === id);
+                    if (row) Object.assign(row, data.invoice);
+                    if (btn) {
+                        btn.classList.add('done');
+                        btn.disabled = true;
+                    }
+                    closePaymentModal();
+                    if (document.getElementById('pane-consultancy')?.classList.contains('active')) {
+                        applyConsultancyFilterFromTopFilter();
+                    } else {
+                        applyFilters();
+                        renderTable();
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('btnToggleEdit');
+            const editableCells = document.querySelectorAll('.editable');
+            const indicator = document.getElementById('editModeIndicator');
+            
+            if (isEditMode) {
+                btn.textContent = 'Disable Edit';
+                btn.style.background = '#d13438';
+                editableCells.forEach(cell => {
+                    cell.classList.add('edit-enabled');
+                });
+                if (indicator) indicator.classList.add('show');
+
+                updateToastArea('Edit Mode', 'Click any cell to edit. Press Enter to save, Escape to cancel.', 'warning');
+            } else {
+                btn.textContent = 'Enable Edit';
+                btn.style.background = '#0078d4';
+                editableCells.forEach(cell => cell.classList.remove('edit-enabled'));
+                if (indicator) indicator.classList.remove('show');
+                loadDashboard();
+                updateToastArea('View Mode', 'Editing disabled. Click "Enable Edit" to make changes.', '');
+            }
+
+        }
+
+
+        function bindEditableCells(root) {
+            const scope = root && root.querySelectorAll ? root : document.getElementById('tableBody');
+            if (!scope) return;
+            scope.querySelectorAll('.editable').forEach(cell => {
+                cell.addEventListener('click', function() {
+                    // Only allow editing if edit mode is enabled
+                    if (!isEditMode) return;
+                    
+                    // Check if the cell is disabled (payment initiated)
+                    if (this.classList.contains('cell-disabled')) {
+                        this.title = this.getAttribute('data-tooltip') || "Cannot edit - Payment Initiated";
+                        return;
+                    }
+                    
+                    const field = this.dataset.field;
+                    const id = this.dataset.id;
+                    const current = this.textContent.trim().replace(/[$,]/g, '');
+                    const input = document.createElement('input');
+
+                    // Use date input for date fields
+                    if (field === 'invoice_received_date' || field === 'due_date' || field === 'pay_period_start' || field === 'pay_period_end') {
+                        input.type = 'date';
+                        // Convert existing value to YYYY-MM-DD for input
+                        const currentVal = current.match(/\d{4}-\d{2}-\d{2}/);
+                        if (currentVal) input.value = currentVal[0];
+                    } else {
+                        input.type = 'text';
+                    }
+
+                    // Use select dropdown for status field
+                    if (field === 'approval_status') {
+                        // Get current status from the cell's innerHTML
+                        const statusBadge = this.querySelector('.status-badge');
+                        const currentStatus = statusBadge ? statusBadge.textContent.trim() : 'Pending';
+                        const select = document.createElement('select');
+                        select.style.cssText = 'width:100%;padding:4px;font-size:inherit;border:2px solid #0078d4;';
+                        const statuses = ['Pending', 'Need Approval', 'Approved', 'Payment Initiated', 'Invalid'];
+                        statuses.forEach(s => {
+                            const option = document.createElement('option');
+                            option.value = s;
+                            option.text = s;
+                            if (s.toLowerCase() === currentStatus.toLowerCase()) option.selected = true;
+                            select.appendChild(option);
+                        });
+                        this.innerHTML = '';
+                        this.appendChild(select);
+                        select.focus();
+                        const statusTd = this;
+                        select.addEventListener('change', function(e) {
+                            e.stopPropagation();
+                            // saveEdit must receive the <td>, not the <select>, or innerHTML updates break the row.
+                            saveEdit(id, field, select.value, statusTd);
+                        });
+
+                        select.addEventListener('keydown', e => {
+                            if (e.key === 'Enter') select.blur();
+                            if (e.key === 'Escape') { 
+                                this.innerHTML = `<span class="status-badge ${getStatusClass(currentStatus)}">${escapeHtml(currentStatus)}</span>`;
+                                if (isEditMode && !this.classList.contains('cell-disabled')) this.classList.add('edit-enabled');
+                                e.stopPropagation();
+                            }
+                        });
+                        return;
+                    }
+
+
+
+                    input.type = 'text';
+                    input.value = current;
+                    input.style.cssText = 'width:100%;padding:4px;font-size:inherit;border:2px solid #0078d4;';
+                    this.textContent = '';
+                    this.appendChild(input);
+                    input.focus();
+                    input.addEventListener('blur', () => saveEdit(id, field, input.value, this));
+                    input.addEventListener('keydown', e => {
+                        if (e.key === 'Enter') { input.blur(); }
+                        if (e.key === 'Escape') { 
+                            cell.textContent = current;
+                            if (isEditMode && !cell.classList.contains('cell-disabled')) {
+                                cell.classList.add('edit-enabled');
+                            }
+                            e.stopPropagation();
+                        }
+                    });
+                });
+            });
+        }
+
+
+
+        function openSyncReportsFolder() {
+            const sharePointUrl = window.APP_CONFIG.sharePointSiteUrl;
+            window.open(sharePointUrl + '/Timesheet/SyncReports', '_blank');
+        }
+
+
+        async function saveEdit(invoiceId, field, value, cell) {
+            const hostCell = (cell && cell.closest) ? (cell.closest('td.editable') || cell.closest('td') || cell) : cell;
+            const originalValue = (hostCell && hostCell.textContent) ? hostCell.textContent.trim() : '';
+            const body = {};
+            body[field] = value;
+            
+            hostCell.innerHTML = '<span style="color: #0078d4;">Saving...</span>';
+            
+            try {
+                const res = await fetch(API_BASE + '/api/fcfigures_new/' + encodeURIComponent(invoiceId) + '/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = res.ok ? await res.json().catch(() => ({})) : {};
+                
+                if (res.ok) {
+                    const row = allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId)
+                        || consultancyRows.find(r => (r.invoice_uuid || r.invoice_id || r.id) === invoiceId);
+                    if (row) {
+                        // Update the row data
+                        row[field] = value;
+                        if (field === 'current_comments') row.notes = value;
+                        if (field === 'consultancy_name') row.vendor_name = value;
+                        if (field === 'pay_period_start') row.start_date = value;
+                        if (field === 'pay_period_end') row.end_date = value;
+                        if (field === 'net_terms') row.payment_terms = value;
+                        if (field === 'pay_rate') row.hourly_rate = value;
+                        
+                        // After approved_hours save, backend returns updated invoice with approval_status, payment_details
+                        if (data.invoice) {
+                            Object.assign(row, data.invoice);
+                            if (data.invoice.invoice_id) row.invoice_uuid = data.invoice.invoice_id;
+                        }
+                    }
+                    
+                    // Show success briefly
+                    hostCell.innerHTML = '<span style="color: #107c10;">✓ Saved</span>';
+                    setTimeout(() => {
+                        if (field === 'approval_status') {
+                            hostCell.innerHTML = '<span class="status-badge ' + getStatusClass(value) + '">' + escapeHtml(value) + '</span>';
+                        } else if ((field === 'invoice_amount' || field === 'pay_rate') && value) {
+                            hostCell.textContent = '$' + formatNumber(value);
+                        } else {
+                            hostCell.textContent = (value === null || value === undefined) ? '' : String(value);
+                        }
+
+                        if (isEditMode) {
+                            hostCell.classList.add('edit-enabled');
+                        } else {
+                            hostCell.classList.remove('edit-enabled');
+                        }
+
+                        hostCell.classList.add('cell-saved');
+                        setTimeout(() => hostCell.classList.remove('cell-saved'), 1500);
+                    }, 800);
+
+                    
+                    // If status or payment details changed, re-render the entire table
+                    if (data.invoice && (data.invoice.approval_status || data.invoice.payment_details || field === 'approval_status')) {
+                        setTimeout(() => {
+                            if (document.getElementById('pane-consultancy')?.classList.contains('active')) {
+                                applyConsultancyFilterFromTopFilter();
+                            } else {
+                                applyFilters();
+                                renderTable();
+                            }
+                            updateToastArea('Saved', `${field} updated successfully`, 'success');
+                        }, 1000);
+                    } else if (field === 'net_terms' && data.invoice && data.invoice.due_date) {
+                        // Backend recalculates due date when net terms change; re-render so Due Date cell updates
+                        setTimeout(() => {
+                            if (document.getElementById('pane-consultancy')?.classList.contains('active')) {
+                                applyConsultancyFilterFromTopFilter();
+                            } else {
+                                applyFilters();
+                                renderTable();
+                            }
+                            updateToastArea('Saved', 'Net terms and due date updated', 'success');
+                        }, 800);
+                    } else {
+                        updateToastArea('Saved', `${field} updated`, 'success');
+                    }
+                } else {
+                    throw new Error(data.error || 'Save failed');
+                }
+            } catch (e) {
+                console.error('Save error:', e);
+                hostCell.innerHTML = '<span style="color: #d13438;">✗ Failed</span>';
+                setTimeout(() => {
+                    hostCell.textContent = originalValue;
+                    if (isEditMode) {
+                        hostCell.classList.add('edit-enabled');
+                    }
+                }, 1500);
+                updateToastArea('Error', `Failed to save ${field}`, 'error');
+            }
+        }
+
+
+        function escapeHtml(s) {
+            if (s == null) return '';
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function formatDate(d) {
+            if (!d) return '';
+            const s = String(d).slice(0, 10);
+            return s || '';
+        }
+
+        function formatDateTime(d) {
+            if (!d) return '';
+            const s = String(d);
+            return s.length > 19 ? s.slice(0, 19) : s;
+        }
+
+        function formatNumber(n) {
+            const num = parseFloat(n);
+            return isNaN(num) ? '' : num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+
+        function toggleSelectAll() {
+            const checked = document.getElementById('selectAll').checked;
+            document.querySelectorAll('.row-select').forEach(cb => { cb.checked = checked; });
+            document.querySelectorAll('.row-delete-btn').forEach(btn => btn.classList.toggle('show', checked));
+        }
+
+        function bindRowSelectDelete() {
+            document.querySelectorAll('.row-select').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const td = this.closest('td');
+                    const delBtn = td && td.querySelector('.row-delete-btn');
+                    if (delBtn) delBtn.classList.toggle('show', this.checked);
+                });
+            });
+            document.querySelectorAll('.row-delete-btn').forEach(btn => {
+                btn.onclick = function(e) {
+                    e.stopPropagation();
+                    const id = this.dataset.id;
+                    if (id) deleteRow(id, e);
+                };
+            });
+        }
+
+        function logout() {
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        function getSelectedIds() {
+            return [...document.querySelectorAll('.row-select:checked')].map(cb => cb.dataset.id).filter(Boolean);
+        }
+
+        async function deleteRow(invoiceId, ev) {
+            if (ev) ev.stopPropagation();
+            const label = (allRows.find(r => (r.invoice_uuid || r.invoice_id) === invoiceId)
+                || consultancyRows.find(r => (r.invoice_uuid || r.invoice_id || r.id) === invoiceId))?.doc_name || invoiceId;
+            const labelStr = String(label);
+            if (!confirm('Delete invoice "' + labelStr + '"? This will remove it from the database.')) return;
+            try {
+                const res = await fetch(API_BASE + '/api/invoices/' + encodeURIComponent(invoiceId), { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                loadDashboard();
+            } catch (err) {
+                console.error('Delete failed:', err);
+                alert('Delete failed: ' + (err.message || 'Please try again.'));
+            }
+        }
+
+        async function deleteSelectedRows() {
+            const ids = getSelectedIds();
+            if (!ids.length) { alert('Select at least one row to delete.'); return; }
+            if (!confirm('Delete ' + ids.length + ' selected invoice(s)? They will be removed from the database.')) return;
+            let deleted = 0;
+            for (const id of ids) {
+                try {
+                    const res = await fetch(API_BASE + '/api/invoices/' + encodeURIComponent(id), { method: 'DELETE' });
+                    if (res.ok) deleted++;
+                } catch (e) { console.error('Delete failed for', id, e); }
+            }
+            if (deleted > 0) loadDashboard();
+        }
+
+        // Column filter listeners
+        ['filterDocName', 'filterInvoiceNo', 'filterConsultancy', 'filterResource', 'filterEmployeeId',
+        'filterDivision', 'filterClient', 'filterComments', 'filterProject'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', debounce(() => {
+                    applyFilters();
+                    renderTable();
+                }, 300));
+            }
+        });
+
+        // Debounce helper function
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Daily Summary State
+        let dailySummaryUseLocalTime = false;
+        let dailySummaryData = [];
+
+        function generateDailySummary() {
+            openDailySummary();
+        }
+
+        function openDailySummary() {
+            const today = new Date();
+            const dateStr = today.toISOString().slice(0, 10);
+            
+            // Filter rows with due date = today
+            dailySummaryData = allRows.filter(r => {
+                const dueDate = r.due_date || r.dueDate || '';
+                return dueDate && dueDate.toString().slice(0, 10) === dateStr;
+            });
+            
+            // Update modal stats
+            document.getElementById('modalSummaryDate').textContent = formatDate(dateStr);
+            document.getElementById('modalTotalCount').textContent = dailySummaryData.length;
+            
+            // Approved count
+            const approvedCount = dailySummaryData.filter(r => {
+                const status = (r.approval_status || r.status || '').toLowerCase();
+                return status === 'approved';
+            }).length;
+            document.getElementById('modalApprovedCount').textContent = approvedCount;
+
+            // Need Approval count 
+            const needApprovalCount = dailySummaryData.filter(r => {
+                const status = (r.approval_status || r.status || '').toLowerCase();
+                return status === 'NEED APPROVAL' || status === 'Need Approval' || status === 'need approval';
+            }).length;
+            document.getElementById('modalNeedApprovalCount').textContent = needApprovalCount;
+
+            // Pending count 
+            const pendingCount = dailySummaryData.filter(r => {
+                const status = (r.approval_status || r.status || '').toLowerCase();
+                return status === 'pending';
+            }).length;
+            document.getElementById('modalPendingCount').textContent = pendingCount;
+
+            
+            const paymentDoneCount = dailySummaryData.filter(r => r.bill_pay_initiated_on).length;
+            document.getElementById('modalPaymentDoneCount').textContent = paymentDoneCount;
+            
+            // Total Amount calculation
+            const totalAmount = dailySummaryData.reduce((sum, r) => sum + (parseFloat(r.invoice_amount) || 0), 0);
+            document.getElementById('modalTotalAmount').textContent = '$' + totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+            // Populate table
+            const tbody = document.getElementById('dailySummaryTableBody');
+            tbody.innerHTML = '';
+            
+            if (dailySummaryData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#666;">No invoices due today.</td></tr>';
+            } else {
+                dailySummaryData.forEach((row, idx) => {
+                    const tr = document.createElement('tr');
+                    const status = row.approval_status || row.status || 'Pending';
+                    const statusClass = row.bill_pay_initiated_on ? 'payment-done' : 
+                                    (status.toLowerCase() === 'pending' ? 'pending' : '');
+                    tr.innerHTML = `
+                        <td>${idx + 1}</td>
+                        <td>${escapeHtml(row.invoice_number || '')}</td>
+                        <td>${escapeHtml(row.vendor_name || row.consultancy_name || '')}</td>
+                        <td>${escapeHtml(row.resource_name || '')}</td>
+                        <td>${escapeHtml(row.client_name || '')}</td>
+                        <td>${formatDate(row.due_date || row.dueDate)}</td>
+                        <td>${row.invoice_amount != null ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                        <td style="color: ${statusClass === 'payment-done' ? '#107c10' : statusClass === 'pending' ? '#ca5010' : '#333'}">${escapeHtml(status)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+            
+            document.getElementById('dailySummaryModal').classList.add('show');
+        }
+
+        function closeDailySummary() {
+            document.getElementById('dailySummaryModal').classList.remove('show');
+        }
+
+        function toggleDailySummaryTimeFormat() {
+            dailySummaryUseLocalTime = !dailySummaryUseLocalTime;
+            updateDailySummaryTimeDisplay();
+            setInterval(updateDailySummaryTimeDisplay, 1000);
+        }
+
+        function updateDailySummaryTimeDisplay() {
+            const now = new Date();
+            const dateEl = document.getElementById('dailySummaryDate');
+            const toggleEl = document.getElementById('dailySummaryTimeToggle');
+            
+            if (dailySummaryUseLocalTime) {
+                dateEl.textContent = now.toLocaleDateString('en-US', { 
+                    year: 'numeric', month: '2-digit', day: '2-digit'
+                }) + ' ' + now.toLocaleTimeString('en-US', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                });
+                toggleEl.textContent = 'Show UTC Time';
+            } else {
+                dateEl.textContent = now.toISOString().slice(0, 19).replace('T', ' ') + ' (UTC)';
+                toggleEl.textContent = 'Show Local Time';
+            }
+        }
+
+        function downloadDailySummaryExcel() {
+            if (dailySummaryData.length === 0) {
+                alert('No data to download.');
+                return;
+            }
+            
+            const today = new Date().toISOString().slice(0, 10);
+            const headers = ['S.No', 'Invoice No', 'Consultancy Name', 'Resource Name', 'Client Name', 'Due Date', 'Invoice Amount', 'Status', 'Payment Initiated'];
+            
+            const rows = dailySummaryData.map((r, i) => [
+                i + 1,
+                r.invoice_number || '',
+                r.vendor_name || r.consultancy_name || '',
+                r.resource_name || '',
+                r.client_name || '',
+                formatDate(r.due_date || r.dueDate),
+                r.invoice_amount || '',
+                r.approval_status || r.status || 'Pending',
+                r.bill_pay_initiated_on ? 'Yes' : 'No'
+            ]);
+            
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'daily_summary_' + today + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        // Update daily summary card count
+        function updateDailySummaryCard() {
+            const today = new Date().toISOString().slice(0, 10);
+            const dueTodayCount = allRows.filter(r => {
+                const dueDate = r.due_date || r.dueDate || '';
+                return dueDate && dueDate.toString().slice(0, 10) === today;
+            }).length;
+            
+            document.getElementById('dailySummaryCount').textContent = dueTodayCount;
+            updateDailySummaryTimeDisplay();
+            setInterval(updateDailySummaryTimeDisplay, 1000);
+        }
+
+
+        function downloadExcel() {
+            // Read headers
+            const headerRow = document.querySelector('#tableBody').previousElementSibling;
+            const headers = [];
+            headerRow.querySelectorAll('th').forEach((th, index) => {
+                // Skip checkbox column (index 0)
+                if (index > 0) {
+                    headers.push(th.textContent.trim());
+                }
+            });
+
+            // Read data from tbody
+            const rows = [];
+            document.querySelectorAll('#tableBody tr').forEach(tr => {
+                const rowData = [];
+                tr.querySelectorAll('td').forEach((td, index) => {
+                    // Skip checkbox column (index 0)
+                    if (index > 0) {
+                        // Get text content, clean it up
+                        let text = td.textContent.trim();
+                        // Remove action buttons text if present
+                        text = text.replace(/View Payment Done/gi, '').trim();
+                        rowData.push(text);
+                    }
+                });
+                if (rowData.length > 0) {
+                    rows.push(rowData);
+                }
+            });
+
+            // Create CSV
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','))].join('\r\n');
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'invoices_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        function downloadExcelcur() {
+            const table = document.querySelector('table');
+            const headers = [];
+            const rows = [];
+
+            // Get headers (skip first th which is checkbox)
+            table.querySelectorAll('th').forEach((th, i) => {
+                if (i > 0) headers.push(th.textContent.trim());
+            });
+
+            // Get rows from tbody
+            table.querySelectorAll('tbody tr').forEach(tr => {
+                const row = [];
+                tr.querySelectorAll('td').forEach((td, i) => {
+                    if (i > 0) row.push(td.textContent.trim());
+                });
+                if (row.length > 0) rows.push(row);
+            });
+
+            // Create and download CSV
+            const csv = [headers.join(','), ...rows.map(r => r.map(c => '"' + c.replace(/"/g, '""') + '"').join(','))].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'invoices_currentfilter_' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+
+
+        document.getElementById('filterAll').addEventListener('change', () => {
+            updateTileActiveState();
+            applyFilters();
+            renderTable();
+            const paneC = document.getElementById('pane-consultancy');
+            const topV = document.getElementById('consultancyTopVendor');
+            if (paneC && paneC.classList.contains('active') && topV && (topV.value || document.getElementById('consultancyDropdown').value)) {
+                applyConsultancyFilterFromTopFilter();
+            }
+        });
+        //document.getElementById('dueBy').addEventListener('change', () => { applyFilters(); renderTable(); });
+        document.getElementById('dueBy').addEventListener('change', () => { 
+            const dueBy = document.getElementById('dueBy').value;
+            const clearBtn = document.getElementById('clearFilterBtn');
+            clearBtn.style.display = dueBy ? 'inline-block' : 'none';
+            
+            // Disable daily summary when dueBy is active
+            const dailyCard = document.getElementById('dailySummaryCard');
+            dailyCard.style.opacity = dueBy ? '0.5' : '1';
+            dailyCard.style.pointerEvents = dueBy ? 'none' : 'auto';
+            
+            applyFilters(); 
+            renderTable(); 
+            const paneC = document.getElementById('pane-consultancy');
+            const topV = document.getElementById('consultancyTopVendor');
+            if (paneC && paneC.classList.contains('active') && topV && topV.value) {
+                applyConsultancyFilterFromTopFilter();
+            }
+        });
+
+        document.getElementById('tableBody').addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-view');
+            if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
+
+        document.getElementById('consultancyTableBody').addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-view');
+            if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
+
+        const consultancyTopVendorEl = document.getElementById('consultancyTopVendor');
+        if (consultancyTopVendorEl) {
+            consultancyTopVendorEl.addEventListener('change', function() {
+                loadResourcesForFilter(this.value);
+            });
+        }
+        const consultancyTopResourceEl = document.getElementById('consultancyTopResource');
+        if (consultancyTopResourceEl) {
+            consultancyTopResourceEl.addEventListener('change', function() {
+                applyConsultancyFilterFromTopFilter();
+            });
+        }
+        
+        // View Document - fetch as blob and render with PDF.js
+        async function viewDocument(docId, fileName) {
+            currentDocId   = docId;
+            currentDocName = fileName;
+
+            document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('pdfContainer').innerHTML      = '<p style="color:#fff; padding:40px; text-align:center;">Loading...</p>';
+            document.getElementById('viewerOverlay').style.display = 'flex';
+
+            try {
+                const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+                const response = await fetch(API_BASE + '/api/getdata', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userEmail,
+                        accessToken,
+                        action:     'stream',
+                        documentId: docId,
+                    })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errText}`);
+                }
+
+                const blob     = await response.blob();
+                const pdfBlob  = new Blob([blob], { type: 'application/pdf' });
+                
+                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = URL.createObjectURL(pdfBlob);
+
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                await renderPDF(arrayBuffer);
+
+            }   catch (err) {
+            console.error('viewDocument error:', err);
+            document.getElementById('pdfContainer').innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to load: ${err.message}</p>`;
+            }
+        }
+
+        //Render PDF using PDF.js
+        async function renderPDF(arrayBuffer) {
+            const container = document.getElementById('pdfContainer');
+            container.innerHTML = '<p style="color:#fff; padding:40px; text-align:center;">Rendering pages...</p>';
+
+            try {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            container.innerHTML = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page     = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const canvas   = document.createElement('canvas');
+                canvas.width   = viewport.width;
+                canvas.height  = viewport.height;
+                canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.4); max-width:100%; display:block;';
+
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                container.appendChild(canvas);
+            }
+
+        } catch (err) {
+            console.error('renderPDF error:', err);
+            container.innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to render PDF: ${err.message}</p>`;
+        }
+    
+    }
+
+        //Download the PDF file
+        function triggerDownload() {
+            if (!currentBlobUrl) return;
+            const a    = document.createElement('a');
+            a.href     = currentBlobUrl;
+            a.download = currentDocName || 'document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        //Close Viewer and cleanup
+       function closeViewer() {
+        document.getElementById('viewerOverlay').style.display = 'none';
+        document.getElementById('pdfContainer').innerHTML      = '';
+        if (currentBlobUrl) {
+            URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = null;
+        }
+        currentDocId   = null;
+        currentDocName = null;
+    }
+
+        //Viewer button listeners
+        document.getElementById('btnDownload').addEventListener('click', triggerDownload);
+        document.getElementById('btnClose').addEventListener('click', closeViewer);
+
+        document.getElementById('viewerOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeViewer();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeViewer();
+        });
+
+        function escapeAttr(str) {
+        return String(str).replace(/'/g, "\\'");
+    }
+        //Excel File Sync
+        async function onSyncFileChosen(input) {
+            closeHeaderMenu();
+            const file = input.files && input.files[0];
+            input.value = '';          // reset so the same file can be chosen again
+            if (!file) return;
+
+            if (!file.name.match(/\.xlsx?$/i)) {
+                showToast('Invalid file', 'Please upload an .xlsx or .xls file.', 'error');
+                return;
+            }
+
+            // showToast('Uploading…', `Processing "${file.name}". This may take a few seconds.`, '');
+            updateToastArea('Uploading…', `Processing "${file.name}"`, '');
+
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file, file.name);
+
+                // Pass filename as query param so the Function can use it for SharePoint path
+                const url = `${API_BASE}/api/sync-excel?filename=${encodeURIComponent(file.name)}`;
+
+                const res  = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = res.ok ? await res.json().catch(() => ({})) : {};
+
+                if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+
+                updateToastArea('Sync complete', buildSyncSummaryText(data), 'success');
+                await loadDashboard();
+
+            } catch (err) {
+                console.error('Sync error:', err);
+                updateToastArea('Sync failed', err.message || 'Unknown error', 'error');
+
+            }
+        }
+
+        function buildSyncSummaryText(d) {
+            const parts = [];
+            if (d.matched)             parts.push(`✅ ${d.matched} updated`);
+            if (d.need_approval)       parts.push(`⚠️ ${d.need_approval} need approval`);
+            if (d.pending)             parts.push(`⏳ ${d.pending} pending`);
+            if (d.unmatched)           parts.push(`❌ ${d.unmatched} unmatched`);
+            if (d.ambiguous)           parts.push(`🔀 ${d.ambiguous} ambiguous`);
+            if (d.skipped_not_pending) parts.push(`⏭ ${d.skipped_not_pending} skipped (not Pending)`);
+            return parts.join('  ·  ') || 'No records processed.';
+        }
+
+        // ── Toast ─────────────────────────────────────────────────────────────────────
+        let _toastTimer = null;
+        function showToast(title, body, type = '', duration = 0) {
+            const el = document.getElementById('toast');
+            el.className = 'toast show' + (type ? ` ${type}` : '');
+            document.getElementById('toastTitle').textContent = title;
+            document.getElementById('toastBody').textContent  = body;
+            if (_toastTimer) clearTimeout(_toastTimer);
+            if (duration > 0) _toastTimer = setTimeout(hideToast, duration);
+        }
+        function hideToast() {
+            document.getElementById('toast').classList.remove('show');
+        }
+
+        function updateToastArea(title, message, type = '') {
+        const toastArea = document.getElementById('toastAreaContent');
+            if (!toastArea) return;
+            
+            const colors = {
+                'success': '#107c10',
+                'error': '#d13438',
+                'warning': '#ca5010',
+                '': '#666'
+            };
+            
+            const color = colors[type] || colors[''];
+            toastArea.style.color = color;
+            toastArea.innerHTML = `<strong>${title}</strong><br><span style="font-size: 12px;">${message}</span>`;
+            
+            // Clear after 10 seconds
+            setTimeout(() => {
+                toastArea.style.color = '#666';
+                toastArea.textContent = 'No recent activity';
+            }, 10000);
+        }
+
+        function updateTimeDisplay() {
+            updateDailySummaryCard();
+        }
+
+        function displayCurrentTime() {
+            updateDailySummaryCard();
+        }
+
+        function openTimeConverter() {
+            document.getElementById('timeConverterModal').style.display = 'flex';
+            // Set current UTC time as default
+            const now = new Date();
+            const utcString = now.toISOString().substring(0, 16);
+            document.getElementById('utcInput').value = utcString;
+        }
+
+        function closeTimeConverter() {
+            document.getElementById('timeConverterModal').style.display = 'none';
+            document.getElementById('convertedResult').style.display = 'none';
+        }
+
+        function convertUTCtoLocal() {
+            const utcInput = document.getElementById('utcInput').value;
+            if (!utcInput) {
+                alert('Please enter a UTC time');
+                return;
+            }
+            
+            const utcDate = new Date(utcInput + 'Z'); // Add Z to indicate UTC
+            const localString = utcDate.toLocaleString('en-US', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            });
+            
+            document.getElementById('localTimeResult').textContent = localString;
+            document.getElementById('convertedResult').style.display = 'block';
+        }
+
+        // Update time every second
+        setInterval(displayCurrentTime, 1000);
+        displayCurrentTime(); // Initial call
+
+        let sortColumn = '';
+        let sortDirection = 'asc';
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            
+            // Update sort icons
+            document.querySelectorAll('.sort-btn').forEach(btn => {
+                const icon = btn.querySelector('.sort-icon');
+                if (btn.dataset.sort === column) {
+                    icon.textContent = sortDirection === 'asc' ? '↑' : '↓';
+                } else {
+                    icon.textContent = '↕';
+                }
+            });
+            
+            // Sort the filteredRows array
+            filteredRows.sort((a, b) => {
+                let valA = a[column] || a[column.replace('_', '')];
+                let valB = b[column] || b[column.replace('_', '')];
+                
+                // Parse dates for proper date sorting
+                const dateA = new Date(valA);
+                const dateB = new Date(valB);
+                
+                if (!isNaN(dateA) && !isNaN(dateB)) {
+                    valA = dateA.getTime();
+                    valB = dateB.getTime();
+                }
+                
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+            
+            renderTable();
+        }
+
+        function getStatusClass(status) {
+            const s = (status || '').toLowerCase();
+            if (s === 'pending') return 'pending';
+            if (s === 'approved') return 'approved';
+            if (s === 'need approval' || s === 'need_approval') return 'need-approval';
+            if (s === 'payment initiated' || s === 'payment_initiated') return 'payment-initiated';
+            if (s === 'invalid') return 'invalid';
+            return '';
+        }
+        
+        // Past Months Summary - shows all data except payment initiated for previous calendar months
+        function getPastMonthsSummaryData() {
+            const now = new Date();
+            //const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            const currentMonth = now.toISOString().slice(0, 7); // Current month YYYY-MM
+            //Switch to consultancy filter if active, otherwise use all rows
+            const isConsultancyActive = document.getElementById('pane-consultancy').classList.contains('active');
+            console.log('Consultancy filter active:', isConsultancyActive);
+            // If consultancy filter is active and has rows, use those; otherwise use all rows
+            const toggleRows = isConsultancyActive && consultancyRows.length > 0 ? consultancyRows : allRows;
+            // Filter: previous months only (before current month), excluding payment_initiated status
+            const pastMonthsData = toggleRows.filter(r => {
+                const d = r.due_date || r.dueDate || r.pay_period_start || r.Date_Invoice_Received || '';
+                if (!d) return false;
+                
+                const dateStr = d.toString().slice(0, 7); // YYYY-MM
+                const rowMonth = dateStr.slice(0, 7);
+                
+                // Exclude current month and payment initiated status
+                const isPaymentInitiated = r.bill_pay_initiated_on;
+                const isPastMonth = rowMonth < currentMonth;
+                
+                return isPastMonth && !isPaymentInitiated;
+            });
+            
+            return pastMonthsData;
+        }
+
+        function openPastMonthsSummary() {
+            const pastMonthsData = getPastMonthsSummaryData();
+            
+            // Calculate stats
+            const total = pastMonthsData.length;
+            const pending = pastMonthsData.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'pending').length;
+            const approved = pastMonthsData.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'approved').length;
+            const needApproval = pastMonthsData.filter(r => (r.approval_status || r.status || '').toLowerCase() === 'need approval').length;
+            const pastMonthsTotalAmount = pastMonthsData.reduce((sum, r) => sum + (parseFloat(r.invoice_amount) || 0), 0);
+
+            // Update stats display
+            document.getElementById('modalPastMonthsTotalCount').textContent = total;
+            document.getElementById('modalPastMonthsPendingCount').textContent = pending;
+            document.getElementById('modalPastMonthsApprovedCount').textContent = approved;
+            document.getElementById('modalPastMonthsNeedApprovalCount').textContent = needApproval;
+            document.getElementById('modalPastMonthsTotalAmount').textContent = '$' + pastMonthsTotalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+            // Get current and previous month names
+            const now = new Date();
+            const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const monthName = prevMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
+            document.getElementById('modalPastMonthsDate').textContent = 'Till ' + monthName;
+            
+            // Populate table
+            const tbody = document.getElementById('pastMonthsSummaryTableBody');
+            tbody.innerHTML = '';
+            
+            pastMonthsData.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${escapeHtml(row.invoice_no || row.invoiceNumber || '')}</td>
+                    <td>${escapeHtml(row.consultancy_name || row.consultancyName || '')}</td>
+                    <td>${escapeHtml(row.resource_name || row.resourceName || '')}</td>
+                    <td>${escapeHtml(row.client_name || row.clientName || '')}</td>
+                    <td>${row.due_date || row.dueDate || ''}</td>
+                    <td>${row.invoice_amount ? '$' + formatNumber(row.invoice_amount) : ''}</td>
+                    <td><span class="status-badge ${getStatusClass(row.approval_status || row.status || 'Pending')}">${escapeHtml(row.approval_status || row.status || 'Pending')}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            document.getElementById('pastMonthsSummaryModal').classList.add('show');
+        }
+
+        function closePastMonthsSummary() {
+            document.getElementById('pastMonthsSummaryModal').classList.remove('show');
+        }
+
+        function downloadPastMonthsSummaryExcel() {
+            // Similar to downloadDailySummaryExcel but using pastMonthsData
+            const pastMonthsData = getPastMonthsSummaryData();
+            // Create Excel download logic here
+            alert('Download Past Months Summary - ' + pastMonthsData.length + ' records');
+        }
+
+
+    </script>
+
+    <div id="timeConverterModal" class="payment-modal" style="display:none" onclick="if(event.target===this)closeTimeConverter()">
+    <div class="payment-modal-content" style="max-width: 500px;">
+        <button type="button" class="payment-modal-close icon-btn" onclick="closeTimeConverter()" data-tooltip="Close"><i class="fas fa-times"></i></button>
+        <h3>UTC ↔ Local Time Converter</h3>
+        <div style="margin-top: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600;">Enter UTC Time:</label>
+            <input type="datetime-local" id="utcInput" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <button type="button" onclick="convertUTCtoLocal()" style="margin-top: 12px; background: #0078d4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Convert to Local</button>
+            <div id="convertedResult" style="margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 4px; display: none;">
+                <strong>Local Time:</strong>
+                <div id="localTimeResult" style="font-size: 16px; margin-top: 8px; color: #0078d4;"></div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Daily Summary Modal -->
+    <div id="dailySummaryModal" class="daily-summary-modal" onclick="if(event.target===this)closeDailySummary()">
+        <div class="daily-summary-content">
+            <div class="daily-summary-header">
+                <div class="daily-summary-title">📅 Daily Summary - <span id="modalSummaryDate">--/--/----</span></div>
+                <button type="button" class="payment-modal-close icon-btn" onclick="closeDailySummary()" data-tooltip="Close"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="daily-summary-stats">
+                <div class="daily-stat-box">
+                    <div class="daily-stat-value" id="modalTotalCount">0</div>
+                    <div class="daily-stat-label">Total Invoices</div>
+                </div>
+                <div class="daily-stat-box pending">
+                    <div class="daily-stat-value" id="modalPendingCount">0</div>
+                    <div class="daily-stat-label">Pending</div>
+                </div>
+                <div class="daily-stat-box approved">
+                    <div class="daily-stat-value" id="modalApprovedCount">0</div>
+                    <div class="daily-stat-label">Approved</div>
+                </div>
+                <div class="daily-stat-box need-approval">
+                    <div class="daily-stat-value" id="modalNeedApprovalCount">0</div>
+                    <div class="daily-stat-label">Need Approval</div>
+                </div>
+                <div class="daily-stat-box payment-done">
+                    <div class="daily-stat-value" id="modalPaymentDoneCount">0</div>
+                    <div class="daily-stat-label">Payment Initiated</div>
+                </div>
+                <div class="daily-stat-box total-amount">
+                    <div class="daily-stat-value" id="modalTotalAmount">$0.00</div>
+                    <div class="daily-stat-label">Total Amount</div>
+                </div>
+            </div>
+
+            
+            <div class="daily-summary-table-wrapper">
+                <table class="daily-summary-table">
+                    <thead>
+                        <tr>
+                            <th>S.No</th>
+                            <th>Invoice No</th>
+                            <th>Consultancy</th>
+                            <th>Resource</th>
+                            <th>Client</th>
+                            <th>Due Date</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailySummaryTableBody"></tbody>
+                </table>
+            </div>
+            
+            <div class="daily-summary-actions">
+                <button type="button" class="btn-download-excel icon-btn" onclick="downloadDailySummaryExcel()" data-tooltip="Download Excel">
+                    <i class="fas fa-file-excel"></i>
+                    <span>Download Excel</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Past Months Summary Modal -->
+<div id="pastMonthsSummaryModal" class="daily-summary-modal" onclick="if(event.target===this)closePastMonthsSummary()">
+    <div class="daily-summary-content">
+        <div class="daily-summary-header">
+            <div class="monthly-summary-title">📅 Past Months Summary - <span id="modalPastMonthsDate">All Previous Months</span></div>
+            <button type="button" class="payment-modal-close icon-btn" onclick="closePastMonthsSummary()" data-tooltip="Close"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <div class="daily-summary-stats">
+            <div class="daily-stat-box">
+                <div class="daily-stat-value" id="modalPastMonthsTotalCount">0</div>
+                <div class="daily-stat-label">Total Invoices</div>
+            </div>
+            <div class="daily-stat-box pending">
+                <div class="daily-stat-value" id="modalPastMonthsPendingCount">0</div>
+                <div class="daily-stat-label">Pending</div>
+            </div>
+            <div class="daily-stat-box approved">
+                <div class="daily-stat-value" id="modalPastMonthsApprovedCount">0</div>
+                <div class="daily-stat-label">Approved</div>
+            </div>
+            <div class="daily-stat-box need-approval">
+                <div class="daily-stat-value" id="modalPastMonthsNeedApprovalCount">0</div>
+                <div class="daily-stat-label">Need Approval</div>
+            </div>
+            <div class="daily-stat-box total-amount">
+                <div class="daily-stat-value" id="modalPastMonthsTotalAmount">$0.00</div>
+                <div class="daily-stat-label">Total Amount</div>
+            </div>
+
+            <div class="daily-stat-box">
+                <!--<div class="daily-stat-value" id="modalPastMonthsMonthLabel">Past Due</div> -->
+                <div class="daily-stat-label">Payment Excluding Current Month</div>
+            </div>
+        </div>
+
+        
+        <div class="daily-summary-table-wrapper">
+            <table class="daily-summary-table">
+                <thead>
+                    <tr>
+                        <th>S.No</th>
+                        <th>Invoice No</th>
+                        <th>Consultancy</th>
+                        <th>Resource</th>
+                        <th>Client</th>
+                        <th>Due Date</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="pastMonthsSummaryTableBody"></tbody>
+            </table>
+        </div>
+        
+        <div class="daily-summary-actions">
+            <button type="button" class="btn-download-excel icon-btn" onclick="downloadPastMonthsSummaryExcel()" data-tooltip="Download Excel">
+                <i class="fas fa-file-excel"></i>
+                <span>Download Excel</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

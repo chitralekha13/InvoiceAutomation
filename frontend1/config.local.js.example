@@ -1,0 +1,8 @@
+// Copy to config.local.js and set values. config.local.js is not committed.
+// Get Function App URL from: Azure Portal → Function App → Overview → URL
+// Azure URLs look like: https://invoiceautomation-XXXXX.westus2-01.azurewebsites.net (NOT invoiceautomation.azurewebsites.net)
+window.APP_CONFIG = {
+    apiBaseUrl: "https://YOUR_FUNCTION_APP.azurewebsites.net",
+    clientId: "YOUR_AZURE_AD_CLIENT_ID",
+    redirectUri: window.location.origin + "/index.html"
+};
