@@ -153,12 +153,13 @@
         // ── Authorities ────────────────────────────────────────────────────────
         // /consumers → Microsoft personal accounts only (@outlook, @hotmail, etc.)
         // /tenant  → Your tenant only, where Google External Identity federation lives
-        const commonAuthority = "https://login.microsoftonline.com/consumers";
+        const consumersAuthority = "https://login.microsoftonline.com/consumers";
         const tenantAuthority = `https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034`;
 
         const microsoftLoginRequest = {
             scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
-            prompt: "select_account"
+            prompt: "select_account",
+            authority: consumersAuthority
         };
 
         const googleLoginRequest = {
@@ -287,9 +288,9 @@
             }
         }
 
-        // Microsoft: /common — personal + any org accounts
+        // Microsoft: /consumers — personal Microsoft accounts
         document.getElementById("loginMicrosoft").onclick = () =>
-            loginFlow(commonAuthority, "microsoft", microsoftLoginRequest);
+            loginFlow(consumersAuthority, "microsoft", microsoftLoginRequest);
 
         // Google: /tenant — External Identity federation
         document.getElementById("loginGoogle").onclick = () =>
