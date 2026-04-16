@@ -3,7 +3,7 @@
 // For production: pipeline overwrites this with secrets (AZURE_CLIENT_ID, etc.)
 window.APP_CONFIG = {
     apiBaseUrl: "https://invoiceautomation-bdcudzfpe9cpf4d5.westus2-01.azurewebsites.net",
-    clientId: "725021b2-8178-4266-9e68-8d39ce3b5a84",
+    clientId: "4b952eaf-5b8e-4ddc-a096-561c0abe771f",
     tenantId: "59b817d0-e4a9-4a51-b17e-3e60fc07b19b",
     redirectUri: window.location.origin + "/index.html"
 };
