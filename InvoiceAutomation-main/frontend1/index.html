@@ -151,14 +151,14 @@
         const redirectUri = appConfig.redirectUri || (window.location.origin + '/index.html');
 
         // ── Authorities ────────────────────────────────────────────────────────
-        // /common  → Microsoft personal (@outlook, @hotmail) + any org (@company.com)
+        // /consumers → Microsoft personal accounts only (@outlook, @hotmail, etc.)
         // /tenant  → Your tenant only, where Google External Identity federation lives
-        const commonAuthority = "https://login.microsoftonline.com/common";
+        const commonAuthority = "https://login.microsoftonline.com/consumers";
         const tenantAuthority = `https://login.microsoftonline.com/de00830d-05d6-4534-bcf6-53c294e7d034`;
 
         const microsoftLoginRequest = {
             scopes: ['openid', 'offline_access', 'profile', 'User.Read'],
-            prompt: "login"
+            prompt: "select_account"
         };
 
         const googleLoginRequest = {
