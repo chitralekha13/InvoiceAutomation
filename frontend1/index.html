@@ -155,7 +155,7 @@
         // Single-tenant org app: use tenant-specific authority (not /common).
         const tenantId = (appConfig.tenantId && appConfig.tenantId.trim())
             ? appConfig.tenantId.trim()
-            : 'a8e5d571-43e8-4c3c-96be-344156cf6887';
+            : '4b952eaf-5b8e-4ddc-a096-561c0abe771f';
         const tenantAuthority = `https://login.microsoftonline.com/${tenantId}`;
 
         const microsoftLoginRequest = {
