@@ -4,6 +4,6 @@
 window.APP_CONFIG = {
     apiBaseUrl: "https://invoiceautomation-bdcudzfpe9cpf4d5.westus2-01.azurewebsites.net",
     clientId: "4b952eaf-5b8e-4ddc-a096-561c0abe771f",
-    tenantId: "59b817d0-e4a9-4a51-b17e-3e60fc07b19b",
+    tenantId: "de00830d-05d6-4534-bcf6-53c294e7d034",
     redirectUri: window.location.origin + "/index.html"
 };
