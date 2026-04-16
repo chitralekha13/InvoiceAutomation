@@ -1,0 +1,7 @@
+azure-functions
+requests
+psycopg2-binary
+PyJWT
+office365-rest-python-client
+openpyxl
+msal

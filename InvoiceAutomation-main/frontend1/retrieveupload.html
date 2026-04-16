@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Portal - Documents</title>
+    <script src="config.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+      if (/^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname)) {
+        var s = document.createElement('script'); s.src = 'config.local.js'; s.onerror = function() { this.remove(); }; document.head.appendChild(s);
+      }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .user-name {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* Icon Button Styles */
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            color: #555;
+        }
+        
+        .icon-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-bottom: 6px;
+        }
+        
+        .icon-btn:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .icon-btn:hover {
+            background: #f0f0f0;
+        }
+        
+        .btn-logout.icon-btn {
+            background: #d13438;
+            color: white;
+            padding: 8px 16px;
+        }
+        
+        .btn-logout.icon-btn:hover {
+            background: #b52d31;
+        }
+        
+        .btn-logout.icon-btn i {
+            color: white;
+        }
+
+        .btn-logout.icon-btn::after { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px;}
+        
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 40px;
+            display: flex;
+            gap: 30px;
+        }
+        
+        /* Left side - Retrieve (70%) */
+        .retrieve-section {
+            flex: 7;
+        }
+        
+        /* Right side - Upload (30%) */
+        .upload-section {
+            flex: 3;
+        }
+        
+        .documents-card, .upload-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 24px;
+        }
+        
+        .section-title {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .search-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            align-items: center;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 10px 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .btn-search.icon-btn {
+            background: #0078d4;
+            color: white;
+        }
+        
+        .btn-search.icon-btn:hover {
+            background: #005a9e;
+        }
+        
+        .btn-search.icon-btn i {
+            color: white;
+        }
+        
+        .btn-refresh.icon-btn {
+            background: #5c5c5c;
+            color: white;
+        }
+        
+        .btn-refresh.icon-btn:hover {
+            background: #4a4a4a;
+        }
+        
+        .btn-refresh.icon-btn i {
+            color: white;
+        }
+
+        .btn-refresh.icon-btn:hover::after {
+            bottom: auto;
+            top: 100%;
+            margin-bottom: 0;
+            margin-top: 6px;
+        }
+
+        #btnDownload:hover::after {
+            bottom: auto;
+            top: 100%;
+            margin-bottom: 0;
+            margin-top: 6px;
+        }
+
+        #btnClose:hover::after {
+            bottom: auto;
+            top: 100%;
+            margin-bottom: 0;
+            margin-top: 6px;
+        }
+
+        
+        .documents-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .documents-table th,
+        .documents-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .documents-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .documents-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .btn-view.icon-btn {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-view.icon-btn:hover {
+            background: #218838;
+        }
+        
+        .btn-view.icon-btn i {
+            color: white;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        
+        /* Upload Styles */
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            border-color: #0078d4;
+            background: #f8f9fa;
+        }
+        
+        .upload-area.dragover {
+            border-color: #0078d4;
+            background: #e7f3ff;
+        }
+        
+        .upload-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+            color: #0078d4;
+        }
+        
+        .upload-text {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        
+        .upload-hint {
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .file-list {
+            margin-top: 16px;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            margin-bottom: 8px;
+        }
+        
+        .file-name {
+            color: #333;
+            font-size: 13px;
+            word-break: break-all;
+        }
+        
+        .file-size {
+            color: #999;
+            font-size: 11px;
+        }
+        
+        .btn-remove.icon-btn {
+            background: #d13438;
+            color: white;
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        
+        .btn-remove.icon-btn:hover {
+            background: #b52d31;
+        }
+        
+        .btn-remove.icon-btn i {
+            color: white;
+        }
+        
+        .btn-upload.icon-btn {
+            background: #0078d4;
+            color: white;
+            padding: 12px 24px;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 16px;
+            font-weight: 600;
+        }
+        
+        .btn-upload.icon-btn:hover {
+            background: #005a9e;
+        }
+        
+        .btn-upload.icon-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-upload.icon-btn i {
+            color: white;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 16px;
+            display: none;
+            font-size: 13px;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .progress {
+            display: none;
+            margin-top: 16px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #0078d4;
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .loading-overlay.show {
+            display: flex;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0078d4;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* PDF Viewer Styles */
+        .pdf-viewer-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        
+        .pdf-viewer-modal.show {
+            display: flex;
+        }
+        
+        .pdf-viewer-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+            position: relative;
+        }
+        
+        .pdf-viewer-header {
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+        }
+        
+        .pdf-viewer-filename {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .pdf-viewer-body {
+            padding: 20px;
+            text-align: center;
+        }
+        
+        #pdfContainer canvas {
+            max-width: 100%;
+            margin: 0 auto;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        @keyframes cellSaved {
+            0% { background: #d4edda; }
+            100% { background: transparent; }
+        }
+        
+        .cell-saved {
+            animation: cellSaved 1.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📄 Invoice Portal</h1>
+        <div class="user-info">
+            <span class="user-name" id="userName"></span>
+            <button class="btn-logout icon-btn" onclick="logout()" data-tooltip="Logout">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Side - Retrieve Documents (70%) -->
+        <div class="retrieve-section">
+            <div class="documents-card">
+                <h2 class="section-title">My Documents</h2>
+                
+                <div class="search-bar">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search documents...">
+                    <button class="btn-search icon-btn" onclick="searchDocuments()" data-tooltip="Search">
+                        <i class="fas fa-search"></i>
+                    </button>
+                    <button class="btn-refresh icon-btn" onclick="loadDocuments()" data-tooltip="Refresh">
+                         <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                
+                <div class="message" id="message"></div>
+                
+                <div id="documentsContainer">
+                    <div class="empty-state">Loading documents...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side - Upload Documents (30%) -->
+        <div class="upload-section">
+            <div class="upload-card">
+                <h2 class="section-title">Upload Documents</h2>
+                
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <div class="upload-text">Click to browse or drag and drop</div>
+                    <div class="upload-hint">PDF, PNG, JPG, JPEG (Max 10MB)</div>
+                </div>
+                
+                <input type="file" id="fileInput" class="file-input" multiple 
+                       accept=".pdf,.png,.jpg,.jpeg,image/png,image/jpeg,application/pdf">
+                
+                <div class="file-list" id="fileList"></div>
+                
+                <button class="btn-upload icon-btn" id="uploadBtn" disabled data-tooltip="Upload Files">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+                
+                <div class="progress" id="progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill">0%</div>
+                    </div>
+                </div>
+                
+                <div class="message" id="uploadMessage"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF Viewer Modal -->
+    <div class="pdf-viewer-modal" id="pdfViewerModal">
+        <div class="pdf-viewer-content">
+            <div class="pdf-viewer-header">
+                <span class="pdf-viewer-filename" id="viewerFileName"></span>
+                <div>
+                    <button class="icon-btn" id="btnDownload" data-tooltip="Download">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button class="icon-btn" id="btnClose" data-tooltip="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="pdf-viewer-body">
+                <div id="pdfContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        // Check authentication
+        const userEmail = sessionStorage.getItem('userEmail');
+        const userName = sessionStorage.getItem('userName');
+        const accessToken = sessionStorage.getItem('accessToken');
+        
+        if (!userEmail || !accessToken) {
+            window.location.href = 'index.html';
+        }
+        
+        // Direct Function App URL
+        let API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        API_BASE = (API_BASE || '').replace(/\/+$/, '');
+        if (API_BASE && API_BASE.startsWith('http://')) {
+            API_BASE = 'https://' + API_BASE.slice(7);
+        }
+        
+        if (!API_BASE) {
+            console.error('API_BASE not configured. Please set apiBaseUrl in config.js');
+        }
+
+        // ============ RETRIEVE FUNCTIONALITY ============
+        
+        let currentDocId = null;
+        let currentDocName = null;
+        
+        async function loadDocuments() {
+            showLoading(true);
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                
+                let base = (API_BASE || '').trim().replace(/\/+$/, '');
+                if (base.startsWith('http://')) base = 'https://' + base.slice(7);
+                const url = base ? (base + '/api/getdata') : '';
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ 
+                        userEmail: userEmail,
+                        accessToken: accessToken,
+                        org: sessionStorage.getItem('org'),
+                        action: 'list'
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to load documents');
+                
+                const data = await response.json();
+                const docs = Array.isArray(data.documents) ? data.documents : [];
+                renderDocuments(docs);
+            } catch (error) {
+                console.error('Error loading documents:', error);
+                showMessage('Error loading documents: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function searchDocuments() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const rows = document.querySelectorAll('#documentsContainer tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }
+        
+        // Allow search on Enter key
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchDocuments();
+            }
+        });
+        
+        function renderDocuments(documents) {
+            const container = document.getElementById('documentsContainer');
+            
+            if (!documents || documents.length === 0) {
+                container.innerHTML = '<div class="empty-state">No documents found</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="table-wrapper">
+                    <table class="documents-table">
+                        <thead>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Organisation</th>
+                                <th>Status</th>
+                                <th>Payment Initiated</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            documents.forEach(doc => {
+                html += `
+                    <tr>
+                        <td>${escapeHtml(doc.name)}</td>
+                        <td>${escapeHtml(doc.OrganisationName || '—')}</td>
+                        <td>${escapeHtml(doc.Status || '—')}</td>
+                        <td>${doc.bill_pay_initiated_on ? formatDate(doc.bill_pay_initiated_on) : '—'}</td>
+                        <td>
+                            <button class="btn-view icon-btn"
+                                data-id="${escapeAttr(doc.id)}"
+                                data-name="${escapeAttr(doc.name)}"
+                                data-tooltip="View / Download">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+        
+        document.getElementById('documentsContainer').addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-view');
+            if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
+        
+        // View Document - fetch as blob and render with PDF.js
+        async function viewDocument(docId, fileName) {
+            currentDocId = docId;
+            currentDocName = fileName;
+            
+            document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('pdfContainer').innerHTML = '<p style="color:#666; padding:40px;">Loading...</p>';
+            document.getElementById('pdfViewerModal').classList.add('show');
+            
+            try {
+                let base = (API_BASE || '').trim().replace(/\/+$/, '');
+                if (base.startsWith('http://')) base = 'https://' + base.slice(7);
+                const url = base ? (base + '/api/getdata') : '';
+                
+                const headers = { 'Content-Type': 'application/json' };
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ 
+                        userEmail: userEmail,
+                        accessToken: accessToken,
+                        action: 'stream',
+                        documentId: docId
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to fetch document');
+                
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                
+                if (blob.type && blob.type.startsWith('image/')) {
+                    document.getElementById('pdfContainer').innerHTML = 
+                        '<img src="' + blobUrl + '" style="max-width:100%;">';
+                } else {
+                    const arrayBuffer = await blob.arrayBuffer();
+                    await renderPDF(arrayBuffer);
+                }
+            } catch (error) {
+                console.error('Error viewing document:', error);
+                document.getElementById('pdfContainer').innerHTML = 
+                    '<p style="color:red; padding:40px;">Error loading document: ' + error.message + '</p>';
+            }
+        }
+        
+        function renderPDF(arrayBuffer) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            
+            pdfjsLib.getDocument({ data: arrayBuffer }).promise.then(function(pdf) {
+                const container = document.getElementById('pdfContainer');
+                container.innerHTML = '';
+                
+                let currentPage = 1;
+                const totalPages = pdf.numPages;
+                
+                function renderPage(num) {
+                    pdf.getPage(num).then(function(page) {
+                        const scale = 1.5;
+                        const viewport = page.getViewport({ scale: scale });
+                        
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+                        canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.2); max-width:100%; display:block; margin:10px auto;';
+                        
+                        const renderContext = {
+                            canvasContext: context,
+                            viewport: viewport
+                        };
+                        
+                        page.render(renderContext).promise.then(function() {
+                            container.appendChild(canvas);
+                            
+                            if (currentPage < totalPages) {
+                                currentPage++;
+                                renderPage(currentPage);
+                            }
+                        });
+                    });
+                }
+                
+                renderPage(1);
+            }).catch(function(error) {
+                document.getElementById('pdfContainer').innerHTML = 
+                    '<p style="color:red; padding:40px;">Error rendering PDF: ' + error.message + '</p>';
+            });
+        }
+        
+        // PDF Viewer close and download
+        document.getElementById('btnClose').addEventListener('click', function() {
+            document.getElementById('pdfViewerModal').classList.remove('show');
+        });
+        
+        document.getElementById('btnDownload').addEventListener('click', async function() {
+            if (!currentDocId || !currentDocName) return;
+            
+            try {
+                let base = (API_BASE || '').trim().replace(/\/+$/, '');
+                if (base.startsWith('http://')) base = 'https://' + base.slice(7);
+                const url = base ? (base + '/api/getdata') : '';
+                
+                const headers = { 'Content-Type': 'application/json' };
+                if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ 
+                        userEmail: userEmail,
+                        accessToken: accessToken,
+                        action: 'stream',
+                        documentId: currentDocId
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to fetch document');
+                
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = currentDocName;
+                link.click();
+            } catch (error) {
+                console.error('Error downloading document:', error);
+                showMessage('Error downloading document: ' + error.message, 'error');
+            }
+        });
+        
+        // ============ UPLOAD FUNCTIONALITY ============
+        
+        let selectedFiles = [];
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadMessage = document.getElementById('uploadMessage');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        
+        // Click to upload
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        // File selection
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+        
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        
+        function handleFiles(files) {
+            const maxSize = 10 * 1024 * 1024;
+            const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+            const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+            
+            Array.from(files).forEach(file => {
+                if (file.size > maxSize) {
+                    showUploadMessage(`File ${file.name} exceeds 10MB limit`, 'error');
+                    return;
+                }
+                
+                const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+                const isValidType = allowedTypes.includes(file.type);
+                const isValidExtension = allowedExtensions.includes(fileExtension);
+                
+                if (!isValidType && !isValidExtension) {
+                    showUploadMessage(`File ${file.name} has unsupported format.`, 'error');
+                    return;
+                }
+                
+                if (!selectedFiles.find(f => f.name === file.name)) {
+                    selectedFiles.push(file);
+                }
+            });
+            
+            renderFileList();
+            uploadBtn.disabled = selectedFiles.length === 0;
+        }
+        
+        function renderFileList() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div>
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="btn-remove icon-btn" onclick="removeFile(${index})" data-tooltip="Remove">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+                fileList.appendChild(fileItem);
+            });
+        }
+        
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+            uploadBtn.disabled = selectedFiles.length === 0;
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+        
+        uploadBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) return;
+            
+            if (!API_BASE) {
+                showUploadMessage('Function App URL not configured.', 'error');
+                return;
+            }
+            
+            uploadBtn.disabled = true;
+            progress.style.display = 'block';
+            uploadMessage.style.display = 'none';
+            
+            const total = selectedFiles.length;
+            let done = 0;
+            const errors = [];
+            let hasDuplicate = false;
+            
+            try {
+                for (const file of selectedFiles) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    const headers = {};
+                    if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+                    
+                    let base = (API_BASE || '').trim().replace(/\/+$/, '');
+                    if (base.startsWith('http://')) base = 'https://' + base.slice(7);
+                    const uploadUrl = base ? (base + '/api/upload') : '';
+                    
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        headers,
+                        body: formData
+                    });
+                    
+                    const result = await response.json().catch(() => ({}));
+                    
+                    if (!response.ok) {
+                        errors.push(file.name + ': ' + (result.error || response.statusText));
+                    } else if (result.duplicate_of) {
+                        hasDuplicate = true;
+                    }
+                    done++;
+                    progressFill.style.width = Math.round((done / total) * 100) + '%';
+                    progressFill.textContent = Math.round((done / total) * 100) + '%';
+                }
+                
+                if (errors.length === 0) {
+                    if (hasDuplicate) {
+                        showUploadMessage('This invoice already exists.', 'error');
+                    } else {
+                        showUploadMessage('Your file(s) has been uploaded.', 'success');
+                        loadDocuments(); // Refresh the document list
+                    }
+                    selectedFiles = [];
+                    renderFileList();
+                    fileInput.value = '';
+                } else {
+                    showUploadMessage('Upload failed: ' + errors.join('; '), 'error');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                const errMsg = error.message || String(error);
+                const isCors = errMsg.includes('CORS') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError');
+                showUploadMessage(
+                    isCors
+                        ? 'CORS error: Add ' + window.location.origin + ' to Function App CORS settings.'
+                        : 'Upload failed: ' + errMsg,
+                    'error'
+                );
+            } finally {
+                progress.style.display = 'none';
+                progressFill.style.width = '0%';
+                progressFill.textContent = '0%';
+                uploadBtn.disabled = false;
+            }
+        });
+        
+        function showUploadMessage(text, type) {
+            uploadMessage.textContent = text;
+            uploadMessage.className = `message ${type}`;
+            uploadMessage.style.display = 'block';
+            
+            setTimeout(() => {
+                uploadMessage.style.display = 'none';
+            }, 5000);
+        }
+        
+        // ============ COMMON FUNCTIONS ============
+        
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `message ${type}`;
+            messageEl.style.display = 'block';
+            
+            setTimeout(() => {
+                messageEl.style.display = 'none';
+            }, 5000);
+        }
+        
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('show', show);
+        }
+        
+        function logout() {
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function escapeAttr(text) {
+            if (!text) return '';
+            return String(text).replace(/"/g, '"');
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch {
+                return dateStr;
+            }
+        }
+        
+        function setDisplayName(firstLast) {
+            const el = document.getElementById('userName');
+            if (el) el.textContent = firstLast || userEmail || '';
+        }
+        
+        setDisplayName(userName && userName !== userEmail ? userName : userEmail);
+        
+        async function loadDisplayNameFromUsers() {
+            const email = sessionStorage.getItem('userEmail');
+            if (!email || !API_BASE) return;
+            try {
+                let base = (API_BASE || '').trim().replace(/\/+$/, '');
+                if (base.startsWith('http://')) base = 'https://' + base.slice(7);
+                const res = await fetch(base + '/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'list' })
+                });
+                if (res.ok) {
+                    const users = await res.json();
+                    const user = users.find(u => u.email === email);
+                    if (user && user.name) {
+                        setDisplayName(user.name);
+                    }
+                }
+            } catch (e) {
+                console.log('Could not load user display name:', e);
+            }
+        }
+        
+        loadDisplayNameFromUsers();
+        
+        // Load documents on page load
+        loadDocuments();
+    </script>
+</body>
+</html>

@@ -1,0 +1,2617 @@
+"""
+Shared helper functions for Azure Functions
+Provides utilities for SharePoint, SQL, authentication, and logging
+"""
+import os
+import json
+import logging
+import tempfile
+import base64
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import jwt
+import re
+from datetime import datetime, date, timedelta
+from typing import Dict, Optional, Any, Union
+from office365.sharepoint.client_context import ClientContext
+from office365.runtime.auth.client_credential import ClientCredential
+
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# SharePoint Helpers
+# ============================================================================
+
+def _sharepoint_site_server_relative_prefix() -> str:
+    """
+    Return the server-relative prefix for the configured SharePoint site URL.
+    Example:
+      SHAREPOINT_SITE_URL = https://tenant.sharepoint.com/sites/Accounts
+      -> '/sites/Accounts'
+    """
+    site_url = os.environ.get("SHAREPOINT_SITE_URL") or ""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(site_url)
+        path = (parsed.path or "").rstrip("/")
+        return path or ""
+    except Exception:
+        return ""
+
+def _normalize_server_relative_url(path: str) -> str:
+    """
+    Normalize a SharePoint path to a server-relative URL suitable for
+    ctx.web.get_file_by_server_relative_url().
+
+    Accepts:
+    - Full server-relative: '/sites/Accounts/Invoices/File.xlsx'
+    - Site-relative with leading slash: '/Invoices/File.xlsx'
+    - Library-relative: 'Invoices/File.xlsx'
+    """
+    p = (path or "").strip().replace("\\", "/")
+    if not p:
+        raise ValueError("Empty SharePoint path")
+
+    # Already server-relative to a site/web
+    if p.startswith("/sites/") or p.startswith("/teams/"):
+        return p
+
+    prefix = _sharepoint_site_server_relative_prefix()
+    if not prefix:
+        # Best-effort fallback; still allow absolute-ish paths.
+        return p if p.startswith("/") else f"/{p}"
+
+    # If caller passed '/Invoices/..' treat as site-relative
+    if p.startswith("/"):
+        return f"{prefix}{p}"
+    return f"{prefix}/{p}"
+
+def get_sharepoint_excel_url() -> Optional[str]:
+    """Return the full SharePoint URL for the Excel file (for Download Excel button)."""
+    site_url = (os.environ.get("SHAREPOINT_SITE_URL") or "").rstrip("/")
+    excel_path = os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx"
+    if not site_url:
+        return None
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(site_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        server_path = _normalize_server_relative_url(excel_path)
+        return base + server_path
+    except Exception:
+        return None
+
+
+def _get_sharepoint_tenant(site_url: str) -> str:
+    """Extract tenant identifier from SharePoint site URL for certificate auth."""
+    tenant_name = os.environ.get('SHAREPOINT_TENANT_NAME')
+    if tenant_name:
+        return tenant_name
+    tenant_id = os.environ.get('AZURE_TENANT_ID')
+    if tenant_id:
+        return tenant_id
+    # Derive from hostname: invoiveautomation.sharepoint.com -> invoiveautomation.onmicrosoft.com
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(site_url).netloc
+        if '.sharepoint.com' in host:
+            subdomain = host.split('.sharepoint.com')[0]
+            return f"{subdomain}.onmicrosoft.com"
+    except Exception:
+        pass
+    raise ValueError(
+        "Set SHAREPOINT_TENANT_NAME (e.g. invoiveautomation.onmicrosoft.com) or "
+        "AZURE_TENANT_ID for SharePoint certificate authentication"
+    )
+
+def get_sharepoint_context() -> ClientContext:
+    """
+    Get authenticated SharePoint context.
+    Uses certificate auth (SHAREPOINT_CERT_BASE64 + SHAREPOINT_CERT_THUMBPRINT) if set,
+    otherwise falls back to client secret (ClientCredential) - note: client secret
+    does NOT work with Azure AD app-only for SharePoint REST API; use certificate.
+    """
+    site_url = os.environ.get('SHAREPOINT_SITE_URL')
+    client_id = os.environ.get('AZURE_CLIENT_ID')
+
+    if not site_url or not client_id:
+        raise ValueError("SHAREPOINT_SITE_URL and AZURE_CLIENT_ID are required")
+
+    cert_base64 = os.environ.get('SHAREPOINT_CERT_BASE64')
+    cert_thumbprint = os.environ.get('SHAREPOINT_CERT_THUMBPRINT')
+
+    if cert_base64 and cert_thumbprint:
+        # Certificate-based auth (required for Azure AD app-only with SharePoint REST API)
+        tenant = _get_sharepoint_tenant(site_url)
+        try:
+            pem_bytes = base64.b64decode(cert_base64)
+            pem_content = pem_bytes.decode('utf-8') if isinstance(pem_bytes, bytes) else str(pem_bytes)
+        except Exception as e:
+            raise ValueError(f"Invalid SHAREPOINT_CERT_BASE64: {e}") from e
+
+        fd, cert_path = tempfile.mkstemp(suffix='.pem')
+        try:
+            os.write(fd, pem_content.encode('utf-8') if isinstance(pem_content, str) else pem_content)
+            os.close(fd)
+        except Exception:
+            try:
+                os.unlink(cert_path)
+            except OSError:
+                pass
+            raise
+
+        cert_settings = {
+            'client_id': client_id,
+            'thumbprint': cert_thumbprint.strip(),
+            'cert_path': cert_path,
+        }
+        return ClientContext(site_url).with_client_certificate(tenant, **cert_settings)
+    else:
+        # Client secret (only works with deprecated SharePoint Add-in, not Azure AD app)
+        client_secret = os.environ.get('AZURE_CLIENT_SECRET')
+        if not client_secret:
+            raise ValueError(
+                "SharePoint certificate auth requires SHAREPOINT_CERT_BASE64 and "
+                "SHAREPOINT_CERT_THUMBPRINT. Client secret (Azure AD app) does not work "
+                "for SharePoint REST API app-only access."
+            )
+        credentials = ClientCredential(client_id, client_secret)
+        return ClientContext(site_url).with_credentials(credentials)
+
+def upload_file_to_sharepoint(file_content: bytes, file_name: str, folder_path: str = "Invoices") -> str:
+    """
+    Upload file to SharePoint document library.
+    
+    Args:
+        file_content: File content as bytes
+        file_name: Name of the file
+        folder_path: Library name (e.g. 'Invoices' or 'JSON_Logs') or path like 'Invoices/2025/01_January'
+    
+    Returns:
+        Server-relative URL of uploaded file
+    """
+    ctx = get_sharepoint_context()
+    parts = [p for p in folder_path.replace("\\", "/").strip("/").split("/") if p.strip()]
+    if not parts:
+        parts = ["Invoices"]
+    list_name = parts[0]
+    root = ctx.web.lists.get_by_title(list_name).root_folder
+    root.get().execute_query()
+    target_folder = root
+    for part in parts[1:]:
+        try:
+            target_folder = target_folder.folders.get_by_name(part).get().execute_query()
+        except Exception:
+            target_folder = target_folder.folders.add(part).execute_query()
+    uploaded_file = target_folder.upload_file(file_name, file_content).execute_query()
+    return uploaded_file.properties.get("ServerRelativeUrl") or uploaded_file.properties.get("serverRelativeUrl") or ""
+
+def download_file_from_sharepoint(file_path: str) -> bytes:
+    """Download file from SharePoint"""
+    ctx = get_sharepoint_context()
+    file = ctx.web.get_file_by_server_relative_url(file_path)
+    file_content = file.read()
+    return file_content
+
+def save_json_to_sharepoint(json_data: Dict, file_name: str, folder_path: str = 'JSON files') -> str:
+    """Save JSON data to SharePoint JSON files library"""
+    now = datetime.now()
+    year = now.strftime('%Y')
+    month = now.strftime('%m_%B')
+    full_folder_path = f'{folder_path}/{year}/{month}'
+    
+    json_content = json.dumps(json_data, indent=2).encode('utf-8')
+    return upload_file_to_sharepoint(json_content, file_name, full_folder_path)
+
+# ============================================================================
+# PostgreSQL Database Helpers
+# ============================================================================
+
+def get_sql_connection():
+    """Get PostgreSQL database connection"""
+    conn_str = os.environ.get('SQL_CONNECTION_STRING')
+    if not conn_str:
+        raise ValueError("SQL_CONNECTION_STRING not found in environment")
+    return psycopg2.connect(conn_str)
+
+
+def get_org_for_user(email: str) -> Optional[str]:
+    """Return org/company for a user from users table, looked up by email."""
+    if not email:
+        return None
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT org FROM users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+            (str(email).strip(),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        # row may be tuple or dict depending on cursor type; handle both
+        return row[0] if not isinstance(row, dict) else row.get("org")
+    finally:
+        cursor.close()
+        conn.close()
+
+def insert_invoice(invoice_id: str, vendor_id: str, doc_name: str, pdf_url: str, **kwargs) -> None:
+    """Insert new invoice record into PostgreSQL database"""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO invoices (
+                invoice_id, vendor_id, doc_name, pdf_url, status, created_at, invoice_received_date
+            ) VALUES (%s, %s, %s, %s, 'Pending', NOW(), NOW())
+        """, (invoice_id, vendor_id, doc_name, pdf_url))
+        
+        conn.commit()
+        logger.info(f"Inserted invoice {invoice_id} into PostgreSQL database")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_invoice(invoice_id: str, **kwargs) -> None:
+    """Update invoice record in PostgreSQL database"""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Build dynamic UPDATE query based on provided kwargs
+        if not kwargs:
+            return
+        
+        set_clauses = []
+        values = []
+        param_num = 1
+        
+        for key, value in kwargs.items():
+            set_clauses.append(f"{key} = %s")
+            values.append(value)
+            param_num += 1
+        
+        set_clauses.append("last_updated_at = NOW()")
+        values.append(invoice_id)
+        
+        query = f"""
+            UPDATE invoices
+            SET {', '.join(set_clauses)}
+            WHERE invoice_id = %s
+        """
+        
+        cursor.execute(query, values)
+        conn.commit()
+        logger.info(f"Updated invoice {invoice_id} in PostgreSQL database")
+    finally:
+        cursor.close()
+        conn.close()
+
+def invalid_invoice(vendor_name: str, resource_name: str, start_date: str, end_date: str) -> None:
+    """Mark invoice as invalid in PostgreSQL database"""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE invoices
+            SET status = 'Invalid', 
+                last_updated_at = NOW(),
+                approval_status = 'Invalid'
+            WHERE vendor_name = %s 
+                and resource_name = %s
+                AND ((start_date = %s) 
+                AND (end_date = %s))
+                AND status IN ('Pending', 'Need Approval')
+        """, (vendor_name, resource_name, start_date, end_date))
+        conn.commit()
+        logger.info(f"Marked invoice(s) for vendor {vendor_name} as invalid in PostgreSQL database")
+    finally:
+        cursor.close()
+        conn.close()
+
+def insert_credit_invoice(vendor_name: str, resource_name: str, start_date: str, end_date: str) -> None:
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Get sums
+        cursor.execute("""
+            SELECT SUM(invoice_hours), SUM(invoice_amount)
+            FROM invoices
+            WHERE vendor_name = %s
+              AND resource_name = %s
+              AND start_date = %s
+              AND end_date = %s
+              AND status = 'Invalid'
+        """, (vendor_name, resource_name, start_date, end_date))
+        
+        sums = cursor.fetchone()
+        invoice_hours_updated = sums[0] or 0
+        invoice_amount_updated = sums[1] or 0
+
+        # Get first invoice_id
+        cursor.execute("""
+            SELECT invoice_id,doc_name,payment_terms,invoice_number,payment_details,hourly_rate
+            FROM invoices
+            WHERE vendor_name = %s
+              AND resource_name = %s
+              AND start_date = %s
+              AND end_date = %s
+              AND status = 'Invalid'
+            ORDER BY created_at
+            LIMIT 1
+        """, (vendor_name, resource_name, start_date, end_date))
+        
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            logger.warning("No invalid invoices found. Skipping credit insert.")
+            return
+
+        invoice_id_updated = f"{row[0]}-Credit"
+        doc_name_updated = f"{row[1]}-Credit"
+        payment_terms_updated = row[2]
+        invoice_number_updated = f"{row[3]}-Credit"
+        payment_details_updated = row[4]
+        hourly_rate_updated = row[5]
+
+        # Insert credit invoice
+        cursor.execute("""
+            INSERT INTO invoices (
+                invoice_id, vendor_name, start_date, end_date, status,
+                created_at, invoice_received_date, is_credit_note,
+                invoice_hours, invoice_amount, resource_name,
+                doc_name,payment_terms,invoice_number,payment_details,hourly_rate
+            )
+            VALUES (%s, %s, %s, %s, 'Pending', NOW(), NOW(), TRUE, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            invoice_id_updated,
+            vendor_name,
+            start_date,
+            end_date,
+            invoice_hours_updated,
+            invoice_amount_updated,
+            resource_name,
+            doc_name_updated,
+            payment_terms_updated,
+            invoice_number_updated,
+            payment_details_updated,
+            hourly_rate_updated
+
+        ))
+
+        conn.commit()
+
+        update_due_date(invoice_id_updated)
+
+        if hourly_rate_updated*invoice_hours_updated == invoice_amount_updated:
+            logger.info(f"Validated Corrected Invoice Amount for vendor {vendor_name}")
+        else:
+            logger.info("Need to Validate Corrected Invoice Amount")
+
+        logger.info(f"Inserted credit invoice for vendor {vendor_name}")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+import re
+from datetime import timedelta
+
+def update_due_date(invoice_id: str) -> None:
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT created_at, payment_terms
+            FROM invoices
+            WHERE invoice_id = %s
+        """, (invoice_id,))
+        
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            logger.warning("No invoices found. Skipping Due date Edit")
+            return
+        
+        date_created = row[0]
+        terms_raw = row[1]
+
+        if not terms_raw:
+            logger.warning("No payment terms found")
+            return
+
+        match = re.search(r'\d+', terms_raw)
+        if not match:
+            logger.warning("No numeric value found in payment terms")
+            return
+
+        net_terms_numeric = int(match.group())
+
+
+        updated_due = date_created + timedelta(days=net_terms_numeric)
+
+
+        cursor.execute("""
+            UPDATE invoices
+            SET due_date = %s
+            WHERE invoice_id = %s
+        """, (updated_due, invoice_id))
+
+        conn.commit()
+        logger.info(f"Updated due date for invoice {invoice_id}")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+def find_duplicate_invoice(fields: Dict) -> Optional[str]:
+    """
+    Check if an existing row matches all key fields. Returns existing invoice_id if duplicate, else None.
+    Date is the main differentiator: same vendor/amount but different month = NOT duplicate.
+    Key fields: invoice_number, vendor_name, invoice_amount, invoice_date (or start_date).
+    """
+    inv_num = (fields.get("invoice_number") or "").strip()
+    vendor = (str(fields.get("vendor_name") or "").strip()).lower()
+    amount = fields.get("invoice_amount")
+    # Date is critical: invoice_date or start_date (pay period) differentiates monthly invoices
+    inv_date = fields.get("invoice_date") or fields.get("start_date") or fields.get("end_date")
+    hours = fields.get("invoice_hours") or fields.get("vendor_hours")
+    # Require at least invoice_number or (vendor + amount + date) to detect duplicates
+    if not inv_num and not (vendor and amount and inv_date):
+        return None
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        if inv_num:
+            cursor.execute(
+                "SELECT invoice_id, invoice_number, vendor_name, invoice_amount, invoice_date, start_date, end_date, invoice_hours FROM invoices WHERE LOWER(TRIM(invoice_number)) = LOWER(%s)",
+                (inv_num.strip(),)
+            )
+        else:
+            cursor.execute(
+                "SELECT invoice_id, invoice_number, vendor_name, invoice_amount, invoice_date, start_date, end_date, invoice_hours FROM invoices"
+            )
+        rows = cursor.fetchall()
+        new_date = str(inv_date or "").strip()[:10] if inv_date else None
+        for row in rows:
+            r_num = (row.get("invoice_number") or "").strip()
+            r_vendor = (str(row.get("vendor_name") or "").strip()).lower()
+            r_amount = row.get("invoice_amount")
+            r_date = row.get("invoice_date") or row.get("start_date") or row.get("end_date")
+            r_date_str = str(r_date or "").strip()[:10] if r_date else None
+            r_hours = row.get("invoice_hours")
+            if inv_num and r_num.lower() != inv_num.lower():
+                continue
+            if vendor and r_vendor != vendor:
+                continue
+            if amount is not None:
+                try:
+                    if abs(float(r_amount or 0) - float(amount)) > 0.01:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            # Date must match - different month = different invoice (vendor can upload same amount monthly)
+            if new_date and r_date_str:
+                if new_date != r_date_str:
+                    continue
+            elif new_date or r_date_str:
+                # One has date, one doesn't - treat as different
+                continue
+            if hours is not None:
+                try:
+                    if abs(float(r_hours or 0) - float(hours)) > 0.01:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            return str(row.get("invoice_id"))
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def delete_invoice(invoice_id: str) -> bool:
+    """Delete invoice from PostgreSQL. Returns True if deleted, False if not found."""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM invoices WHERE invoice_id = %s", (invoice_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info("Deleted invoice %s from database", invoice_id)
+        return deleted
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_invoice(invoice_id: str) -> Optional[Dict]:
+    """Get invoice record from PostgreSQL database"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cursor.execute("SELECT * FROM invoices WHERE invoice_id = %s", (invoice_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return None
+        
+        invoice = dict(row)
+        
+        # Convert datetime objects to ISO strings
+        for key, value in invoice.items():
+            if hasattr(value, 'isoformat'):
+                invoice[key] = value.isoformat()
+        
+        return invoice
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_invoices_by_vendor(vendor_id: str) -> list:
+    """Get all invoices for a vendor from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cursor.execute(
+            "SELECT * FROM invoices WHERE vendor_name like %s ORDER BY created_at DESC;",
+            (f"%{vendor_id}%",)
+            #"SELECT * FROM invoices ORDER BY created_at DESC;"
+        )
+        
+        rows = cursor.fetchall()
+        
+        invoices = []
+        for row in rows:
+            invoice = dict(row)
+            # Convert datetime objects
+            for key, value in invoice.items():
+                if hasattr(value, 'isoformat'):
+                    invoice[key] = value.isoformat()
+            invoices.append(invoice)
+        
+        return invoices
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_all_vendors() -> list:
+    """Get distinct list of vendors from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cursor.execute("SELECT DISTINCT vendor_name FROM invoices WHERE vendor_name IS NOT NULL AND vendor_name != '' ORDER BY vendor_name;")
+        rows = cursor.fetchall()
+        return [dict(row)["vendor_name"] for row in rows]
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_vendor_resources(vendor_name: str):
+    """Get all unique resource names for a vendor"""
+    if not os.environ.get('SQL_CONNECTION_STRING'):
+        return []
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT DISTINCT resource_name 
+            FROM invoices
+            WHERE vendor_name = %s
+            AND resource_name IS NOT NULL
+            ORDER BY resource_name
+        """, (vendor_name,))
+        rows = cursor.fetchall()
+        return [dict(row)["resource_name"] for row in rows]
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_vendor_summary(vendor_name: str, resources: list = None, status_filter: str = None, due_by: str = None, month: str = None):
+    logger.info("Getting vendor summary for %s with filters: resources=%s, status=%s, due_by=%s, month=%s", 
+                vendor_name, resources, status_filter, due_by, month)
+    """Get summary of total invoice amounts and hours by vendor from PostgreSQL with optional filters"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        query = """
+            SELECT 
+                COUNT(invoice_id) as total_invoices,
+                SUM(invoice_amount) as total_amount,
+                COUNT(CASE WHEN LOWER(approval_status) = 'pending' THEN 1 END) as pending,
+                COUNT(CASE WHEN LOWER(approval_status) = 'approved' THEN 1 END) as approved,
+                COUNT(CASE WHEN LOWER(approval_status) = 'need approval' THEN 1 END) as need_approval,
+                COUNT(CASE WHEN LOWER(approval_status) = 'invalid' THEN 1 END) as invalid,
+                COUNT(CASE WHEN bill_pay_initiated_on IS NOT NULL THEN 1 END) as payment_initiated,
+                COUNT(CASE WHEN due_date = CURRENT_DATE THEN 1 END) as due_today,
+                COUNT(CASE WHEN bill_pay_initiated_on IS NULL AND LOWER(approval_status) != 'invalid' THEN 1 END) as unpaid_invoices,
+                COUNT(CASE WHEN approval_status != 'Ready for Payment' THEN 1 END) as open_cases
+            FROM invoices
+            WHERE vendor_name = %s
+        """
+        params = [vendor_name]
+        
+        if resources and len(resources) > 0:
+            placeholders = ','.join(['%s'] * len(resources))
+            query += f" AND resource_name IN ({placeholders})"
+            params.extend(resources)
+        
+        if status_filter and status_filter != 'all':
+            query += " AND LOWER(approval_status) = %s"
+            params.append(status_filter.lower())
+        
+        if due_by:
+            query += " AND due_date <= %s"
+            params.append(due_by)
+        
+        if month:
+            query += " AND created_at::text LIKE %s"
+            params.append(month + '%')
+        
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        if not row:
+            return {}
+        result = dict(row)
+        for key, value in result.items():
+            if hasattr(value, 'isoformat'):
+                result[key] = value.isoformat()
+        logger.info("Vendor summary for %s: %s", vendor_name, result)
+        return result
+        
+    finally:
+        cursor.close()
+        conn.close()
+def get_invoices_by_vendor_and_resources(vendor_name: str, resources: list = None, status_filter: str = None, due_by: str = None, month: str = None):
+    """Filter by vendor, resources, status, due date, and month from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        query = "SELECT * FROM invoices WHERE vendor_name = %s"
+        params = [vendor_name]
+        
+        if resources and len(resources) > 0:
+            placeholders = ','.join(['%s'] * len(resources))
+            query += f" AND resource_name IN ({placeholders})"
+            params.extend(resources)
+        
+        if status_filter and status_filter != 'all':
+            query += " AND LOWER(approval_status) = %s"
+            params.append(status_filter.lower())
+        
+        if due_by:
+            query += " AND due_date <= %s"
+            params.append(due_by)
+        
+        if month:
+            query += " AND created_at::text LIKE %s"
+            params.append(month + '%')
+        
+        query += " ORDER BY created_at DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        results = []
+        for row in rows:
+            result = dict(row)
+            for key, value in result.items():
+                if hasattr(value, 'isoformat'):
+                    result[key] = value.isoformat()
+            results.append(result)
+        return results
+    finally:
+        cursor.close()
+        conn.close()
+        
+def get_all_invoices() -> list:
+    """Get all invoices (for accounts team) from PostgreSQL"""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        cursor.execute("SELECT * FROM invoices ORDER BY created_at DESC")
+        
+        rows = cursor.fetchall()
+        
+        invoices = []
+        for row in rows:
+            invoice = dict(row)
+            # Convert datetime objects
+            for key, value in invoice.items():
+                if hasattr(value, 'isoformat'):
+                    invoice[key] = value.isoformat()
+            invoices.append(invoice)
+        
+        return invoices
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ============================================================================
+# SOW (Statement of Work) Database Helpers
+# ============================================================================
+
+def _normalize_for_sow_match(value: Optional[str]) -> str:
+    """Normalize string for SOW/invoice matching: strip, lower, remove trailing punctuation, collapse spaces."""
+    if value is None:
+        return ""
+    s = str(value).strip().lower()
+    # Remove trailing punctuation (e.g. "Sigmago Solutions Inc." vs "Sigmago Solutions Inc")
+    s = s.rstrip(".,;:")
+    # Collapse multiple spaces
+    import re
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def _parse_net_terms_days(net_terms: Optional[str]) -> Optional[int]:
+    """Parse net terms string (e.g. 'Net 30', '30', 'Net 45') to number of days. Returns None if unparseable."""
+    if not net_terms or not str(net_terms).strip():
+        return None
+    s = str(net_terms).strip()
+    # Try to extract a number (e.g. 30 from "Net 30" or "30 days")
+    import re
+    m = re.search(r'\b(\d+)\b', s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def _parse_date_to_date(value) -> Optional[date]:
+    """Parse invoice/SOW date (string or date) to date for comparison. Handles ISO and 'May 02, 2022' style."""
+    from datetime import datetime as _dt
+    if value is None:
+        return None
+    if hasattr(value, "date"):
+        return value.date() if isinstance(value, datetime) else value
+    s = str(value).strip()[:10]
+    if not s:
+        return None
+    # ISO
+    try:
+        return _dt.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        pass
+    # "May 02, 2022" etc.
+    try:
+        return _dt.strptime(str(value).strip()[:20], "%b %d, %Y").date()
+    except ValueError:
+        pass
+    try:
+        return _dt.strptime(str(value).strip()[:20], "%B %d, %Y").date()
+    except ValueError:
+        pass
+    return None
+def propagate_employee_id_to_matching_sow(
+    resource_name: Optional[str],
+    consultancy_name: Optional[str],
+    employee_id: Optional[str],
+) -> None:
+    """When timesheet sync sets invoice employee_id, mirror to matching SOW (resource + consultancy)."""
+    eid = (employee_id or "").strip()
+    if not eid:
+        return
+    sow = get_matching_sow(resource_name, consultancy_name)
+    if not sow:
+        return
+    try:
+        update_sow(str(sow["sow_id"]), employee_id=eid)
+        logger.info("Propagated employee_id to SOW %s", sow.get("sow_id"))
+    except Exception as ex:
+        logger.warning("Could not propagate employee_id to SOW: %s", ex)
+
+
+def insert_sow(
+    sow_id: str,
+    doc_name: Optional[str] = None,
+    pdf_url: Optional[str] = None,
+    resource_name: Optional[str] = None,
+    consultancy_name: Optional[str] = None,
+    sow_start_date: Optional[str] = None,
+    sow_end_date: Optional[str] = None,
+    net_terms: Optional[str] = None,
+    max_sow_hours: Optional[float] = None,
+    rate_per_hour: Optional[float] = None,
+    project_role: Optional[str] = None,
+    sow_project_duration: Optional[str] = None,
+) -> None:
+    """Insert a SOW document record into PostgreSQL."""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO sow_documents (
+                sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+                sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+                project_role, sow_project_duration, employee_id, created_at, last_updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        """, (
+            sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+            sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+            project_role, sow_project_duration,
+        ))
+        conn.commit()
+        logger.info("Inserted SOW %s into PostgreSQL", sow_id)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_all_sows() -> list:
+    """Get all SOW documents for dashboard, newest first."""
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+                   sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+                   project_role, sow_project_duration, created_at, last_updated_at
+            FROM sow_documents ORDER BY created_at DESC
+        """)
+        rows = cursor.fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            for k, v in d.items():
+                if hasattr(v, 'isoformat'):
+                    d[k] = v.isoformat()
+            out.append(d)
+        return out
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def delete_sow(sow_id: str) -> bool:
+    """Delete SOW from PostgreSQL by sow_id. Returns True if deleted, False if not found."""
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM sow_documents WHERE sow_id = %s", (sow_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info("Deleted SOW %s from database", sow_id)
+        return deleted
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_sow(sow_id: str, **kwargs) -> None:
+    """Update SOW record in PostgreSQL database."""
+    if not kwargs:
+        return
+    conn = get_sql_connection()
+    cursor = conn.cursor()
+    try:
+        set_clauses = []
+        values = []
+        for key, value in kwargs.items():
+            # Basic safety: only allow known columns to be updated
+            if key not in {
+                "resource_name",
+                "consultancy_name",
+                "sow_start_date",
+                "sow_end_date",
+                "net_terms",
+                "max_sow_hours",
+                "rate_per_hour",
+                "project_role",
+                "sow_project_duration",
+                "employee_id",
+            }:
+                continue
+            set_clauses.append(f"{key} = %s")
+            values.append(value)
+        if not set_clauses:
+            return
+        set_clauses.append("last_updated_at = NOW()")
+        values.append(sow_id)
+        query = f"""
+            UPDATE sow_documents
+            SET {', '.join(set_clauses)}
+            WHERE sow_id = %s
+        """
+        cursor.execute(query, values)
+        conn.commit()
+        logger.info("Updated SOW %s in PostgreSQL database", sow_id)
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_matching_sow(resource_name: Optional[str], consultancy_name: Optional[str]) -> Optional[Dict]:
+    """
+    Find a SOW that matches the given resource name AND consultancy name.
+    Both must match: same consultancy can have multiple resources (multiple SOWs), so we match
+    on the pair (resource, consultancy). Uses _normalize_for_sow_match for both fields.
+    Returns first match or None.
+    """
+    rn = _normalize_for_sow_match(resource_name)
+    cn = _normalize_for_sow_match(consultancy_name)
+    # Require both resource and consultancy to be present; never match on consultancy alone
+    if not rn or not cn:
+        return None
+    conn = get_sql_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT sow_id, doc_name, pdf_url, resource_name, consultancy_name,
+                   sow_start_date, sow_end_date, net_terms, max_sow_hours, rate_per_hour,
+                   project_role, sow_project_duration, employee_id
+            FROM sow_documents
+            WHERE LOWER(TRIM(COALESCE(resource_name, ''))) = %s
+            ORDER BY last_updated_at DESC
+        """, (rn,))
+        rows = cursor.fetchall()
+        for row in rows:
+            sow_rn = _normalize_for_sow_match(row.get("resource_name"))
+            sow_cn = _normalize_for_sow_match(row.get("consultancy_name"))
+            if sow_rn == rn and sow_cn == cn:
+                d = dict(row)
+                for k, v in d.items():
+                    if hasattr(v, 'isoformat'):
+                        d[k] = v.isoformat()
+                return d
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def merge_sow_into_invoice_fields(
+    fields: Dict,
+    sow: Dict,
+    upload_date=None,
+) -> Dict:
+    """
+    Validate invoice against matching SOW and merge SOW terms (in place). Used before writing invoice to DB.
+    - Marks as validated against SOW; overwrites payment_terms with SOW net_terms.
+    - Due date = invoice uploaded date + net terms days; recalculated whenever net terms change.
+    - SOW validation outcome is written to comments only (status/approval_status are left unchanged).
+    - Comment by priority: SOW expired > SOW hours permit exceeded > mismatch rate > Validated against SOW.
+    This logic lives in code (not iGentic) for deterministic, fast validation and a single source of truth.
+    """
+    from datetime import datetime, date, timedelta
+    if upload_date is None:
+        upload_date = date.today()
+    upload_d = _parse_date_to_date(upload_date) or date.today()
+    comments = []
+
+    # Always apply SOW net terms and due date when we have a matching SOW
+    net_terms = sow.get("net_terms")
+    if net_terms:
+        fields["payment_terms"] = net_terms
+    days = _parse_net_terms_days(net_terms)
+    # Due date = invoice uploaded date + net terms (recalculated when net terms change)
+    if days is not None:
+        due = upload_d + timedelta(days=days)
+        fields["due_date"] = due.isoformat()[:10]
+
+    # SOW end date check: invoice uploaded after SOW end date
+    sow_end = _parse_date_to_date(sow.get("sow_end_date"))
+    sow_expired = sow_end is not None and upload_d > sow_end
+
+    # Hours check: vendor_hours > max_sow_hours
+    vendor_hours = fields.get("vendor_hours") or fields.get("invoice_hours")
+    max_hours = sow.get("max_sow_hours")
+    hours_exceeded = False
+    if max_hours is not None and vendor_hours is not None:
+        try:
+            hours_exceeded = float(vendor_hours) > float(max_hours)
+            if hours_exceeded:
+                comments.append(f"Vendor hours ({vendor_hours}) exceeds Max SOW hours ({max_hours}).")
+        except (TypeError, ValueError):
+            pass
+
+    # Rate check: invoice pay rate vs SOW rate_per_hour
+    inv_rate = fields.get("pay_rate") or fields.get("hourly_rate") or fields.get("rate_per_hour")
+    sow_rate = sow.get("rate_per_hour")
+    rate_mismatch = False
+    if sow_rate is not None and inv_rate is not None:
+        try:
+            rate_mismatch = abs(float(sow_rate) - float(inv_rate)) > 0.01
+            if rate_mismatch:
+                comments.append(f"Pay rate from invoice ({inv_rate}) does not match SOW rate per hour ({sow_rate}).")
+        except (TypeError, ValueError):
+            pass
+
+    # SOW validation outcome goes to comments only (do not change status/approval_status)
+    if sow_expired:
+        comments.insert(0, "Invoice uploaded after SOW end date.")
+    sow_comment = (
+        "SOW expired"
+        if sow_expired
+        else "SOW hours permit exceeded"
+        if hours_exceeded
+        else "mismatch rate"
+        if rate_mismatch
+        else "Validated against SOW"
+    )
+    comments.insert(0, sow_comment)
+
+    # Write to comments column (invoices.comments) for SOW validation messages
+    existing = (fields.get("comments") or fields.get("notes") or "").strip()
+    combined = existing + (" " if existing else "") + " ".join(comments)
+    fields["comments"] = combined
+    return fields
+
+
+# ============================================================================
+# Authentication Helpers
+# ============================================================================
+
+def extract_token_from_request(req) -> Optional[str]:
+    """Extract JWT token from request Authorization header"""
+    auth_header = req.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    return auth_header.split(' ')[1]
+
+'''
+def decode_token(token: str) -> Dict:
+    """Decode JWT token (without verification for now)"""
+    try:
+        # In production, verify the token signature
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        return decoded
+    except Exception as e:
+        logger.error(f"Failed to decode token: {str(e)}")
+        raise
+'''
+
+# Read client ID
+EXPECTED_AUD = os.environ.get("AZURE_CLIENT_ID", "")
+
+def decode_token(token: str) -> Dict:
+    """Decode JWT token - accepts raw Authorization header or bare token"""
+    try:
+        # Strip Bearer prefix if caller passed the full header value
+        if token.startswith("Bearer "):
+            token = token[7:]
+
+        token = token.strip()
+
+        if not token:
+            raise ValueError("Token is empty")
+
+        if token.count('.') != 2:
+            raise ValueError(
+                f"Malformed token: expected 3 segments, got {token.count('.')+1}. "
+                f"Preview: '{token[:30]}'"
+            )
+
+        decoded = jwt.decode(token, options={"verify_signature": False})
+
+        # Validate audience 
+        aud = decoded.get("aud", "")
+        if EXPECTED_AUD and aud != EXPECTED_AUD:
+            logger.warning(f"Unexpected audience: {aud}, expected: {EXPECTED_AUD}")
+
+        logger.info(f"Token decoded — email: {decoded.get('preferred_username') or decoded.get('email')}")
+
+        return decoded
+
+    except Exception as e:
+        logger.error(f"Failed to decode token: {str(e)}")
+        raise
+    
+def extract_vendor_id_from_token(token: str) -> str:
+    """Extract vendor_id from JWT token"""
+    decoded = decode_token(token)
+    # Try different possible fields
+    return (
+        decoded.get('email') or
+        decoded.get('upn') or
+        decoded.get('preferred_username') or
+        decoded.get('sub') or
+        decoded.get('oid')
+    )
+
+def extract_vendor_name_from_token(token: str) -> str:
+    """Extract vendor_name from JWT token"""
+    decoded = decode_token(token)
+    return (
+        decoded.get('org') 
+    )
+
+def extract_user_id_from_token(token: str) -> str:
+    """Extract user identifier from JWT token"""
+    decoded = decode_token(token)
+    return decoded.get('email') or decoded.get('upn') or decoded.get('preferred_username')
+
+def check_manager_permission(token: str) -> bool:
+    """Check if user has manager/approver role"""
+    decoded = decode_token(token)
+    roles = decoded.get('roles', [])
+    # Check for manager role (configure in Azure AD app registration)
+    return 'Invoice.Approver' in roles or 'Manager' in roles or 'Admin' in roles
+
+
+def _row_to_dashboard(row: Dict) -> Dict:
+    """Map SQL row to dashboard row format (invoice_uuid, pay_period_start, net_terms, etc.)."""
+    out = dict(row)
+    if "invoice_id" in out and "invoice_uuid" not in out:
+        out["invoice_uuid"] = str(out["invoice_id"])
+    # Dashboard uses pay_period_start/end, net_terms, pay_rate, vendor_hours
+    if out.get("start_date") and "pay_period_start" not in out:
+        out["pay_period_start"] = out["start_date"]
+    if out.get("end_date") and "pay_period_end" not in out:
+        out["pay_period_end"] = out["end_date"]
+    if out.get("payment_terms") and "net_terms" not in out:
+        out["net_terms"] = out["payment_terms"]
+    if out.get("hourly_rate") is not None and "pay_rate" not in out:
+        out["pay_rate"] = out["hourly_rate"]
+    if out.get("invoice_hours") is not None and "vendor_hours" not in out:
+        out["vendor_hours"] = out["invoice_hours"]
+    status = out.get("approval_status") or out.get("status") or "Pending"
+    if status in ("To Start", "In Progress"):
+        status = "Pending"
+    if status == "Need Approval":
+        status = "NEED APPROVAL"
+    out["approval_status"] = status
+    if "status" not in out or out["status"] is None:
+        out["status"] = status
+    if "orchestrator_summary" not in out or out["orchestrator_summary"] is None:
+        out["orchestrator_summary"] = out.get("last_agent_text") or ""
+    return out
+
+
+def _dashboard_metrics(rows: list) -> Dict:
+    """Compute dashboard metrics from rows."""
+    total = len(rows)
+    pending = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "Pending")
+    approved = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "Approved")
+    need_approval = sum(1 for r in rows if (r.get("approval_status") or r.get("status")) == "NEED APPROVAL")
+    payment_initiated = sum(1 for r in rows if r.get("bill_pay_initiated_on"))
+    total_amount = 0.0
+    for r in rows:
+        try:
+            v = r.get("invoice_amount")
+            if v is not None:
+                total_amount += float(v)
+        except (TypeError, ValueError):
+            pass
+    return {
+        "total": total,
+        "pending": pending,
+        "approved": approved,
+        "need_approval": need_approval,
+        "payment_initiated": payment_initiated,
+        "total_amount": round(total_amount, 2),
+    }
+
+
+def get_dashboard_payload(req) -> tuple:
+    """
+    Get dashboard data (rows + metrics) based on request token.
+    Returns (list of dashboard rows, metrics dict).
+    When SQL_CONNECTION_STRING is not set, returns empty rows and zero metrics.
+    """
+    if not os.environ.get('SQL_CONNECTION_STRING'):
+        return [], {
+            "total": 0, "pending": 0, "complete": 0, "need_approval": 0,
+            "payment_initiated": 0, "total_amount": 0.0,
+        }
+    token = extract_token_from_request(req)
+    is_manager = False
+    vendor_id = None
+    if token:
+        try:
+            is_manager = check_manager_permission(token)
+            vendor_id = extract_vendor_id_from_token(token)
+        except Exception:
+            pass
+    if is_manager or not vendor_id:
+        rows = get_all_invoices()
+    else:
+        rows = get_invoices_by_vendor(vendor_id)
+    dashboard_rows = [_row_to_dashboard(r) for r in rows]
+    metrics = _dashboard_metrics(dashboard_rows)
+    return dashboard_rows, metrics
+
+
+# ============================================================================
+# Document Intelligence Helpers
+# ============================================================================
+
+def analyze_invoice_bytes(file_content: bytes, filename: str = "invoice.pdf") -> Optional[Dict]:
+    """
+    Analyze invoice PDF/image bytes with Azure Document Intelligence (prebuilt-invoice).
+    Returns full_text, extracted_text for iGentic, plus structured_fields (InvoiceId, VendorName, etc.).
+    """
+    import requests
+    import time
+    endpoint = os.environ.get('AZURE_DI_ENDPOINT', '').rstrip('/')
+    key = os.environ.get('AZURE_DI_KEY')
+    if not endpoint or not key:
+        logger.info("Document Intelligence skipped: AZURE_DI_ENDPOINT or AZURE_DI_KEY not set")
+        return None
+
+    content_type = "application/pdf"
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        content_type = "image/jpeg" if 'jpg' in filename.lower() or 'jpeg' in filename.lower() else "image/png"
+    headers = {"Ocp-Apim-Subscription-Key": key, "Content-Type": content_type}
+
+    for path_prefix, api_version in [("formrecognizer", "2023-07-31"), ("documentintelligence", "2023-07-31")]:
+        analyze_url = f"{endpoint}/{path_prefix}/documentModels/prebuilt-invoice:analyze?api-version={api_version}"
+        try:
+            resp = requests.post(analyze_url, headers=headers, data=file_content, timeout=60)
+            if resp.status_code in (404, 400, 401):
+                continue
+            if resp.status_code not in (200, 202):
+                logger.warning("Document Intelligence analyze failed: HTTP %s", resp.status_code)
+                continue
+            operation_location = resp.headers.get("Operation-Location")
+            if not operation_location:
+                continue
+
+            for _ in range(60):
+                time.sleep(1)
+                poll_resp = requests.get(operation_location, headers={"Ocp-Apim-Subscription-Key": key}, timeout=30)
+                if poll_resp.status_code != 200:
+                    continue
+                result = poll_resp.json()
+                if result.get("status") == "succeeded":
+                    payload = result.get("analyzeResult") or result.get("result") or result
+                    extracted_text = []
+                    full_text_parts = []
+
+                    for page in (payload.get("pages") or []):
+                        for line in (page.get("lines") or []):
+                            t = (line.get("content") or "").strip()
+                            extracted_text.append(t)
+                            full_text_parts.append(t)
+                    full_text = "\n".join(full_text_parts) if full_text_parts else (payload.get("content") or "")
+                    if not full_text and payload.get("content"):
+                        full_text = payload["content"]
+                        extracted_text = [s.strip() for s in full_text.split("\n") if s.strip()]
+
+                    structured_fields = _extract_invoice_fields(payload)
+
+                    logger.info("Document Intelligence succeeded for %s: %d lines, %d structured fields",
+                                filename, len(extracted_text), len(structured_fields))
+
+                    return {
+                        "timestamp": datetime.now().isoformat(),
+                        "file_path": filename,
+                        "extracted_text": extracted_text,
+                        "full_text": full_text[:15000] if full_text else "",
+                        "structured_fields": structured_fields,
+                        "status": "success",
+                        "source": "document_intelligence_rest",
+                    }
+                if result.get("status") == "failed":
+                    logger.warning("Document Intelligence analysis failed: %s", result.get("error", {}))
+                    break
+        except Exception as e:
+            logger.warning("Document Intelligence %s error: %s", path_prefix, e)
+            continue
+    return None
+
+
+def _extract_invoice_fields(payload: Dict) -> Dict:
+    """Extract structured invoice fields from Document Intelligence prebuilt-invoice result."""
+    out = {}
+    docs = payload.get("documents") or []
+    if not docs:
+        return out
+    fields = docs[0].get("fields") or {}
+    field_map = {
+        "InvoiceId": "invoice_number",
+        "VendorName": "vendor_name",
+        "VendorAddress": "vendor_address",
+        "InvoiceDate": "invoice_date",
+        "DueDate": "due_date",
+        "InvoiceTotal": "invoice_total",
+        "AmountDue": "amount_due",
+        "SubTotal": "sub_total",
+        "TotalTax": "total_tax",
+        "CustomerName": "customer_name",
+        "PurchaseOrder": "purchase_order",
+        "PaymentTerm": "payment_term",
+    }
+    for api_key, our_key in field_map.items():
+        obj = fields.get(api_key)
+        if not isinstance(obj, dict):
+            continue
+        val = obj.get("value")
+        if val is not None:
+            if hasattr(val, "isoformat"):
+                val = val.isoformat()
+            out[our_key] = val
+    # Extract hours from line items (Quantity) - sum for consulting/time-based invoices
+    items = docs[0].get("items") or []
+    if not items and isinstance(fields.get("Items"), dict):
+        items = fields["Items"].get("value") or fields["Items"].get("valueArray") or []
+    if isinstance(items, list):
+        total_qty = 0
+        for item in items:
+            if isinstance(item, dict):
+                qty_obj = item.get("Quantity") or item.get("quantity")
+                if isinstance(qty_obj, dict):
+                    qty_val = qty_obj.get("value") or qty_obj.get("content")
+                    try:
+                        total_qty += float(qty_val or 0)
+                    except (TypeError, ValueError):
+                        pass
+                elif isinstance(qty_obj, (int, float)):
+                    total_qty += float(qty_obj)
+        if total_qty > 0:
+            out["invoice_hours"] = total_qty
+    return out
+
+
+def _parse_hours_from_text(text: str) -> Optional[float]:
+    """Try to extract hours (e.g. 144, 40.5) from invoice full_text. Returns first plausible match."""
+    if not text or not isinstance(text, str):
+        return None
+    text_lower = text.lower()
+    # Patterns: "hours: 144", "total hours 144", "144 hours", "hours 144", "quantity: 144"
+    patterns = [
+        r'(?:total\s+)?(?:billable\s+)?(?:invoice\s+)?hours\s*[:\-]?\s*(\d+(?:\.\d+)?)',
+        r'(\d+(?:\.\d+)?)\s*(?:hours?)',
+        r'(?:quantity|qty)\s*[:\-]?\s*(\d+(?:\.\d+)?)',
+        r'hours\s*[:\-]\s*(\d+(?:\.\d+)?)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text_lower, re.IGNORECASE)
+        if m:
+            try:
+                val = float(m.group(1))
+                if 0 < val <= 744:  # Plausible range (0-744 = max hours/month)
+                    return val
+            except (ValueError, IndexError):
+                pass
+    return None
+
+
+def process_with_document_intelligence(pdf_url: str) -> Dict:
+    """
+    Process PDF with Azure Document Intelligence
+    
+    Args:
+        pdf_url: URL or path to PDF file
+    
+    Returns:
+        Extracted data dictionary
+    """
+    import requests
+    
+    endpoint = os.environ.get('AZURE_DI_ENDPOINT')
+    key = os.environ.get('AZURE_DI_KEY')
+    
+    if not endpoint or not key:
+        raise ValueError("Document Intelligence not configured")
+    
+    # Use Document Intelligence REST API
+    # This is a simplified version - adjust based on your needs
+    analyze_url = f"{endpoint}formrecognizer/documentModels/prebuilt-invoice:analyze?api-version=2023-07-31"
+    
+    headers = {
+        'Ocp-Apim-Subscription-Key': key,
+        'Content-Type': 'application/json'
+    }
+    
+    # Start analysis
+    body = {
+        'urlSource': pdf_url  # Or use base64Source for direct file upload
+    }
+    
+    response = requests.post(analyze_url, headers=headers, json=body)
+    response.raise_for_status()
+    
+    # Get operation ID
+    operation_id = response.headers.get('Operation-Location').split('/')[-1]
+    
+    # Poll for results (simplified - implement proper polling)
+    result_url = f"{endpoint}formrecognizer/documentModels/prebuilt-invoice/analyzeResults/{operation_id}?api-version=2023-07-31"
+    
+    # Wait and get results (implement retry logic)
+    import time
+    time.sleep(5)  # Simplified - implement proper polling
+    
+    result_response = requests.get(result_url, headers={'Ocp-Apim-Subscription-Key': key})
+    result_response.raise_for_status()
+    
+    result = result_response.json()
+    
+    # Extract fields from result
+    extracted_data = {}
+    if 'analyzeResult' in result and 'documents' in result['analyzeResult']:
+        doc = result['analyzeResult']['documents'][0]
+        fields = doc.get('fields', {})
+        
+        extracted_data = {
+            'invoice_number': fields.get('InvoiceId', {}).get('value'),
+            'invoice_amount': fields.get('InvoiceTotal', {}).get('value'),
+            'invoice_date': fields.get('InvoiceDate', {}).get('value'),
+            'vendor_name': fields.get('VendorName', {}).get('value'),
+            'vendor_address': fields.get('VendorAddress', {}).get('value'),
+            # Add more fields as needed
+        }
+    
+    return extracted_data
+
+# ============================================================================
+# iGentic Orchestrator Helpers (single session per invoice)
+# ============================================================================
+# One session per invoice: sessionId = invoice_id.
+# - First: process_with_igentic() at upload (parsing/structuring).
+# - Later: continue_igentic_session(session_id, user_input) for follow-ups (e.g.
+#   approved_hours validation). Same sessionId so iGentic keeps chat context.
+
+
+def process_with_igentic(extracted_data: Dict, invoice_id: str, session_id: Optional[str] = None) -> Dict:
+    """
+    Process invoice with iGentic (first call for this invoice). Uses sessionId = invoice_id
+    so follow-ups can continue the same chat via continue_igentic_session().
+    
+    Args:
+        extracted_data: Dict with doc_name, full_text, extracted_text, timestamp, status
+        invoice_id: Invoice ID (used as sessionId)
+        session_id: Optional session ID for workflow continuation
+    
+    Returns:
+        Orchestration result
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_ENDPOINT')
+    if not endpoint:
+        return {"status": "error", "error": "IGENTIC_ENDPOINT not configured"}
+    payload = {
+        "request": "Process invoice",
+        "userInput": json.dumps(extracted_data),
+        "sessionId": session_id or invoice_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.exception(f"iGentic call failed{endpoint}")
+        return {"status": "error", "error": str(e)}
+
+
+def process_sow_with_igentic(extracted_data: Dict, sow_id: str) -> Dict:
+    """
+    Process SOW document with iGentic SOW orchestrator (separate endpoint).
+    Sends full_text/extracted_text; agent returns structured SOW fields
+    (resource_name, consultancy_name, sow_start_date, etc.).
+    Uses IGENTIC_SOW_ENDPOINT; do not use the invoice orchestrator for SOW.
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_SOW_ENDPOINT')
+    if not endpoint:
+        return {"status": "error", "error": "IGENTIC_SOW_ENDPOINT not configured (separate SOW orchestrator)"}
+    payload = {
+        "request": "Process SOW",
+        "userInput": json.dumps(extracted_data),
+        "sessionId": sow_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.exception("iGentic SOW call failed")
+        return {"status": "error", "error": str(e)}
+
+
+def _map_igentic_sow_format_to_db(parsed: Dict) -> Dict:
+    """
+    Map iGentic SOW parser output to sow_documents columns.
+    iGentic returns: vendor_consultancy_name, resources[{name, hourly_rate, role_designation}],
+    payment_terms, maximum_approved_hours_per_month, sow_start_date, sow_end_date, etc.
+    """
+    out = {}
+    if not isinstance(parsed, dict):
+        return out
+    # vendor_consultancy_name -> consultancy_name
+    vcn = parsed.get("vendor_consultancy_name")
+    if vcn is not None and isinstance(vcn, str):
+        out["consultancy_name"] = vcn.strip()
+    # resources[0] -> resource_name, rate_per_hour, project_role
+    resources = parsed.get("resources")
+    if isinstance(resources, list) and len(resources) > 0:
+        r0 = resources[0]
+        if isinstance(r0, dict):
+            if r0.get("name") is not None:
+                out["resource_name"] = str(r0.get("name")).strip()
+            hr = r0.get("hourly_rate") or r0.get("hourly rate")
+            if hr is not None:
+                try:
+                    s = str(hr).replace("$", "").replace(",", "").strip()
+                    out["rate_per_hour"] = float(s)
+                except (ValueError, TypeError):
+                    out["rate_per_hour"] = hr
+            role = r0.get("role_designation") or r0.get("role/designation") or r0.get("project_role")
+            if role is not None:
+                out["project_role"] = str(role).strip()
+    # payment_terms -> net_terms
+    pt = parsed.get("payment_terms")
+    if pt is not None:
+        out["net_terms"] = str(pt).strip()
+    # maximum_approved_hours_per_month -> max_sow_hours (extract number)
+    max_hrs = parsed.get("maximum_approved_hours_per_month")
+    if max_hrs is not None:
+        s = str(max_hrs)
+        m = re.search(r"(\d+(?:\.\d+)?)", s)
+        if m:
+            try:
+                out["max_sow_hours"] = float(m.group(1))
+            except (ValueError, TypeError):
+                pass
+        else:
+            out["max_sow_hours"] = max_hrs
+    # Direct keys (same name in iGentic and DB)
+    for key in ("sow_start_date", "sow_end_date", "project_name_scope_description"):
+        if parsed.get(key) is not None and key != "project_name_scope_description":
+            out[key] = parsed[key]
+        if key == "project_name_scope_description" and parsed.get(key):
+            out["sow_project_duration"] = str(parsed[key]).strip()
+    return out
+
+
+def _extract_sow_fields_from_igentic_response(resp: Dict) -> Dict:
+    """
+    Extract SOW fields from iGentic response for sow_documents table.
+    Supports both our column names and iGentic SOW format (vendor_consultancy_name, resources[], payment_terms, etc.).
+    """
+    out = {}
+    data = resp.get("responseData") or resp.get("response_data") or resp
+    result = data.get("result")
+
+    def merge_sow(d: Dict) -> None:
+        if not isinstance(d, dict):
+            return
+        # iGentic SOW format (vendor_consultancy_name, resources, payment_terms, ...)
+        if d.get("vendor_consultancy_name") or d.get("resources"):
+            mapped = _map_igentic_sow_format_to_db(d)
+            for k, v in mapped.items():
+                if v is not None and out.get(k) is None:
+                    out[k] = v
+        # Direct DB keys
+        for key in (
+            "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
+            "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
+        ):
+            if d.get(key) is not None and out.get(key) is None:
+                out[key] = d[key]
+
+    # Result may be JSON string
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+            merge_sow(parsed)
+        except json.JSONDecodeError:
+            pass
+    elif isinstance(result, dict):
+        merge_sow(result)
+
+    # Direct dict with SOW keys
+    for key in (
+        "resource_name", "consultancy_name", "sow_start_date", "sow_end_date",
+        "net_terms", "max_sow_hours", "rate_per_hour", "project_role", "sow_project_duration",
+    ):
+        for src in (data, result):
+            if isinstance(src, dict) and src.get(key) is not None and out.get(key) is None:
+                out[key] = src.get(key)
+                break
+
+    # Agent response JSON block (e.g. SOW parser agent)
+    agent_responses = data.get("agentResponses") or data.get("agent_responses") or []
+    if isinstance(agent_responses, str):
+        try:
+            agent_responses = json.loads(agent_responses)
+        except Exception:
+            agent_responses = []
+    for item in (agent_responses or []):
+        content = item.get("Content") or item.get("content") or ""
+        if not isinstance(content, str):
+            continue
+        # Try ```json ... ``` first, then any {...}
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', content, re.IGNORECASE | re.DOTALL)
+        if match:
+            raw = match.group(1)
+        else:
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            raw = json_match.group(0) if json_match else None
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                merge_sow(parsed)
+            except json.JSONDecodeError:
+                pass
+
+    # JSON block in display_text / result string (when result is still a string and wasn't parseable above)
+    raw = result if isinstance(result, str) else data.get("display_text") or data.get("displayText") or ""
+    if isinstance(raw, str):
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+                merge_sow(parsed)
+            except json.JSONDecodeError:
+                pass
+    return out
+
+
+def _is_payment_like(obj: dict) -> bool:
+    """True if dict looks like payment details (has payment-related keys)."""
+    if not isinstance(obj, dict):
+        return False
+    keys_lower = [str(k).lower() for k in obj.keys()]
+    payment_keys = ("payment", "bank", "account", "amount", "payee", "beneficiary", "iban", "bic", "routing", "reference")
+    return any(pk in " ".join(keys_lower) for pk in payment_keys)
+
+
+def _extract_payment_details_from_igentic_response(resp: Dict) -> Optional[str]:
+    """
+    Extract payment details from iGentic response only when iGentic provides structured payment data.
+    No fallback: we do not use raw text snippets. Payment details are only stored when approved hours
+    match vendor hours (validated by iGentic) and iGentic returns a proper payment object or ```json block.
+    """
+    data = resp.get("responseData") or resp.get("response_data") or resp
+    # 1) Explicit payment object from iGentic (structured API response)
+    for key in ("paymentSummary", "payment_details", "paymentDetails", "payment_summary"):
+        obj = data.get(key)
+        if isinstance(obj, dict) and _is_payment_like(obj):
+            return json.dumps(obj, indent=2)
+    res = data.get("result")
+    if isinstance(res, dict) and _is_payment_like(res):
+        return json.dumps(res, indent=2)
+    if isinstance(res, dict):
+        for key in ("paymentSummary", "payment_details", "paymentDetails", "payment_summary"):
+            obj = res.get(key)
+            if isinstance(obj, dict) and _is_payment_like(obj):
+                return json.dumps(obj, indent=2)
+    # 2) Markdown ```json ... ``` block in result/display_text (iGentic payment agent output)
+    raw = res or data.get("display_text") or data.get("displayText") or ""
+    if isinstance(raw, dict):
+        if _is_payment_like(raw):
+            return json.dumps(raw, indent=2)
+        raw = json.dumps(raw)
+    if not raw or not isinstance(raw, str):
+        return None
+    match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict) and _is_payment_like(parsed):
+                return json.dumps(parsed, indent=2)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    match = re.search(r'```\s*(\{[\s\S]*?"(?:payment|bank|account|amount|payee)[\s\S]*?\})\s*```', raw, re.IGNORECASE | re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict) and _is_payment_like(parsed):
+                return json.dumps(parsed, indent=2)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
+def continue_igentic_session(session_id: str, user_input: Union[Dict, str], request_label: str = "Continue session") -> Dict:
+    """
+    Continue the same iGentic session (same chat). Use after process_with_igentic().
+    Same sessionId so the orchestrator keeps conversation context. user_input can be
+    natural language (e.g. "approved hours is 152") or a dict; sent as-is to match chat flow.
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_ENDPOINT')
+    if not endpoint:
+        return {"status": "error", "error": "IGENTIC_ENDPOINT not configured"}
+    payload = {
+        "request": request_label,
+        "userInput": json.dumps(user_input) if isinstance(user_input, dict) else str(user_input),
+        "sessionId": session_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.exception("iGentic continue session failed")
+        return {"status": "error", "error": str(e)}
+
+
+def _parse_continuation_response_for_approval(result: Dict) -> Optional[Dict]:
+    """Parse iGentic continuation response into approval_status, hours_match, payment_details.
+    Tries structured fields first, then derives status from result/display_text text.
+    """
+    if not result or result.get("status") == "error":
+        return None
+    data = result.get("responseData") or result.get("response_data") or result
+    res_obj = data.get("result")
+    if not isinstance(res_obj, dict):
+        res_obj = {}
+
+    approval_status = data.get("approval_status") or res_obj.get("approval_status")
+    hours_match = data.get("hours_match")
+    if hours_match is None:
+        hours_match = res_obj.get("hours_match")
+
+    # Fallback: derive approval_status from raw text (result/display_text)
+    if not approval_status:
+        raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+        if isinstance(raw, dict):
+            raw = json.dumps(raw)
+        if isinstance(raw, str) and raw.strip():
+            raw_lower = raw.lower()
+            if "ready for payment" in raw_lower or "ready for payment." in raw_lower:
+                approval_status = "Approved"
+            elif "approved" in raw_lower and "need" not in raw_lower:
+                approval_status = "Approved"
+            #elif "complete" in raw_lower:
+            #   approval_status = "Complete"
+            elif "need approval" in raw_lower or "needs approval" in raw_lower:
+                approval_status = "Need Approval"
+            elif "pending" in raw_lower:
+                approval_status = "Pending"
+            else:
+                approval_status = None
+            #elif "match" in raw_lower and "do not" not in raw_lower and "don't" not in raw_lower:
+            #   approval_status = "Approved"
+            #elif "do not match" in raw_lower or "mismatch" in raw_lower:
+            #   approval_status = "NEED APPROVAL"
+
+    if not approval_status:
+        return None
+    out = {"approval_status": approval_status, "hours_match": hours_match}
+    # Extract payment details when status indicates ready for payment
+    if approval_status in ("Complete", "Ready for Payment", "ready for payment", "Approved"):
+        payment_details = _extract_payment_details_from_igentic_response(result)
+        if payment_details:
+            out["payment_details"] = payment_details
+    return out
+
+
+def validate_timesheet_hours_with_igentic(vendor_hours: float, timesheet: float, invoice_id: str) -> Optional[Dict]:
+    """
+    Send approved_hours (timesheet) and vendor_hours (invoice) to iGentic for comparison.
+    iGentic agent: timesheet == invoice -> Complete; moves to payment agent for payment details.
+    Returns {"approval_status": "...", "hours_match": bool, "payment_details": str} or None on failure.
+    """
+    import requests
+    endpoint = os.environ.get('IGENTIC_ENDPOINT')
+    if not endpoint:
+        return None
+    user_input = {
+        "vendor_hours": vendor_hours,
+        "timesheet": timesheet,
+        "invoice_id": invoice_id,
+        "action": "compare_hours",
+    }
+    payload = {
+        "request": "Validate timesheet hours",
+        "userInput": json.dumps(user_input),
+        "sessionId": invoice_id,
+    }
+    try:
+        response = requests.post(endpoint, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        data = result.get("responseData") or result.get("response_data") or result
+        approval_status = data.get("approval_status") or (data.get("result") or {}).get("approval_status")
+        hours_match = data.get("hours_match")
+        if hours_match is None and isinstance(data.get("result"), dict):
+            hours_match = data["result"].get("hours_match")
+        if not approval_status:
+            return None
+        out = {"approval_status": approval_status, "hours_match": hours_match}
+        # When Complete/Ready for Payment, extract payment details from response
+        if approval_status in ("Complete", "Ready for Payment", "ready for payment"):
+            payment_details = _extract_payment_details_from_igentic_response(result)
+            if payment_details:
+                out["payment_details"] = payment_details
+        return out
+    except Exception as e:
+        logger.warning("iGentic timesheet validation failed: %s", e)
+    return None
+
+
+def _compare_hours_locally(vendor_hours: float, timesheet: float) -> Dict:
+    """
+    Local fallback: compare timesheet vs vendor_hours per agent instructions.
+    CASE 1: Match -> Complete; CASE 2: timesheet > invoice -> Need manual review;
+    CASE 3: invoice > timesheet -> NEED APPROVAL.
+    """
+    try:
+        v = float(vendor_hours) if vendor_hours is not None else 0
+        t = float(timesheet) if timesheet is not None else 0
+    except (TypeError, ValueError):
+        return {"approval_status": "NEED APPROVAL", "hours_match": False}
+    if abs(t - v) < 0.01:
+        return {"approval_status": "Complete", "hours_match": True}
+    if t > v:
+        return {"approval_status": "Need manual review", "hours_match": False}
+    return {"approval_status": "NEED APPROVAL", "hours_match": False}
+
+
+# ============================================================================
+# iGentic Response Parsing (CSV + JSON block)
+# ============================================================================
+
+def _get_igentic_searchable(resp: Dict) -> Dict:
+    """
+    Normalize iGentic response - unwrap responseData or orchestration_result wrappers.
+    Returns the inner dict containing result, agentResponses, etc.
+    """
+    if not isinstance(resp, dict):
+        return {}
+    # iGentic can return: { responseData: {...} } or { orchestration_result: { responseData: {...} } }
+    inner = resp.get("responseData") or resp.get("response_data")
+    if not isinstance(inner, dict):
+        orch = resp.get("orchestration_result") or resp.get("orchestrationResult")
+        if isinstance(orch, dict):
+            inner = orch.get("responseData") or orch.get("response_data") or orch
+    if isinstance(inner, dict):
+        return inner
+    return resp
+
+
+def extract_csv_from_igentic_response(orchestration_response: Dict) -> Optional[str]:
+    """
+    Extract CSV-style string from iGentic response.
+    Looks in result, agentResponses, or display_text for CSV data.
+    Handles responseData wrapper (iGentic API format).
+    """
+    import re
+    data = _get_igentic_searchable(orchestration_response)
+    
+    '''
+    # Check result field
+    result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+    if isinstance(result, dict):
+        result = json.dumps(result)
+    
+    # Look for CSV pattern (header row with Invoice_Number, Vendor_Name, etc.)
+    # Pattern: Invoice_Number followed by Vendor_Name (with optional comma/colon and whitespace)
+    csv_pattern = r'Invoice_Number[,:]?\s*Vendor_Name[^\n]*\n[^\n]+(?:\n[^\n]+)*'
+    match = re.search(csv_pattern, result, re.DOTALL | re.IGNORECASE)
+    if match:
+        csv_data = match.group(0)
+        # Extract just the data rows (skip markdown code blocks if present)
+        csv_data = re.sub(r'```[^\n]*\n', '', csv_data)
+        csv_data = re.sub(r'```', '', csv_data)
+        logger.info(f"Found CSV in result field: {csv_data[:200]}")
+        return csv_data.strip()
+    '''
+    # Check agentResponses
+    agent_responses = data.get("agentResponses") or data.get("agent_responses")
+    logger.info(f"agent_responses type: {type(agent_responses)}")
+
+    if isinstance(agent_responses, str):
+        try:
+            agent_responses = json.loads(agent_responses)
+        except Exception:
+            pass
+
+    if isinstance(agent_responses, list):
+        for item in agent_responses:
+            content = item.get("Content") or item.get("content") or ""
+            authorname = item.get("AuthorName") or item.get("authorName") or ""
+
+            if authorname == 'Invoice_Parser_Agent':
+                if isinstance(content, str):
+                    logger.info(f"Inside List If - Content data: {content}")
+                    
+                    # Extract JSON from content (handles code fences or raw JSON)
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        try:
+                            invoice_data = json.loads(json_match.group(0))
+                            
+                            # Convert JSON to CSV string
+                            headers = list(invoice_data.keys())
+                            values = [str(invoice_data[h]) if invoice_data[h] is not None else "" for h in headers]
+                            
+                            csv_data = ",".join(headers) + "\n" + ",".join(values)
+                            logger.info(f"Found JSON, converted to CSV: {csv_data[:200]}")
+                            return csv_data.strip()
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Failed to parse JSON from content: {e}")
+
+    logger.warning(f"No invoice data found in agent response. Preview: {str(agent_responses)[:500]}")
+    return None
+
+
+def parse_csv_to_dict(csv_string: str) -> Dict:
+    """
+    Parse CSV string from iGentic to structured dictionary.
+    Expected CSV format:
+    Invoice_Number,Vendor_Name,Resource_Name,Start_Date,End_Date,Invoice_Hours,Hourly_Rate,Total_Amount,Payment_Terms,Invoice_Date,Business_Unit,Project_Name
+    20876,Sigmago Solutions Inc,Muneer - UI/UX designer,, ,144,169,24336.00,Net 30,2025-12-20,,Consulting services Invoice for Rishan
+    """
+    import csv
+    import io
+    
+    if not csv_string:
+        return {}
+    
+    # Clean up CSV string (remove markdown, extra whitespace)
+    csv_string = csv_string.strip()
+    csv_string = re.sub(r'```[^\n]*\n', '', csv_string)
+    csv_string = re.sub(r'```', '', csv_string)
+    
+    # Try JSON
+    json_match = re.search(r'\{.*\}', csv_string, re.DOTALL)
+    if json_match:
+        try:
+            raw = json.loads(json_match.group(0))
+
+            # Map JSON keys (from agent) -> DB field names
+            json_field_map = {
+                'invoice_number':    'invoice_number',
+                'consultancy_name':  'vendor_name',
+                'resource_name':     'resource_name',
+                'pay_period_start':  'start_date',
+                'pay_period_end':    'end_date',
+                'vendor_hours':      'invoice_hours',
+                'approved_hours':    'invoice_hours',   # fallback if vendor_hours missing
+                'pay_rate':          'hourly_rate',
+                'invoice_amount':    'invoice_amount',
+                'net_terms':         'payment_terms',
+                'invoice_date':      'invoice_date',
+                'due_date':          'due_date',
+                'business_unit':     'business_unit',
+                'project_name':      'project_name',
+                'approval_status':   'approval_status',
+            }
+
+            numeric_fields = {'invoice_hours', 'hourly_rate', 'invoice_amount',
+                              'business_unit', 'approved_hours'}
+
+            out = {}
+            for json_key, db_key in json_field_map.items():
+                val = raw.get(json_key)
+
+                # Skip nulls, empty strings, already-set keys (first mapping wins)
+                if val is None or str(val).strip().lower() in ('', 'null', 'none'):
+                    continue
+                if db_key in out:          # e.g. vendor_hours already set, skip approved_hours
+                    continue
+
+                val = str(val).strip()
+
+                if db_key in numeric_fields:
+                    try:
+                        val = float(str(val).replace(',', ''))
+                    except (ValueError, AttributeError):
+                        pass
+
+                out[db_key] = val
+
+            if out:
+                logger.info(f"Parsed invoice data from JSON: {out}")
+                return out
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parse failed, falling back to CSV: {e}")
+
+
+    lines = csv_string.split('\n')
+    if len(lines) < 2:
+        return {}
+    
+    # Parse header and first data row
+    reader = csv.DictReader(io.StringIO(csv_string))
+    try:
+        row = next(reader)
+    except StopIteration:
+        return {}
+    
+    # Map CSV columns to our database fields (Vendor_Hours/Invoice_Hours -> invoice_hours)
+    field_map = {
+        'Invoice_Number': 'invoice_number',
+        'Vendor_Name': 'vendor_name',
+        'Resource_Name': 'resource_name',
+        'Start_Date': 'start_date',
+        'End_Date': 'end_date',
+        'Invoice_Hours': 'invoice_hours',
+        'Vendor_Hours': 'invoice_hours',
+        'Vendor Hours': 'invoice_hours',
+        'Hours': 'invoice_hours',
+        'Total_Hours': 'invoice_hours',
+        'Billable_Hours': 'invoice_hours',
+        'Quantity': 'invoice_hours',
+        'Hourly_Rate': 'hourly_rate',
+        'Total_Amount': 'invoice_amount',
+        'Payment_Terms': 'payment_terms',
+        'Invoice_Date': 'invoice_date',
+        'Business_Unit': 'business_unit',
+        'Project_Name': 'project_name',
+    }
+    
+    out = {}
+    for csv_key, db_key in field_map.items():
+        val = row.get(csv_key, '').strip()
+        if val and val.lower() not in ('null', 'none', ''):
+            # Convert numeric fields
+            if db_key in ('invoice_hours', 'hourly_rate', 'invoice_amount'):
+                try:
+                    val = float(val.replace(',', ''))
+                except (ValueError, AttributeError):
+                    pass
+            out[db_key] = val
+    
+    return out
+
+
+def _parse_markdown_extracted_info(text: str) -> Dict:
+    """Parse markdown-style - **Key:** value lines into a dict."""
+    out = {}
+    for m in re.finditer(r'[-*]\s*\*\*([^:*]+)\*\*\s*:\s*(.+?)(?=\n|$)', text):
+        key = m.group(1).strip().replace(" ", "_")
+        val = m.group(2).strip().split("(")[0].strip()  # drop "(Assumed...)"
+        if val.lower() in ("null", "none", ""):
+            continue
+        try:
+            if "." in val and re.match(r"^\d+\.\d+$", val):
+                val = float(val)
+            elif val.isdigit():
+                val = int(val) if int(val) == float(val) else float(val)
+        except (ValueError, TypeError):
+            pass
+        out[key] = val
+    return out
+
+
+_IGENTIC_JSON_FIELD_MAP = {
+    'Invoice_Number': 'invoice_number',
+    'Vendor_Name': 'vendor_name',
+    'Resource_Name': 'resource_name',
+    'Start_Date': 'start_date',
+    'End_Date': 'end_date',
+    'Invoice_Hours': 'invoice_hours',
+    'Vendor_Hours': 'invoice_hours',
+    'VendorHours': 'invoice_hours',
+    'Hourly_Rate': 'hourly_rate',
+    'Total_Amount': 'invoice_amount',
+    'Payment_Terms': 'payment_terms',
+    'Invoice_Date': 'invoice_date',
+    'Business_Unit': 'business_unit',
+    'Project_Name': 'project_name',
+
+
+    'invoice_number':   'invoice_number',
+    'consultancy_name': 'vendor_name',      # <-- key mismatch was silent bug
+    'resource_name':    'resource_name',
+    'pay_period_start': 'start_date',
+    'pay_period_end':   'end_date',
+    'vendor_hours':     'invoice_hours',
+    'approved_hours':   'invoice_hours',
+    'pay_rate':         'hourly_rate',
+    'invoice_amount':   'invoice_amount',
+    'net_terms':        'payment_terms',
+    'invoice_date':     'invoice_date',
+    'due_date':         'due_date',
+    'business_unit':    'business_unit',
+    'project_name':     'project_name',
+}
+
+
+def _parsed_igentic_to_db(parsed: Dict) -> Dict:
+    """Map parsed iGentic keys (Invoice_Number, etc.) to DB column names."""
+    out = {}
+    for src_key, db_key in _IGENTIC_JSON_FIELD_MAP.items():
+        val = parsed.get(src_key)
+        if val is None:
+            continue
+        if isinstance(val, str) and val.strip().lower() in ('null', 'none', ''):
+            continue
+        if db_key in ('invoice_hours', 'hourly_rate', 'invoice_amount') and val is not None:
+            try:
+                val = float(val) if not isinstance(val, (int, float)) else float(val)
+            except (ValueError, TypeError):
+                pass
+        out[db_key] = val
+    if out:
+        logger.info("Extracted %d fields from iGentic JSON block: %s", len(out), list(out.keys()))
+    return out
+
+
+def extract_json_block_from_igentic_response(orchestration_response: Dict) -> Dict:
+    """
+    Extract structured fields from iGentic JSON block in result.
+    iGentic often returns: **Structured JSON Output:** ```json { "Invoice_Number": "...", ... } ```
+    Also handles result as dict, and result inside agentResponses[0].Content.
+    """
+    data = _get_igentic_searchable(orchestration_response)
+    result = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+
+    # If result is already a dict (e.g. API parsed the JSON), map directly
+    if isinstance(result, dict) and (result.get("Invoice_Number") or result.get("Total_Amount") is not None):
+        return _parsed_igentic_to_db(result)
+
+    if isinstance(result, dict):
+        result = json.dumps(result)
+    result = (result or "").replace("\r\n", "\n").replace("\r", "\n")
+
+    def _extract_from_string(text: str) -> Dict:
+        parsed = {}
+        match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            match = re.search(r'```\s*(\{[\s\S]*?"Invoice_Number"[\s\S]*?\})\s*```', text, re.IGNORECASE | re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(1))
+            except (json.JSONDecodeError, ValueError):
+                pass
+        if not parsed and ("Invoice_Hours" in text or "Invoice_Number" in text):
+            parsed = _parse_markdown_extracted_info(text)
+        return parsed
+
+    parsed = _extract_from_string(result)
+    if parsed:
+        return _parsed_igentic_to_db(parsed)
+
+    # Try first agentResponse Content (same markdown/JSON often appears there)
+    agent_responses = data.get("agentResponses") or data.get("agent_responses")
+    if isinstance(agent_responses, str):
+        try:
+            agent_responses = json.loads(agent_responses)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    if isinstance(agent_responses, list):
+        for item in agent_responses:
+            content = item.get("Content") or item.get("content") or ""
+            if isinstance(content, str):
+                content = content.replace("\\n", "\n").replace("\\\"", '"')
+                parsed = _extract_from_string(content)
+                if parsed:
+                    return _parsed_igentic_to_db(parsed)
+    return {}
+
+
+# Agent snake_case to DB column mapping (iGentic direct/flat output)
+_IGENTIC_TO_DB = {
+    "invoice_number": "invoice_number",
+    "consultancy_name": "vendor_name",
+    "resource_name": "resource_name",
+    "pay_period_start": "start_date",
+    "pay_period_end": "end_date",
+    "vendor_hours": "invoice_hours",
+    "approved_hours": "approved_hours",
+    "pay_rate": "hourly_rate",
+    "invoice_amount": "invoice_amount",
+    "net_terms": "payment_terms",
+    "invoice_date": "invoice_date",
+    "due_date": "due_date",
+    "business_unit": "business_unit",
+    "project_name": "project_name",
+    "template": "template",
+    "approval_status": "approval_status",
+    "status": "status",
+}
+
+
+def _extract_direct_igentic_fields(obj: Dict) -> Dict:
+    """Extract from direct/flat iGentic object (snake_case agent output)."""
+    out = {}
+    for src_key, db_key in _IGENTIC_TO_DB.items():
+        val = obj.get(src_key)
+        if val is None:
+            continue
+        if isinstance(val, str) and val.strip().lower() in ("null", "none", ""):
+            continue
+        if db_key in ("invoice_hours", "hourly_rate", "invoice_amount", "approved_hours") and val is not None:
+            try:
+                val = float(val) if not isinstance(val, (int, float)) else float(val)
+            except (ValueError, TypeError):
+                pass
+        out[db_key] = val
+    return out
+
+
+def extract_fields_from_igentic(orchestration_response: Dict) -> Dict:
+    """
+    Extract all structured fields from iGentic response for SQL/Excel update.
+    Tries: 1) Direct flat object, 2) CSV, 3) JSON block in result. Merges status.
+    """
+    out = {}
+    # 0) Direct flat object (iGentic agent snake_case output)
+    for candidate in [orchestration_response, _get_igentic_searchable(orchestration_response)]:
+        if isinstance(candidate, dict) and candidate.get("invoice_number"):
+            direct = _extract_direct_igentic_fields(candidate)
+            if direct:
+                out.update(direct)
+                logger.info("Extracted %d fields from iGentic direct object", len(direct))
+                break
+        # Also check responseData.result if it's a dict
+        result = candidate.get("result") if isinstance(candidate, dict) else None
+        if isinstance(result, dict) and result.get("invoice_number"):
+            direct = _extract_direct_igentic_fields(result)
+            if direct:
+                out.update(direct)
+                logger.info("Extracted %d fields from iGentic result dict", len(direct))
+                break
+
+    # Add New Agentresponse:
+    if not out.get("invoice_number"):
+        try:
+            data = _get_igentic_searchable(orchestration_response)
+            agent_responses = (
+                data.get("agentResponses")
+                or data.get("agent_responses")
+                or orchestration_response.get("agentResponses")
+                or orchestration_response.get("agent_responses")
+                or []
+            )
+
+            if isinstance(agent_responses, str):
+                try:
+                    agent_responses = json.loads(agent_responses)
+                except Exception:
+                    agent_responses = []
+
+            if isinstance(agent_responses, list):
+                for item in agent_responses:
+                    authorname = (
+                        item.get("AuthorName")
+                        or item.get("authorName")
+                        or ""
+                    )
+                    if authorname != "Invoice_Parser_Agent":
+                        continue
+
+                    content = item.get("Content") or item.get("content") or ""
+                    if not isinstance(content, str):
+                        continue
+
+                    logger.info("Found Invoice_Parser_Agent content: %s", content[:300])
+
+                    # Try JSON inside content
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        try:
+                            raw_json = json.loads(json_match.group(0))
+                            mapped = _parsed_igentic_to_db(raw_json)
+                            if mapped.get("invoice_number"):
+                                out.update(mapped)
+                                logger.info(
+                                    "Extracted %d fields from Invoice_Parser_Agent JSON",
+                                    len(mapped)
+                                )
+                                break
+                        except json.JSONDecodeError as e:
+                            logger.warning("JSON parse failed in agent content: %s", e)
+
+        except Exception as e:
+            logger.warning("agent_responses extraction failed: %s", e)
+
+
+
+    # 1) Try CSV
+    if not out.get("invoice_number"):
+        try:
+            csv_string = extract_csv_from_igentic_response(orchestration_response)
+            if csv_string:
+                out.update(parse_csv_to_dict(csv_string))
+        except Exception as e:
+            logger.warning("CSV extraction failed: %s", e)
+    # 2) If still no invoice_number, try JSON block (markdown+JSON format)
+    if not out.get("invoice_number"):
+        json_fields = extract_json_block_from_igentic_response(orchestration_response)
+        out.update(json_fields)
+    # 3) Status from result text
+    data = _get_igentic_searchable(orchestration_response)
+    raw = data.get("result") or data.get("display_text") or data.get("displayText") or ""
+    if isinstance(raw, dict):
+        raw = json.dumps(raw)
+    text = (raw or "").lower()
+    if "complete" in text or "ready for payment" in text:
+        out["approval_status"] = "Complete"
+        out["status"] = "Complete"
+    elif "need approval" in text or "manual review" in text:
+        out["approval_status"] = "NEED APPROVAL"
+        out["status"] = "NEED APPROVAL"
+    else:
+        out.setdefault("approval_status", "Pending")
+        out.setdefault("status", "Pending")
+    return out
+
+
+# ============================================================================
+# Excel Helpers
+# ============================================================================
+
+def update_excel_file(invoice_id: str, invoice_data: Dict) -> None:
+    """
+    Update SharePoint Excel file with invoice data.
+    """
+    from openpyxl import load_workbook
+    import io
+    
+    # Get Excel path from environment variable
+    excel_path = os.environ.get("SHAREPOINT_EXCEL_PATH") or "Invoices/Invoice_Register_Master.xlsx"
+    
+    # Convert to server-relative URL
+    server_relative_excel_url = _normalize_server_relative_url(excel_path)
+    
+    try:
+        excel_content = download_file_from_sharepoint(server_relative_excel_url)
+    except Exception as e:
+        raise FileNotFoundError(f"Excel file not found at {server_relative_excel_url}") from e
+
+    # Load workbook
+    wb = load_workbook(io.BytesIO(excel_content))
+    ws = wb.active
+    
+    # Map invoice_data fields to Excel columns (adjust column indices based on your Excel structure)
+    # Common columns: invoice_id, vendor_name, invoice_number, invoice_amount, invoice_hours, hourly_rate, status, invoice_date, etc.
+    
+    def _v(k, *alt):
+        for a in [k] + list(alt):
+            v = invoice_data.get(a)
+            if v is not None and v != "":
+                return v
+        return None
+
+    # Find row with invoice_id or append new row (add/update only, same file)
+    row_found = False
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
+        if row[0].value == invoice_id:
+            ws.cell(row=row_idx, column=2, value=_v('vendor_name', 'consultancy_name', 'vendor_id'))
+            ws.cell(row=row_idx, column=3, value=_v('invoice_number'))
+            ws.cell(row=row_idx, column=4, value=_v('invoice_amount'))
+            ws.cell(row=row_idx, column=5, value=_v('status', 'approval_status'))
+            ws.cell(row=row_idx, column=6, value=_v('invoice_hours', 'vendor_hours', 'approved_hours'))
+            ws.cell(row=row_idx, column=7, value=_v('hourly_rate', 'pay_rate'))
+            ws.cell(row=row_idx, column=8, value=_v('invoice_date'))
+            ws.cell(row=row_idx, column=9, value=_v('resource_name'))
+            ws.cell(row=row_idx, column=10, value=_v('project_name'))
+            ws.cell(row=row_idx, column=11, value=_v('payment_terms', 'net_terms'))
+            ws.cell(row=row_idx, column=12, value=_v('start_date', 'pay_period_start'))
+            ws.cell(row=row_idx, column=13, value=_v('end_date', 'pay_period_end'))
+            ws.cell(row=row_idx, column=14, value=_v('doc_name'))
+            ws.cell(row=row_idx, column=15, value=_v('due_date'))
+            ws.cell(row=row_idx, column=16, value=_v('notes', 'current_comments'))
+            ws.cell(row=row_idx, column=17, value=_v('addl_comments'))
+            ws.cell(row=row_idx, column=18, value=_v('employee_id'))
+            row_found = True
+            break
+
+    if not row_found:
+        ws.append([
+            invoice_id,
+            _v('vendor_name', 'consultancy_name', 'vendor_id'),
+            _v('invoice_number'),
+            _v('invoice_amount'),
+            _v('status', 'approval_status'),
+            _v('invoice_hours', 'vendor_hours', 'approved_hours'),
+            _v('hourly_rate', 'pay_rate'),
+            _v('invoice_date'),
+            _v('resource_name'),
+            _v('project_name'),
+            _v('payment_terms', 'net_terms'),
+            _v('start_date', 'pay_period_start'),
+            _v('end_date', 'pay_period_end'),
+            _v('doc_name'),
+            _v('due_date'),
+            _v('pdf_url'),
+            _v('notes', 'current_comments'),
+            _v('addl_comments'),
+            _v('employee_id'),
+            datetime.utcnow().isoformat() if not invoice_data.get('created_at') else invoice_data.get('created_at'),
+            datetime.utcnow().isoformat(),
+        ])
+    
+    # Save and upload back to SharePoint
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    ctx = get_sharepoint_context()
+    file = ctx.web.get_file_by_server_relative_url(server_relative_excel_url)
+    file.save(output.read()).execute_query()
+    
+    logger.info(f"Updated Excel file with invoice {invoice_id} data")
+
+# ============================================================================
+# Logging Helpers
+# ============================================================================
+
+def save_complete_log(invoice_id: str, extracted_data: Dict, orchestration_result: Dict, event_type: str = 'upload') -> None:
+    """Save complete audit trail (Document Intelligence + iGentic JSON) into a separate invoice_logs table."""
+    try:
+        if not os.environ.get('SQL_CONNECTION_STRING'):
+            logger.warning("SQL_CONNECTION_STRING not set; skipping JSON log persistence")
+            return
+
+        sql_record = None
+        try:
+            sql_record = get_invoice(invoice_id)
+        except Exception:
+            # If the invoice row isn't found, we still persist the rest of the log
+            pass
+
+        log_data = {
+            'invoice_id': invoice_id,
+            'timestamp': datetime.utcnow().isoformat(),
+            'event_type': event_type,
+            'extracted_data': extracted_data,
+            'orchestration_result': orchestration_result,
+            'database_record': sql_record,
+        }
+
+        #json_str = json.dumps(log_data, indent=2)
+        json_str = json.dumps(log_data, indent=2, default=str)
+
+        conn = get_sql_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO invoice_logs (invoice_id, event_type, payload_json)
+                VALUES (%s, %s, %s)
+                """,
+                (invoice_id, event_type, json_str),
+            )
+            conn.commit()
+            logger.info(f"Saved JSON log for invoice {invoice_id} to invoice_logs table")
+        finally:
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        logger.error(f"Failed to save JSON log: {str(e)}")
+
+def save_status_change_log(invoice_id: str, old_status: str, new_status: str, changed_by: str) -> None:
+    """Save status change log into invoice_logs table."""
+    try:
+        if not os.environ.get('SQL_CONNECTION_STRING'):
+            logger.warning("SQL_CONNECTION_STRING not set; skipping status change log persistence")
+            return
+
+        sql_record = None
+        try:
+            sql_record = get_invoice(invoice_id)
+        except Exception:
+            pass
+
+        log_data = {
+            'invoice_id': invoice_id,
+            'timestamp': datetime.utcnow().isoformat(),
+            'event_type': 'status_change',
+            'old_status': old_status,
+            'new_status': new_status,
+            'changed_by': changed_by,
+            'database_record': sql_record,
+        }
+
+        json_str = json.dumps(log_data, indent=2)
+
+        conn = get_sql_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO invoice_logs (invoice_id, event_type, payload_json)
+                VALUES (%s, %s, %s)
+                """,
+                (invoice_id, 'status_change', json_str),
+            )
+            conn.commit()
+            logger.info(f"Saved status change log for invoice {invoice_id} to invoice_logs table")
+        finally:
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        logger.error(f"Failed to save status change log: {str(e)}")
+
+
+# Add Excel Timesheet Validation Helper
+def upload_excel_to_sharepoint(
+    file_content: bytes,
+    file_name: str,
+    folder_path: str = "Timesheet",
+) -> str:
+    """
+    Upload an Excel timesheet file to a SharePoint document library.
+
+    Args:
+        file_content : Raw bytes of the .xlsx file.
+        file_name    : Filename to save as in SharePoint
+                       (special chars are sanitised automatically).
+        folder_path  : Library name, optionally with sub-folders separated by
+                       '/'.  Defaults to "Timesheet".
+                       Examples:
+                         "Timesheet"
+                         "Timesheet/2025/05_May"
+    """
+    ctx = get_sharepoint_context()
+
+    # ── Resolve library name + optional sub-folder path ──────────────────────
+    parts = [p for p in folder_path.replace("\\", "/").strip("/").split("/") if p.strip()]
+    if not parts:
+        parts = ["Timesheet"]
+
+    list_name = parts[0]
+
+    # ── Sanitise filename (SharePoint rejects these characters) ──────────────
+    safe_name = re.sub(r'[\\/:*?"<>|#%]', '_', file_name)
+
+    # ── Navigate to root folder of the library ───────────────────────────────
+    root = ctx.web.lists.get_by_title(list_name).root_folder
+    root.get().execute_query()
+    target_folder = root
+
+    # ── Traverse / create sub-folders ────────────────────────────────────────
+    for part in parts[1:]:
+        try:
+            target_folder = (
+                target_folder.folders.get_by_name(part).get().execute_query()
+            )
+        except Exception:
+            # Folder does not exist yet — create it
+            target_folder = target_folder.folders.add(part).execute_query()
+
+    # ── Upload ────────────────────────────────────────────────────────────────
+    uploaded_file = target_folder.upload_file(safe_name, file_content).execute_query()
+
+    return (
+        uploaded_file.properties.get("ServerRelativeUrl")
+        or uploaded_file.properties.get("serverRelativeUrl")
+        or ""
+    )
+
+
+def upload_excel_to_sharepoint_dated(
+    file_content: bytes,
+    file_name: str,
+    base_folder: str = "Timesheet",
+) -> str:
+    """
+    Resulting path:  <base_folder>/<YYYY>/<MM_MonthName>/<file_name>
+    Example:         Timesheet/2025/05_May/timesheet_john.xlsx
+
+    Args:
+        file_content : Raw bytes of the .xlsx file.
+        file_name    : Filename to save.
+        base_folder  : Top-level library name. Defaults to "Timesheet".
+
+    Returns:
+        Server-relative URL of the uploaded file.
+    """
+    now         = datetime.now()
+    year        = now.strftime("%Y")
+    month       = now.strftime("%m_%B")          # e.g. "05_May"
+    folder_path = f"{base_folder}/{year}/{month}"
+
+    return upload_excel_to_sharepoint(file_content, file_name, folder_path)
+
+def upload_sync_report_to_sharepoint(
+    file_content: bytes,
+    file_name: str,
+    base_folder: str = "Timesheet",
+) -> str:
+    """
+    Resulting path:  <base_folder>/SyncReports/<file_name>
+    Example:         Timesheet/SyncReports/sync_report_20250501_1430.xlsx
+
+    Args:
+        file_content : Raw bytes of the .xlsx file.
+        file_name    : Filename to save.
+        base_folder  : Top-level library name. Defaults to "Timesheet".
+
+    Returns:
+        Server-relative URL of the uploaded file.
+    """
+    folder_path = f"{base_folder}/SyncReports"
+
+    return upload_excel_to_sharepoint(file_content, file_name, folder_path)

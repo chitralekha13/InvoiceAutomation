@@ -1,0 +1,12 @@
+{
+  "navigationFallback": {
+    "rewrite": "/accountsdashboard/index.html",
+    "exclude": ["/api/*", "/*.{css,scss,js,png,gif,ico,jpg,svg,json}"]
+  },
+  "routes": [
+    { "route": "/accountsdashboard/*", "allowedRoles": ["anonymous"] }
+  ],
+  "responseOverrides": {
+    "404": { "rewrite": "/accountsdashboard/index.html", "statusCode": 200 }
+  }
+}

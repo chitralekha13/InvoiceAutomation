@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retrieve Documents - Invoice Portal</title>
+    <script src="config.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .user-name {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .btn-logout {
+            background: #d13438;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn-upload {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 0 20px;
+        }
+        
+        .documents-card {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 12px 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .btn-search {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn-refresh {
+            background: #5c5c5c;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .documents-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            table-layout: fixed;
+        }
+        
+        .documents-table th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #dee2e6;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            
+        }
+        
+        .documents-table td {
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            color: #666;    
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            
+        }
+        
+        .documents-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        
+        .documents-table th:nth-child(2), .documents-table td:nth-child(2),
+        .documents-table th:nth-child(3), .documents-table td:nth-child(3),
+        .documents-table th:nth-child(4), .documents-table td:nth-child(4),
+        .documents-table th:nth-child(5), .documents-table td:nth-child(5) 
+        { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+
+        .file-icon {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+        
+        .btn-download {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        
+        .btn-delete {
+            background: #d13438;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-view {
+            background: #28a745; 
+            color: white; 
+            border: none;
+            padding: 8px 15px; 
+            border-radius: 3px; 
+            cursor: pointer; 
+            font-size: 12px;
+        }
+
+        .btn-view:hover { 
+            background: #218838; 
+        }
+
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        
+        .empty-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0078d4;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .file-date { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+        .file-name { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+        .file-org { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+        .file-status { font-size: 13px; color: #0a0101; overflow-wrap: break-word; }
+        
+        .file-size {
+            font-size: 12px;
+            color: #999;
+        }
+
+        #viewerOverlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: flex-end;
+            align-items: stretch;
+        }
+
+        #viewerPanel {
+            width: 60%;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+        }
+
+        #viewerHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        #viewerFileName {
+            font-size: 14px; font-weight: 600;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        #viewerActions { display: flex; gap: 8px; flex-shrink: 0; }
+
+        .viewer-btn {
+            padding: 7px 16px; border-radius: 5px;
+            border: none; cursor: pointer; font-size: 13px; font-weight: 500;
+        }
+
+        .viewer-btn-download { background: #0078d4; color: #fff; }
+        .viewer-btn-download:hover { background: #006cbf; }
+        .viewer-btn-close { background: #fff; color: #333; border: 1px solid #ccc; }
+        .viewer-btn-close:hover { background: #f0f0f0; }
+
+        #pdfContainer {
+            flex: 1;
+            overflow-y: auto;
+            background: #525659;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📄 Invoice Portal</h1>
+        <div class="user-info">
+            <span class="user-name" id="userName"></span>
+            <a href="upload.html" class="btn-upload">Upload Documents</a>
+            <button class="btn-logout" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="documents-card">
+            <h2 style="margin-bottom: 30px; color: #333;">My Documents</h2>
+            
+            <div class="message" id="message"></div>
+            
+            <div class="search-bar">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search documents...">
+                <button class="btn-search" onclick="searchDocuments()">Search</button>
+                <button class="btn-refresh" onclick="loadDocuments()">Refresh</button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading documents...</p>
+            </div>
+            
+            <div id="documentsContainer"></div>
+        </div>
+    </div>
+
+    
+<div id="viewerOverlay">
+    <div id="viewerPanel">
+        <div id="viewerHeader">
+            <span id="viewerFileName"></span>
+            <div id="viewerActions">
+                <button class="viewer-btn viewer-btn-download" id="btnDownload">Download</button>
+                <button class="viewer-btn viewer-btn-close"    id="btnClose">Close</button>
+            </div>
+        </div>
+        <div id="pdfContainer"></div>
+    </div>
+</div>
+
+    <script>
+        // Check authentication
+        const userEmail   = sessionStorage.getItem('userEmail');
+        const userName    = sessionStorage.getItem('userName');
+        const accessToken = sessionStorage.getItem('accessToken');
+        const org         = sessionStorage.getItem('org');
+        
+        if (!userEmail || !accessToken) {
+            window.location.href = 'index.html';
+            throw new Error('Unauthenticated');
+        }
+        
+        const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+        
+        let allDocuments = [];
+        let currentDocId   = null;
+        let currentDocName = null;
+        let currentBlobUrl = null;
+        
+        // Load documents on page load
+        window.addEventListener('load', () => {
+            loadDocuments();
+        });
+    
+        async function loadDocuments() {
+            const loading   = document.getElementById('loading');
+            const container = document.getElementById('documentsContainer');
+            const message = document.getElementById('message');
+            
+            loading.style.display = 'block';
+            container.innerHTML = '';
+            message.style.display = 'none';
+            
+            try {
+                const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+
+                const controller = new AbortController();
+                const timer      = setTimeout(() => controller.abort(), 20000);
+                
+                const response = await fetch(API_BASE + '/api/getdata', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userEmail: userEmail,
+                        accessToken: accessToken,
+                        org:org,
+                        action: 'list',
+                    })
+                });
+
+                clearTimeout(timer);
+                const text = await response.text();
+                
+                if (!response.ok) {
+                    throw new Error(`Server error ${response.status}: ${text}`);
+                }
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                throw new Error('Invalid JSON from server: ' + text.slice(0, 200));
+                }
+
+                allDocuments = Array.isArray(data.documents) ? data.documents : [];
+                renderDocuments(allDocuments);
+                
+            } catch (err) {
+            console.error('loadDocuments error:', err);
+            showMessage(
+                err.name === 'AbortError'
+                    ? 'Request timed out. Please check the API is reachable.'
+                    : `Failed to load: ${err.message}`,
+                'error'
+            );
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+        
+        function renderDocuments(documents) {
+            const container = document.getElementById('documentsContainer');
+
+            if (!documents.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <h3>No documents found</h3>
+                        <p>No invoices match your search, or none have been uploaded yet.</p>
+                    </div>`;
+                return;
+            }
+
+            // Set innerHTML FIRST
+            container.innerHTML = `
+                <p style="margin-bottom:10px; color:#666; font-size:13px;">
+                    <strong>${documents.length}</strong> document${documents.length !== 1 ? 's' : ''}
+                </p>
+                <table class="documents-table">
+                    <colgroup>
+                        <col style="width:18%">
+                        <col style="width:14%">
+                        <col style="width:18%">
+                        <col style="width:12%">
+                        <col style="width:18%">
+                        <col style="width:20%">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Upload Date</th>
+                            <th>Organisation</th>
+                            <th>Status</th>
+                            <th>Payment initiated on</th>
+                            <th style="text-align:center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>`;
+
+            // Get tbody AFTER innerHTML is set
+            const tbody = container.querySelector('#tableBody');
+
+            documents.forEach(doc => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <div class="file-name">
+                            ${escapeHtml(doc.name)}
+                        </div>
+                    </td>
+                    <td class="file-date">${formatDate(doc.uploadDate)}</td>
+                    <td class="file-org">${doc.OrganisationName}</td>
+                    <td class="file-status">${doc.Status}</td>
+                    <td class="file-payment-initiated">${doc.bill_pay_initiated_on ? formatDate(doc.bill_pay_initiated_on) : '—'}</td>
+                    <td>
+                        <button class="btn-view"
+                            data-id="${escapeAttr(doc.id)}"
+                            data-name="${escapeAttr(doc.name)}">
+                            View / Download
+                        </button>
+                    </td>`;
+                tbody.appendChild(row);
+            });
+        }
+
+        document.getElementById('documentsContainer').addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-view');
+            if (btn) viewDocument(btn.dataset.id, btn.dataset.name);
+        });
+        
+        // View Document - fetch as blob and render with PDF.js
+        async function viewDocument(docId, fileName) {
+            currentDocId   = docId;
+            currentDocName = fileName;
+
+            document.getElementById('viewerFileName').textContent = fileName;
+            document.getElementById('pdfContainer').innerHTML      = '<p style="color:#fff; padding:40px; text-align:center;">Loading...</p>';
+            document.getElementById('viewerOverlay').style.display = 'flex';
+
+            try {
+                const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.apiBaseUrl) || '';
+                const response = await fetch(API_BASE + '/api/getdata', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userEmail,
+                        accessToken,
+                        action:     'stream',
+                        documentId: docId,
+                    })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errText}`);
+                }
+
+                const blob     = await response.blob();
+                const pdfBlob  = new Blob([blob], { type: 'application/pdf' });
+                
+                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = URL.createObjectURL(pdfBlob);
+
+                const arrayBuffer = await pdfBlob.arrayBuffer();
+                await renderPDF(arrayBuffer);
+
+            }   catch (err) {
+            console.error('viewDocument error:', err);
+            document.getElementById('pdfContainer').innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to load: ${err.message}</p>`;
+            }
+        }
+
+        //Render PDF using PDF.js
+        async function renderPDF(arrayBuffer) {
+            const container = document.getElementById('pdfContainer');
+            container.innerHTML = '<p style="color:#fff; padding:40px; text-align:center;">Rendering pages...</p>';
+
+            try {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            container.innerHTML = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page     = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const canvas   = document.createElement('canvas');
+                canvas.width   = viewport.width;
+                canvas.height  = viewport.height;
+                canvas.style.cssText = 'box-shadow:0 2px 8px rgba(0,0,0,0.4); max-width:100%; display:block;';
+
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                container.appendChild(canvas);
+            }
+
+        } catch (err) {
+            console.error('renderPDF error:', err);
+            container.innerHTML =
+                `<p style="color:#ffcccc; padding:40px; text-align:center;">Failed to render PDF: ${err.message}</p>`;
+        }
+    
+    }
+
+        //Download the PDF file
+        function triggerDownload() {
+            if (!currentBlobUrl) return;
+            const a    = document.createElement('a');
+            a.href     = currentBlobUrl;
+            a.download = currentDocName || 'document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        //Close Viewer and cleanup
+       function closeViewer() {
+        document.getElementById('viewerOverlay').style.display = 'none';
+        document.getElementById('pdfContainer').innerHTML      = '';
+        if (currentBlobUrl) {
+            URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = null;
+        }
+        currentDocId   = null;
+        currentDocName = null;
+    }
+
+        //Viewer button listeners
+        document.getElementById('btnDownload').addEventListener('click', triggerDownload);
+        document.getElementById('btnClose').addEventListener('click', closeViewer);
+
+        document.getElementById('viewerOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeViewer();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeViewer();
+        });
+
+        // Search 
+        function searchDocuments() {
+            if (!allDocuments.length) return; // Don't run until documents are loaded
+            const term = document.getElementById('searchInput').value.toLowerCase().trim();
+            renderDocuments(term ? allDocuments.filter(d => d.name.toLowerCase().includes(term)) : allDocuments);
+        }
+
+        document.getElementById('searchInput').addEventListener('input', searchDocuments);
+        document.getElementById('searchInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') searchDocuments();
+        });
+
+        function setDisplayName(firstLast) {
+            const el = document.getElementById('userName');
+            if (el) el.textContent = firstLast || userEmail || '';
+        }
+        setDisplayName(userName && userName !== userEmail ? userName : userEmail);
+        loadDisplayNameFromUsers();
+
+        async function loadDisplayNameFromUsers() {
+            const email = sessionStorage.getItem('userEmail');
+            if (!email || !API_BASE) return;
+            try {
+                const res = await fetch(API_BASE + '/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'list' })
+                });
+                if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                const users = data.users || [];
+                const me = users.find(u => (u.email || '').toLowerCase() === (email || '').toLowerCase());
+                if (me && (me.firstname != null || me.lastname != null)) {
+                    const full = [me.firstname, me.lastname].filter(Boolean).join(' ').trim();
+                    if (full) setDisplayName(full);
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        function getFileIcon(fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            const icons = {
+                'pdf': '📕',
+                'docx': '📘',
+                'doc': '📘',
+                'xlsx': '📗',
+                'xls': '📗',
+                'png': '🖼️',
+                'jpg': '🖼️',
+                'jpeg': '🖼️'
+            };
+            return icons[ext] || '📄';
+        }
+        
+        function formatFileSize(bytes) {
+            if (!bytes) return 'N/A';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+        
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            //  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString(); -- UTC time
+            //  return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }); -- Indian Time Zone
+            //  return date.toLocaleString(undefined, { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone  }); -- Auto Detect 
+            return date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+        }
+        
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = `message ${type}`;
+            message.style.display = 'block';
+            
+            setTimeout(() => {
+                message.style.display = 'none';
+            }, 5000);
+        }
+        
+        function logout() {
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        function escapeHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function escapeAttr(str) {
+        return String(str).replace(/'/g, "\\'");
+    }
+        
+    </script>
+</body>
+</html>
